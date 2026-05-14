@@ -1,0 +1,206 @@
+<!doctype html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>פיצה דליבריס — ניהול</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config = { theme: { extend: { colors: { brand: { 50:'#fff7ed', 500:'#f97316', 600:'#ea580c', 700:'#c2410c' } } } } }</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { font-family: 'Inter', sans-serif; }
+.tab-active { background: #f97316; color: white; }
+.tab-btn { transition: all .15s; }
+.status-badge { font-size:.75rem; padding:.2rem .6rem; border-radius:9999px; font-weight:600; display:inline-block; }
+.status-new           { background:#dbeafe; color:#1d4ed8; }
+.status-preparing     { background:#fef9c3; color:#854d0e; }
+.status-out_for_delivery { background:#e0f2fe; color:#0369a1; }
+.status-delivered     { background:#dcfce7; color:#166534; }
+.status-done          { background:#f3f4f6; color:#4b5563; }
+.status-cancelled     { background:#fee2e2; color:#991b1b; }
+.spinner { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- Sidebar -->
+<div id="sidebar" class="fixed inset-y-0 right-0 w-64 bg-white border-l border-gray-200 flex flex-col z-30">
+  <div class="p-5 border-b border-gray-100">
+    <div class="flex items-center gap-3">
+      <span class="text-3xl">🍕</span>
+      <div>
+        <div class="font-bold text-gray-900">פיצה דליבריס</div>
+        <div id="userBadge" class="text-xs text-gray-400"></div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="flex-1 p-3 space-y-1">
+    <button onclick="showTab('orders')"   id="tab-orders"    class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-700 hover:bg-orange-50 hover:text-orange-600 font-medium">
+      <span>📋</span> הזמנות
+    </button>
+    <button onclick="showTab('products')" id="tab-products"  class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-700 hover:bg-orange-50 hover:text-orange-600 font-medium admin-only hidden">
+      <span>🍕</span> מוצרים
+    </button>
+    <button onclick="showTab('customers')" id="tab-customers" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-700 hover:bg-orange-50 hover:text-orange-600 font-medium admin-only hidden">
+      <span>👥</span> לקוחות
+    </button>
+    <button onclick="showTab('settings')" id="tab-settings"  class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-700 hover:bg-orange-50 hover:text-orange-600 font-medium admin-only hidden">
+      <span>⚙️</span> הגדרות
+    </button>
+  </nav>
+
+  <div class="p-4 border-t border-gray-100">
+    <button onclick="logout()" class="w-full text-sm text-gray-500 hover:text-red-600 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-red-50 transition-colors">
+      <span>🚪</span> יציאה
+    </button>
+  </div>
+</div>
+
+<!-- Main content -->
+<div class="mr-64 min-h-screen">
+  <div class="p-6 max-w-7xl">
+
+    <!-- ── ORDERS TAB ── -->
+    <div id="page-orders" class="hidden">
+      <!-- Stats (admin only) -->
+      <div id="statsSection" class="admin-only hidden mb-6">
+        <div class="flex items-center gap-4 mb-4">
+          <h2 class="text-xl font-bold text-gray-900">סטטיסטיקות</h2>
+          <input type="date" id="statsDate" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm">
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4" id="statsCards"></div>
+      </div>
+
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold text-gray-900">הזמנות</h2>
+        <div class="flex gap-2">
+          <select id="orderStatusFilter" class="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <option value="all">כל הסטטוסים</option>
+            <option value="new" selected>חדשות</option>
+            <option value="preparing">בהכנה</option>
+            <option value="out_for_delivery">בדרך</option>
+            <option value="delivered">נמסרו</option>
+            <option value="done">הסתיימו</option>
+            <option value="cancelled">בוטלו</option>
+          </select>
+          <button onclick="loadOrders()" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium">רענן</button>
+        </div>
+      </div>
+
+      <div id="ordersTable" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"></div>
+    </div>
+
+    <!-- ── PRODUCTS TAB ── -->
+    <div id="page-products" class="hidden">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-bold text-gray-900">מוצרים</h2>
+        <button onclick="openProductModal()" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium">+ הוסף מוצר</button>
+      </div>
+      <div id="productsTable" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"></div>
+    </div>
+
+    <!-- ── CUSTOMERS TAB ── -->
+    <div id="page-customers" class="hidden">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-bold text-gray-900">לקוחות</h2>
+        <div class="flex gap-3">
+          <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+            <input type="checkbox" id="returningOnly" onchange="loadCustomers()" class="rounded"> לקוחות חוזרים בלבד
+          </label>
+          <button onclick="openBroadcastModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium">📤 שליחת הודעה</button>
+        </div>
+      </div>
+      <div id="customersTable" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"></div>
+    </div>
+
+    <!-- ── SETTINGS TAB ── -->
+    <div id="page-settings" class="hidden">
+      <h2 class="text-xl font-bold text-gray-900 mb-6">הגדרות</h2>
+      <div id="settingsForm" class="space-y-6"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Order Detail Modal ── -->
+<div id="orderModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+    <div class="p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-gray-900" id="orderModalTitle">פרטי הזמנה</h3>
+        <button onclick="closeModal('orderModal')" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+      </div>
+      <div id="orderModalContent"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Product Modal ── -->
+<div id="productModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
+    <div class="p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-gray-900" id="productModalTitle">מוצר חדש</h3>
+        <button onclick="closeModal('productModal')" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+      </div>
+      <form id="productForm" class="space-y-4">
+        <input type="hidden" id="productId">
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">שם (עברית)</label>
+            <input type="text" id="productNameHe" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">שם (אנגלית)</label>
+            <input type="text" id="productNameEn" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" dir="ltr">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">מחיר (₪)</label>
+            <input type="number" id="productPrice" step="0.1" min="0" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">קטגוריה</label>
+            <select id="productCategory" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <option value="main">מנה עיקרית</option>
+              <option value="topping">תוספת</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex gap-4">
+          <button type="button" onclick="closeModal('productModal')" class="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">ביטול</button>
+          <button type="submit" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg text-sm font-medium">שמור</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ── Broadcast Modal ── -->
+<div id="broadcastModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg">
+    <div class="p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-gray-900">שליחת הודעת WhatsApp</h3>
+        <button onclick="closeModal('broadcastModal')" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+      </div>
+      <div class="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 text-sm text-yellow-800 mb-4">
+        ⚠️ שליחת הודעות ללא יזימת לקוח עלולה לגרום לחסימת המספר. מומלץ עד 50 נמענים בפעם.
+      </div>
+      <div id="broadcastRecipients" class="text-sm text-gray-600 mb-3"></div>
+      <textarea id="broadcastMessage" rows="4" placeholder="כתוב הודעה..."
+        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4" dir="rtl"></textarea>
+      <div class="flex gap-3">
+        <button onclick="closeModal('broadcastModal')" class="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">ביטול</button>
+        <button onclick="sendBroadcast()" class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-medium">שלח</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: pizza-bot
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: GREEN_API_INSTANCE_ID
+        sync: false
+      - key: GREEN_API_TOKEN
+        sync: false
+      - key: GREEN_API_BASE_URL
+        value: https://api.green-api.com
+      - key: GREEN_API_BUSINESS_INSTANCE_ID
+        sync: false
+      - key: GREEN_API_BUSINESS_TOKEN
+        sync: false
+      - key: OWNER_PHONE
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: ADMIN_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CARDCOM_TERMINAL
+        sync: false
+      - key: CARDCOM_USERNAME
+        sync: false
+      - key: CARDCOM_PASSWORD
+        sync: false
+      - key: CARDCOM_API_URL
+        value: https://secure.cardcom.solutions
+      - key: PUBLIC_URL
+        value: https://pizzabot-jasell.onrender.com
+      - key: DASHBOARD_ADMIN_PASSWORD
+        sync: false
+      - key: DASHBOARD_MANAGER_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        sync: false
