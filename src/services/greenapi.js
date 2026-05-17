@@ -61,8 +61,8 @@ async function sendListMessage(phone, title, description, buttonText, sections) 
 // ─── Poll helpers ─────────────────────────────────────────────────────────────
 
 // Control options (never treated as item selections)
-const CTRL_CONFIRM   = '✅ אישור בחירה';
-const CTRL_CONFIRM_EN= '✅ Confirm';
+const CTRL_CONFIRM   = '✅ אפשר להמשיך';
+const CTRL_CONFIRM_EN= '✅ Continue';
 const CTRL_BACK      = '🔙 חזרה לתפריט';
 const CTRL_BACK_EN   = '🔙 Back to menu';
 const CTRL_NO_TOP    = '✅ ללא תוספות';
