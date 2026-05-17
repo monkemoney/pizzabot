@@ -97,84 +97,55 @@ async function sendPoll(phone, question, options, multiple = false) {
   }
 }
 
-// Product categories — derived from DB category field or name keywords
-function getCategory(product) {
-  // Prefer explicit DB category field
-  if (product.category === 'drinks') return 'drinks';
-  const name = product.name_he || product;
-  if (typeof name === 'string') {
-    if (name.includes('פיצה')) return 'pizzas';
-    if (name.includes('פסטה')) return 'pastas';
-  }
-  return 'other';
+// Category label builder — uses live DB categories
+function buildCategoryLabel(cat) {
+  return `${cat.emoji} ${cat.name_he}`;
 }
 
-const CATEGORY_LABELS = {
-  pizzas: '🍕 פיצות',
-  pastas: '🍝 פסטות',
-  drinks: '🥤 משהו לשתות',
-  other:  '🥗 מנות נוספות',
-};
-
-const CATEGORY_LABELS_EN = {
-  pizzas: '🍕 Pizzas',
-  pastas: '🍝 Pastas',
-  drinks: '🥤 Drinks',
-  other:  '🥗 More Items',
-};
-
 /**
- * Step 1 — Send category selection poll.
- * Groups live products into categories; only shows categories that have items.
+ * Step 1 — Send category selection poll from live DB categories.
  */
 async function sendMenuList(phone, lang = 'he') {
   const { getProducts } = require('./menu-service');
-  const { main } = await getProducts();
+  const { categories, byCategory } = await getProducts();
 
   const isHe = lang !== 'en';
-  const labels = isHe ? CATEGORY_LABELS : CATEGORY_LABELS_EN;
-
-  // Find which categories have products
-  const usedCategories = [...new Set(main.map((p) => getCategory(p)))]
-    .filter((c) => labels[c]);
-
-  const options  = usedCategories.map((c) => labels[c]);
-  const question = isHe ? 'מה תרצה להזמין? 👇' : "What would you like? 👇";
+  // Only show categories that have products
+  const active = categories.filter((c) => (byCategory[c.id]?.items || []).length > 0);
+  const options  = active.map(buildCategoryLabel);
+  const question = isHe ? 'מה תרצה להזמין? 👇' : 'What would you like? 👇';
 
   await sendPoll(phone, question, options);
 }
 
 /**
- * Step 2 — Send item selection poll for a specific category.
+ * Step 2 — Send item poll for a category (by category UUID).
  * @param {string} phone
- * @param {string} categoryKey  'pizzas' | 'pastas' | 'other'
+ * @param {string} categoryId  UUID from categories table
  * @param {string} lang
  */
-async function sendCategoryPoll(phone, categoryKey, lang = 'he') {
+async function sendCategoryPoll(phone, categoryId, lang = 'he') {
   const { getProducts } = require('./menu-service');
-  const { main } = await getProducts();
+  const { categories, byCategory } = await getProducts();
 
-  const isHe  = lang !== 'en';
-  const items  = main.filter((p) => getCategory(p) === categoryKey);
+  const isHe = lang !== 'en';
+  const cat  = categories.find((c) => c.id === categoryId);
+  const items = byCategory[categoryId]?.items || [];
 
   if (!items.length) {
     await sendMessage(phone, isHe ? 'אין פריטים בקטגוריה זו כרגע.' : 'No items in this category right now.');
     return;
   }
 
-  const confirm = isHe ? CTRL_CONFIRM    : CTRL_CONFIRM_EN;
-  const back    = isHe ? CTRL_BACK       : CTRL_BACK_EN;
-  const options  = [
-    ...items.map((p) => `${p.name_he} — ${p.price}₪`),
-    confirm,
-    back,
-  ];
-  const label    = (isHe ? CATEGORY_LABELS : CATEGORY_LABELS_EN)[categoryKey] || '';
+  const confirm  = isHe ? CTRL_CONFIRM : CTRL_CONFIRM_EN;
+  const back     = isHe ? CTRL_BACK    : CTRL_BACK_EN;
+  const label    = cat ? buildCategoryLabel(cat) : '';
+  const options  = [...items.map((p) => `${p.name_he} — ${p.price}₪`), confirm, back];
   const question = isHe
     ? `בחר מנה מ${label} (ניתן לבחור כמה שתרצה):`
     : `Choose from ${label} (multiple OK):`;
 
-  await sendPoll(phone, question, options, true); // multipleAnswers: true
+  await sendPoll(phone, question, options, true);
 }
 
 /**
@@ -188,7 +159,10 @@ async function sendToppingsPoll(phone, lang = 'he') {
   const isHe = lang !== 'en';
 
   // Get unique toppings from pizza products
-  const pizzaIds = main.filter((p) => getCategory(p) === 'pizzas').map((p) => p.id);
+  // Items with toppings = categories where has_toppings = true
+  const { categories, byCategory } = await getProducts();
+  const toppingCats = categories.filter((c) => c.has_toppings);
+  const pizzaIds    = toppingCats.flatMap((c) => (byCategory[c.id]?.items || []).map((p) => p.id));
   const toppings = (raw || []).filter((p) => p.category === 'topping');
 
   // Fallback: use product_additions via a separate query if needed
@@ -216,17 +190,19 @@ async function sendToppingsPoll(phone, lang = 'he') {
 }
 
 /**
- * Resolve a category poll vote (localized label) → category key.
+ * Resolve a category poll vote label → category UUID from live DB.
  * Returns null if not recognized.
  */
-function resolveCategoryVote(vote) {
-  for (const [key, label] of Object.entries(CATEGORY_LABELS)) {
-    if (vote.includes(label) || label.includes(vote.trim())) return key;
-  }
-  for (const [key, label] of Object.entries(CATEGORY_LABELS_EN)) {
-    if (vote.includes(label) || label.includes(vote.trim())) return key;
-  }
-  return null;
+async function resolveCategoryVote(vote) {
+  const { getProducts } = require('./menu-service');
+  const { categories } = await getProducts();
+  const trimmed = vote.trim();
+  const cat = categories.find((c) =>
+    trimmed === buildCategoryLabel(c) ||
+    trimmed.includes(c.name_he) ||
+    trimmed.includes(c.emoji)
+  );
+  return cat ? cat.id : null;
 }
 
 /**

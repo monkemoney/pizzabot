@@ -3,19 +3,40 @@
 -- Run in Supabase SQL editor: https://supabase.com/dashboard/project/umoftdmutxhrbknowbyh/sql
 -- ============================================================
 
+-- ── Categories ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS categories (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name_he      TEXT NOT NULL,
+  name_en      TEXT NOT NULL,
+  emoji        TEXT DEFAULT '🍽️',
+  sort_order   INTEGER DEFAULT 0,
+  has_toppings BOOLEAN DEFAULT false,
+  is_active    BOOLEAN DEFAULT true,
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+INSERT INTO categories (id, name_he, name_en, emoji, sort_order, has_toppings) VALUES
+  ('11111111-cafe-cafe-cafe-000000000001', 'פיצות',       'Pizzas',     '🍕', 1, true),
+  ('11111111-cafe-cafe-cafe-000000000002', 'פסטות',       'Pastas',     '🍝', 2, false),
+  ('11111111-cafe-cafe-cafe-000000000003', 'מנות נוספות', 'More Items', '🥗', 3, false),
+  ('11111111-cafe-cafe-cafe-000000000004', 'משהו לשתות',  'Drinks',     '🥤', 4, false)
+ON CONFLICT (id) DO NOTHING;
+
 -- ── Products ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS products (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name_he      TEXT NOT NULL,
   name_en      TEXT NOT NULL,
   price        NUMERIC(8,2) NOT NULL,
-  category     TEXT NOT NULL DEFAULT 'main',  -- 'main' only now
+  category     TEXT DEFAULT 'main',
+  category_id  UUID REFERENCES categories(id),
   is_available BOOLEAN DEFAULT true,
   sort_order   INTEGER DEFAULT 0,
   image_url    TEXT,
   created_at   TIMESTAMPTZ DEFAULT NOW(),
   updated_at   TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE products ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES categories(id);
 
 -- ── Product additions (תוספות per product) ────────────────
 CREATE TABLE IF NOT EXISTS product_additions (

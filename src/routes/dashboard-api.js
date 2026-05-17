@@ -154,36 +154,91 @@ router.get('/stats', requireAdmin, async (req, res) => {
   }
 });
 
+// ─── Categories ───────────────────────────────────────────────────────────────
+
+router.get('/categories', requireAuth, async (req, res) => {
+  const { data, error } = await supabase.from('categories').select('*').order('sort_order');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+router.post('/categories', requireAdmin, async (req, res) => {
+  const { name_he, name_en, emoji, has_toppings, sort_order } = req.body;
+  const { data, error } = await supabase.from('categories')
+    .insert({ name_he, name_en: name_en || name_he, emoji: emoji || '🍽️',
+              has_toppings: !!has_toppings, sort_order: sort_order || 99 })
+    .select().single();
+  if (error) return res.status(400).json({ error: error.message });
+  invalidateCache();
+  res.status(201).json(data);
+});
+
+router.patch('/categories/:id', requireAdmin, async (req, res) => {
+  const updates = { ...req.body };
+  delete updates.id; delete updates.created_at;
+  const { data, error } = await supabase.from('categories')
+    .update(updates).eq('id', req.params.id).select().single();
+  if (error) return res.status(400).json({ error: error.message });
+  invalidateCache();
+  res.json(data);
+});
+
+router.delete('/categories/:id', requireAdmin, async (req, res) => {
+  // Prevent deleting categories that still have products
+  const { count } = await supabase.from('products').select('*', { count: 'exact', head: true })
+    .eq('category_id', req.params.id);
+  if (count > 0) return res.status(400).json({ error: `יש ${count} מוצרים בקטגוריה זו. העבר אותם קודם.` });
+  const { error } = await supabase.from('categories').delete().eq('id', req.params.id);
+  if (error) return res.status(400).json({ error: error.message });
+  invalidateCache();
+  res.json({ success: true });
+});
+
 // ─── Products ─────────────────────────────────────────────────────────────────
 
-// GET /products — returns each product with its additions array nested
+// GET /products — returns products grouped by category with nested additions
 router.get('/products', requireAuth, async (req, res) => {
+  const { data: categories, error: cErr } = await supabase
+    .from('categories').select('*').order('sort_order');
+  if (cErr) return res.status(500).json({ error: cErr.message });
+
   const { data: products, error: pErr } = await supabase
-    .from('products')
-    .select('*')
-    .order('sort_order');
+    .from('products').select('*').order('sort_order');
   if (pErr) return res.status(500).json({ error: pErr.message });
 
   const { data: additions, error: aErr } = await supabase
-    .from('product_additions')
-    .select('*')
-    .order('sort_order');
+    .from('product_additions').select('*').order('sort_order');
   if (aErr) return res.status(500).json({ error: aErr.message });
 
-  // Nest additions into each product
   const addMap = {};
   for (const a of additions) {
     if (!addMap[a.product_id]) addMap[a.product_id] = [];
     addMap[a.product_id].push(a);
   }
-  const result = products.map((p) => ({ ...p, additions: addMap[p.id] || [] }));
+
+  const catMap = {};
+  for (const cat of categories) {
+    catMap[cat.id] = { ...cat, products: [] };
+  }
+  const uncategorized = [];
+  for (const p of products) {
+    const withAdditions = { ...p, additions: addMap[p.id] || [] };
+    if (p.category_id && catMap[p.category_id]) {
+      catMap[p.category_id].products.push(withAdditions);
+    } else {
+      uncategorized.push(withAdditions);
+    }
+  }
+
+  const result = categories.map((c) => catMap[c.id]);
+  if (uncategorized.length) result.push({ id: null, name_he: 'ללא קטגוריה', emoji: '❓', products: uncategorized });
   res.json(result);
 });
 
 router.post('/products', requireAdmin, async (req, res) => {
-  const { name_he, name_en, price, category, sort_order, image_url } = req.body;
+  const { name_he, name_en, price, category_id, sort_order, image_url } = req.body;
   const { data, error } = await supabase.from('products')
-    .insert({ name_he, name_en, price, category: category || 'main', sort_order: sort_order || 0, image_url })
+    .insert({ name_he, name_en: name_en || name_he, price, category_id, sort_order: sort_order || 0, image_url })
     .select().single();
   if (error) return res.status(400).json({ error: error.message });
   invalidateCache();

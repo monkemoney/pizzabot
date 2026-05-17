@@ -9,7 +9,8 @@ const dashboardApi     = require('./routes/dashboard-api');
 const paymentRouter    = require('./routes/payment');
 const businessBotRouter = require('./routes/business-bot');
 const { handleMessage }   = require('./bot/handler');
-const { formatPhone, isControlOption, CTRL_CONFIRM, CTRL_BACK, CTRL_NO_TOP } = require('./services/greenapi');
+const { formatPhone, isControlOption, CTRL_CONFIRM, CTRL_BACK, CTRL_NO_TOP,
+        sendMenuList, sendCategoryPoll, resolveCategoryVote } = require('./services/greenapi');
 const { autoCompleteDeliveredOrders } = require('./services/supabase');
 
 const app  = express();
@@ -107,12 +108,23 @@ app.post('/webhook', (req, res) => {
         textMessage = 'ללא תוספות';
       }
     } else if (hasBack) {
-      // Back button only (no confirm) — return to category poll
-      textMessage = '🔙 חזרה לתפריט';
+      // Back — resend category poll directly, no Claude needed
+      sendMenuList(phone).catch(() => {});
+      return;
     } else if (!voted.some((v) => v.startsWith('✅') || v.startsWith('🔙'))) {
-      // Single-answer category poll — no control options, pass directly
+      // Single-answer category poll — resolve label → UUID → send item poll directly
       const selection = voted.find((v) => v.length > 0);
-      if (selection) textMessage = selection;
+      if (selection) {
+        resolveCategoryVote(selection).then((categoryId) => {
+          if (categoryId) {
+            sendCategoryPoll(phone, categoryId).catch(() => {});
+          } else {
+            // Unknown category — fall back to Claude
+            handleMessage(phone, selection).catch(() => {});
+          }
+        }).catch(() => {});
+      }
+      return;
     }
     // else: intermediate multi-select vote (no confirm yet) — ignore
 

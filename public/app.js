@@ -269,14 +269,19 @@ document.getElementById('statsDate')?.addEventListener('change', loadStats);
 
 // ─── PRODUCTS ─────────────────────────────────────────────────────────────────
 
-let allProducts = [];
-const expandedProducts = new Set();
+let allCategories = [];          // flat category list
+let categoriesWithProducts = []; // grouped response from API
+const expandedCategories = new Set();
+const expandedProducts   = new Set();
 
 async function loadProducts() {
   const container = document.getElementById('productsTable');
   container.innerHTML = '<div class="p-8 text-center text-gray-400">טוען...</div>';
   try {
-    allProducts = await api('GET', '/products');
+    [categoriesWithProducts, allCategories] = await Promise.all([
+      api('GET', '/products'),   // returns grouped by category
+      api('GET', '/categories'),
+    ]);
     renderProductsTable();
   } catch (err) {
     container.innerHTML = `<div class="p-8 text-center text-red-500">${err.message}</div>`;
@@ -297,98 +302,104 @@ function toggleSwitch(isOn, onClickFn) {
 
 function renderProductsTable() {
   const container = document.getElementById('productsTable');
-  if (!allProducts.length) {
-    container.innerHTML = '<div class="p-12 text-center text-gray-400">אין מוצרים — לחץ "+ הוסף מוצר"</div>';
+  if (!categoriesWithProducts.length) {
+    container.innerHTML = '<div class="p-12 text-center text-gray-400">אין קטגוריות — לחץ "+ קטגוריה"</div>';
     return;
   }
 
-  const rows = allProducts.map((p) => {
-    const isExpanded = expandedProducts.has(p.id);
-    const pData = encodeProduct(p);
+  const categoryBlocks = categoriesWithProducts.map((cat) => {
+    const isCatExpanded = expandedCategories.has(cat.id);
+    const products = cat.products || [];
+    const catHeader = `
+      <div class="flex items-center justify-between px-5 py-3.5 bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-gray-100"
+           onclick="toggleCategoryExpand('${cat.id}')">
+        <div class="flex items-center gap-2">
+          <span class="text-lg">${isCatExpanded ? '▾' : '▸'}</span>
+          <span class="text-xl">${cat.emoji || '🍽️'}</span>
+          <span class="font-semibold text-gray-800">${cat.name_he}</span>
+          <span class="text-xs text-gray-400 mr-1">(${products.length} פריטים)</span>
+          ${cat.has_toppings ? '<span class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">תוספות</span>' : ''}
+        </div>
+        <div class="flex gap-2" onclick="event.stopPropagation()">
+          <button onclick="openProductModal(null,'${cat.id}')" class="text-xs text-orange-500 hover:text-orange-700 font-medium">+ מוצר</button>
+          <button onclick="openCategoryModal(${encodeProduct(cat)})" class="text-xs text-gray-500 hover:text-gray-700">עריכה</button>
+          <button onclick="deleteCategory('${cat.id}','${cat.name_he}')" class="text-xs text-red-400 hover:text-red-600">מחיקה</button>
+        </div>
+      </div>`;
 
-    const additionsRows = isExpanded ? `
-      <tr id="additions-${p.id}" class="bg-orange-50/40">
-        <td colspan="7" class="px-0 py-0">
-          <div class="mx-6 my-3 rounded-xl border border-orange-100 overflow-hidden">
-            <table class="w-full text-xs">
-              <thead class="bg-orange-50 border-b border-orange-100">
-                <tr class="text-gray-500 font-medium">
-                  <th class="px-4 py-2 text-right">תוספת</th>
-                  <th class="px-4 py-2 text-right">מחיר</th>
-                  <th class="px-4 py-2 text-right">תמונה</th>
-                  <th class="px-4 py-2 text-right">זמין</th>
-                  <th class="px-4 py-2 text-right">פעולות</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-orange-50">
-                ${(p.additions || []).map((a) => {
-                  const aData = encodeAddition(a);
-                  return `<tr class="hover:bg-orange-50/60">
-                    <td class="px-4 py-2.5">
-                      <div class="font-medium text-gray-800">${a.name_he}</div>
-                      <div class="text-gray-400" dir="ltr">${a.name_en}</div>
-                    </td>
-                    <td class="px-4 py-2.5 font-semibold text-gray-700">₪${parseFloat(a.price).toFixed(2)}</td>
-                    <td class="px-4 py-2.5">${imgThumb(a.image_url)}</td>
-                    <td class="px-4 py-2.5">${toggleSwitch(a.is_available, `toggleAddition('${p.id}','${a.id}',${!a.is_available})`)}</td>
-                    <td class="px-4 py-2.5">
-                      <div class="flex gap-3">
-                        <button onclick="openAdditionModal('${p.id}',${aData})" class="text-orange-500 hover:text-orange-700 font-medium">עריכה</button>
-                        <button onclick="deleteAddition('${p.id}','${a.id}','${a.name_he}')" class="text-red-400 hover:text-red-600 font-medium">מחיקה</button>
-                      </div>
-                    </td>
-                  </tr>`;
-                }).join('')}
-                ${!(p.additions || []).length ? '<tr><td colspan="5" class="px-4 py-3 text-gray-400 text-center">אין תוספות</td></tr>' : ''}
-              </tbody>
-            </table>
-            <div class="px-4 py-2 border-t border-orange-100">
-              <button onclick="openAdditionModal('${p.id}', null)"
-                class="text-xs text-orange-600 hover:text-orange-800 font-medium">+ הוסף תוספת</button>
-            </div>
-          </div>
-        </td>
-      </tr>` : '';
+    if (!isCatExpanded) return catHeader;
 
-    return `
-      <tr class="hover:bg-gray-50 border-b border-gray-50 cursor-pointer" onclick="toggleExpand('${p.id}', event)">
-        <td class="px-4 py-3 w-8 text-gray-400 text-sm select-none">${isExpanded ? '▾' : '▸'}</td>
-        <td class="px-4 py-3">
-          <div class="font-medium text-gray-900">${p.name_he}</div>
-          <div class="text-xs text-gray-400" dir="ltr">${p.name_en}</div>
-        </td>
-        <td class="px-4 py-3 font-semibold text-gray-800">₪${parseFloat(p.price).toFixed(2)}</td>
-        <td class="px-4 py-3">${imgThumb(p.image_url)}</td>
-        <td class="px-4 py-3 text-xs text-gray-500">${(p.additions||[]).length} תוספות</td>
-        <td class="px-4 py-3" onclick="event.stopPropagation()">
-          ${toggleSwitch(p.is_available, `toggleProduct('${p.id}',${!p.is_available})`)}
-        </td>
-        <td class="px-4 py-3" onclick="event.stopPropagation()">
-          <div class="flex gap-3 items-center">
-            <button onclick="openProductModal(${pData})" class="text-xs text-orange-500 hover:text-orange-700 font-medium">עריכה</button>
-            <button onclick="deleteProduct('${p.id}','${p.name_he}')" class="text-xs text-red-400 hover:text-red-600 font-medium">מחיקה</button>
-          </div>
-        </td>
-      </tr>
-      ${additionsRows}`;
+    const productRows = products.length
+      ? products.map((p) => renderProductRow(p, cat)).join('')
+      : '<div class="px-5 py-4 text-gray-400 text-sm">אין מוצרים — לחץ "+ מוצר"</div>';
+
+    return catHeader + productRows;
   }).join('');
 
-  container.innerHTML = `
-    <div class="overflow-x-auto">
-    <table class="w-full text-sm">
-      <thead class="bg-gray-50 border-b border-gray-100">
-        <tr class="text-gray-500 text-xs font-medium">
-          <th class="px-4 py-3 w-8"></th>
-          <th class="px-4 py-3 text-right">שם מוצר</th>
-          <th class="px-4 py-3 text-right">מחיר</th>
-          <th class="px-4 py-3 text-right">תמונה</th>
-          <th class="px-4 py-3 text-right">תוספות</th>
-          <th class="px-4 py-3 text-right">זמין</th>
-          <th class="px-4 py-3 text-right">פעולות</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
+  container.innerHTML = `<div class="overflow-hidden">${categoryBlocks}</div>`;
+}
+
+function renderProductRow(p, cat) {
+  const isExpanded = expandedProducts.has(p.id);
+  const pData = encodeProduct(p);
+  const showAdditions = cat?.has_toppings;
+
+  const additionsSection = (isExpanded && showAdditions) ? `
+    <div class="mx-4 mb-3 rounded-xl border border-orange-100 overflow-hidden">
+      <table class="w-full text-xs">
+        <thead class="bg-orange-50 border-b border-orange-100">
+          <tr class="text-gray-500 font-medium">
+            <th class="px-4 py-2 text-right">תוספת</th>
+            <th class="px-4 py-2 text-right">מחיר</th>
+            <th class="px-4 py-2 text-right">תמונה</th>
+            <th class="px-4 py-2 text-right">זמין</th>
+            <th class="px-4 py-2 text-right">פעולות</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-orange-50">
+          ${(p.additions || []).map((a) => `
+            <tr class="hover:bg-orange-50/60">
+              <td class="px-4 py-2.5 font-medium text-gray-800">${a.name_he}</td>
+              <td class="px-4 py-2.5 font-semibold text-gray-700">₪${parseFloat(a.price).toFixed(2)}</td>
+              <td class="px-4 py-2.5">${imgThumb(a.image_url)}</td>
+              <td class="px-4 py-2.5">${toggleSwitch(a.is_available, `toggleAddition('${p.id}','${a.id}',${!a.is_available})`)}</td>
+              <td class="px-4 py-2.5">
+                <div class="flex gap-3">
+                  <button onclick="openAdditionModal('${p.id}',${encodeAddition(a)})" class="text-orange-500 hover:text-orange-700">עריכה</button>
+                  <button onclick="deleteAddition('${p.id}','${a.id}','${a.name_he}')" class="text-red-400 hover:text-red-600">מחיקה</button>
+                </div>
+              </td>
+            </tr>`).join('')}
+          ${!(p.additions||[]).length ? '<tr><td colspan="5" class="px-4 py-3 text-gray-400 text-center">אין תוספות</td></tr>' : ''}
+        </tbody>
+      </table>
+      <div class="px-4 py-2 border-t border-orange-100">
+        <button onclick="openAdditionModal('${p.id}',null)" class="text-xs text-orange-600 hover:text-orange-800 font-medium">+ הוסף תוספת</button>
+      </div>
+    </div>` : '';
+
+  const expandBtn = showAdditions
+    ? `<span class="text-gray-400 text-sm cursor-pointer select-none" onclick="toggleExpand('${p.id}')">${isExpanded ? '▾' : '▸'}</span>`
+    : '<span class="w-4"></span>';
+
+  return `
+    <div class="border-b border-gray-50 hover:bg-gray-50/50">
+      <div class="flex items-center gap-3 px-5 py-3">
+        ${expandBtn}
+        ${imgThumb(p.image_url)}
+        <div class="flex-1 min-w-0">
+          <div class="font-medium text-gray-900 text-sm">${p.name_he}</div>
+          <div class="text-xs text-gray-400" dir="ltr">${p.name_en || ''}</div>
+        </div>
+        <div class="font-semibold text-gray-800 text-sm w-16 text-left">₪${parseFloat(p.price).toFixed(2)}</div>
+        ${showAdditions ? `<div class="text-xs text-gray-400 w-16">${(p.additions||[]).length} תוספות</div>` : '<div class="w-16"></div>'}
+        <div>${toggleSwitch(p.is_available, `toggleProduct('${p.id}',${!p.is_available})`)}</div>
+        <div class="flex gap-3 mr-2">
+          <button onclick="openProductModal(${pData},'${p.category_id||''}')" class="text-xs text-orange-500 hover:text-orange-700 font-medium">עריכה</button>
+          <button onclick="deleteProduct('${p.id}','${p.name_he}')" class="text-xs text-red-400 hover:text-red-600">מחיקה</button>
+        </div>
+      </div>
+      ${additionsSection}
     </div>`;
 }
 
@@ -402,16 +413,30 @@ function decodeData(b64) {
   return JSON.parse(decodeURIComponent(escape(atob(b64))));
 }
 
-function toggleExpand(id, e) {
+function findProduct(productId) {
+  for (const cat of categoriesWithProducts) {
+    const p = (cat.products || []).find((x) => x.id === productId);
+    if (p) return p;
+  }
+  return null;
+}
+
+function toggleExpand(id) {
   if (expandedProducts.has(id)) expandedProducts.delete(id);
   else expandedProducts.add(id);
+  renderProductsTable();
+}
+
+function toggleCategoryExpand(id) {
+  if (expandedCategories.has(id)) expandedCategories.delete(id);
+  else expandedCategories.add(id);
   renderProductsTable();
 }
 
 async function toggleProduct(id, available) {
   try {
     await api('PATCH', `/products/${id}`, { is_available: available });
-    const p = allProducts.find((x) => x.id === id);
+    const p = findProduct(id);
     if (p) p.is_available = available;
     renderProductsTable();
   } catch (err) { alert(err.message); }
@@ -420,16 +445,56 @@ async function toggleProduct(id, available) {
 async function toggleAddition(productId, addId, available) {
   try {
     await api('PATCH', `/products/${productId}/additions/${addId}`, { is_available: available });
-    const p = allProducts.find((x) => x.id === productId);
+    const p = findProduct(productId);
     if (p) { const a = (p.additions||[]).find((x) => x.id === addId); if (a) a.is_available = available; }
     renderProductsTable();
   } catch (err) { alert(err.message); }
 }
 
-// ── Product modal ──
+// ── Category modal ──
 
-function openProductModal(b64OrNull) {
+function openCategoryModal(b64OrNull) {
+  const c = b64OrNull ? decodeData(b64OrNull) : null;
+  document.getElementById('categoryModalTitle').textContent = c?.id ? 'עריכת קטגוריה' : 'קטגוריה חדשה';
+  document.getElementById('categoryId').value           = c?.id           || '';
+  document.getElementById('categoryEmoji').value        = c?.emoji        || '';
+  document.getElementById('categoryNameHe').value       = c?.name_he      || '';
+  document.getElementById('categoryNameEn').value       = c?.name_en      || '';
+  document.getElementById('categoryHasToppings').checked= !!c?.has_toppings;
+  document.getElementById('categoryModal').classList.remove('hidden');
+}
+
+document.getElementById('categoryForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = document.getElementById('categoryId').value;
+  const body = {
+    name_he:      document.getElementById('categoryNameHe').value.trim(),
+    name_en:      document.getElementById('categoryNameEn').value.trim(),
+    emoji:        document.getElementById('categoryEmoji').value.trim() || '🍽️',
+    has_toppings: document.getElementById('categoryHasToppings').checked,
+  };
+  try {
+    if (id) await api('PATCH', `/categories/${id}`, body);
+    else    await api('POST',  '/categories', body);
+    closeModal('categoryModal');
+    loadProducts();
+  } catch (err) { alert(err.message); }
+});
+
+async function deleteCategory(id, name) {
+  if (!confirm(`למחוק את "${name}"?`)) return;
+  try {
+    await api('DELETE', `/categories/${id}`);
+    loadProducts();
+  } catch (err) { alert(err.message); }
+}
+
+// ── Product modal ──
+let _productCategoryId = null;
+
+function openProductModal(b64OrNull, categoryId) {
   const p = b64OrNull ? decodeData(b64OrNull) : null;
+  _productCategoryId = categoryId || p?.category_id || null;
   document.getElementById('productModalTitle').textContent = p?.id ? 'עריכת מוצר' : 'מוצר חדש';
   document.getElementById('productId').value       = p?.id        || '';
   document.getElementById('productNameHe').value   = p?.name_he   || '';
@@ -443,23 +508,17 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = document.getElementById('productId').value;
   const body = {
-    name_he:   document.getElementById('productNameHe').value.trim(),
-    name_en:   document.getElementById('productNameEn').value.trim(),
-    price:     parseFloat(document.getElementById('productPrice').value),
-    image_url: document.getElementById('productImageUrl').value.trim() || null,
-    category:  'main',
+    name_he:     document.getElementById('productNameHe').value.trim(),
+    name_en:     document.getElementById('productNameEn').value.trim(),
+    price:       parseFloat(document.getElementById('productPrice').value),
+    image_url:   document.getElementById('productImageUrl').value.trim() || null,
+    category_id: _productCategoryId || null,
   };
   try {
-    if (id) {
-      const updated = await api('PATCH', `/products/${id}`, body);
-      const idx = allProducts.findIndex((x) => x.id === id);
-      if (idx >= 0) allProducts[idx] = { ...allProducts[idx], ...updated };
-    } else {
-      const created = await api('POST', '/products', body);
-      allProducts.push(created);
-    }
+    if (id) await api('PATCH', `/products/${id}`, body);
+    else    await api('POST',  '/products', body);
     closeModal('productModal');
-    renderProductsTable();
+    loadProducts();
   } catch (err) { alert(err.message); }
 });
 
@@ -467,9 +526,8 @@ async function deleteProduct(id, name) {
   if (!confirm(`למחוק את "${name}"?`)) return;
   try {
     await api('DELETE', `/products/${id}`);
-    allProducts = allProducts.filter((x) => x.id !== id);
     expandedProducts.delete(id);
-    renderProductsTable();
+    loadProducts();
   } catch (err) { alert(err.message); }
 }
 
@@ -500,17 +558,11 @@ document.getElementById('additionForm').addEventListener('submit', async (e) => 
     image_url: document.getElementById('additionImageUrl').value.trim() || null,
   };
   try {
-    const p = allProducts.find((x) => x.id === pid);
-    if (id) {
-      const updated = await api('PATCH', `/products/${pid}/additions/${id}`, body);
-      if (p) { const idx = p.additions.findIndex((x) => x.id === id); if (idx >= 0) p.additions[idx] = updated; }
-    } else {
-      const created = await api('POST', `/products/${pid}/additions`, body);
-      if (p) p.additions = [...(p.additions || []), created];
-    }
+    if (id) await api('PATCH', `/products/${pid}/additions/${id}`, body);
+    else    await api('POST',  `/products/${pid}/additions`, body);
     expandedProducts.add(pid);
     closeModal('additionModal');
-    renderProductsTable();
+    loadProducts();
   } catch (err) { alert(err.message); }
 });
 
@@ -518,9 +570,7 @@ async function deleteAddition(productId, addId, name) {
   if (!confirm(`למחוק את "${name}"?`)) return;
   try {
     await api('DELETE', `/products/${productId}/additions/${addId}`);
-    const p = allProducts.find((x) => x.id === productId);
-    if (p) p.additions = p.additions.filter((x) => x.id !== addId);
-    renderProductsTable();
+    loadProducts();
   } catch (err) { alert(err.message); }
 }
 
