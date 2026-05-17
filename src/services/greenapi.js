@@ -59,8 +59,9 @@ async function sendListMessage(phone, title, description, buttonText, sections) 
 }
 
 /**
- * Build and send the interactive menu from live products in DB.
- * Called after the greeting so the customer sees a native WhatsApp picker.
+ * Send a numbered text menu — works on all WhatsApp accounts.
+ * (Interactive list/button messages require WhatsApp Business API and are not
+ *  supported on regular WhatsApp numbers connected via Green API.)
  */
 async function sendMenuList(phone, lang = 'he') {
   const { getProducts } = require('./menu-service');
@@ -68,23 +69,19 @@ async function sendMenuList(phone, lang = 'he') {
 
   const isHe = lang !== 'en';
 
-  const rows = main.map((p) => ({
-    rowId:       p.name_he,                          // passed back as text on selection
-    title:       p.name_he,
-    description: `${p.price}₪`,
-  }));
+  const lines = main.map((p, i) => {
+    const name = isHe ? p.name_he : (p.name_en || p.name_he);
+    return `*${i + 1}.* ${name} — *${p.price}₪*`;
+  });
 
-  const sections = [{ title: isHe ? 'מה תרצה לאכול?' : 'What would you like?', rows }];
+  const divider = '━━━━━━━━━━━━━━━━━━';
+  const header  = isHe ? '🍕 *תפריט פיצה דליבריס*' : '🍕 *Pizza Deliveries Menu*';
+  const footer  = isHe
+    ? `${divider}\nשלח את *מספר* הבחירה שלך 👆`
+    : `${divider}\nReply with the *number* of your choice 👆`;
 
-  const title      = isHe ? '🍕 תפריט פיצה דליבריס' : '🍕 Pizza Deliveries Menu';
-  const desc       = isHe ? 'בחר מנה מהרשימה 👇' : 'Select an item from the list 👇';
-  const buttonText = isHe ? 'פתח תפריט' : 'Open Menu';
-
-  try {
-    await sendListMessage(phone, title, desc, buttonText, sections);
-  } catch {
-    // Fallback already handled inside sendListMessage
-  }
+  const message = [header, divider, ...lines, footer].join('\n');
+  await sendMessage(phone, message);
 }
 
 /**
