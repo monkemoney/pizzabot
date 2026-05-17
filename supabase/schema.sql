@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS conversation_history JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS pending_order        JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS customer_profile     JSONB DEFAULT '{}'::jsonb;
 
 -- ── Pending payments ──────────────────────────────────────
 CREATE TABLE IF NOT EXISTS pending_payments (

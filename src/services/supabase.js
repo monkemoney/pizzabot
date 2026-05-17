@@ -65,6 +65,7 @@ async function updateSession(phone, updates) {
 }
 
 async function clearSession(phone) {
+  // Keep customer_profile across resets — it's permanent per-customer memory
   await updateSession(phone, {
     state: 'IDLE',
     language: 'he',
@@ -74,6 +75,21 @@ async function clearSession(phone) {
     conversation_history: [],
     pending_order: {},
   });
+}
+
+async function saveCustomerProfile(phone, profile) {
+  await updateSession(phone, { customer_profile: profile });
+}
+
+async function getCustomerProfile(phone) {
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('customer_profile')
+    .eq('phone', phone)
+    .single();
+  if (error || !data) return null;
+  const p = data.customer_profile;
+  return p && Object.keys(p).length > 0 ? p : null;
 }
 
 // ─── Pending payments ─────────────────────────────────────────────────────────
@@ -195,6 +211,8 @@ module.exports = {
   getSession,
   updateSession,
   clearSession,
+  saveCustomerProfile,
+  getCustomerProfile,
   savePendingPayment,
   getPendingByCardcomCode,
   getPendingByReturnValue,

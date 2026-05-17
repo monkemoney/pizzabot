@@ -7,7 +7,7 @@ const { buildMenuText } = require('../services/menu-service');
  * Build a fresh system prompt with the current live menu and settings.
  * The result is cached upstream by claude.js (prompt caching per-session).
  */
-async function buildSystemPrompt() {
+async function buildSystemPrompt(customerProfile = null) {
   const [allSettings, menuText] = await Promise.all([
     settings.loadAll(),
     settings.loadAll().then((s) => buildMenuText(s)),
@@ -28,7 +28,29 @@ async function buildSystemPrompt() {
     pickupEnabled   && 'איסוף עצמי',
   ].filter(Boolean).join(' / ');
 
-  return `אתה ג׳אסל, עוזר הזמנות של פיצה דליבריס.
+  // Build returning customer context block
+  let returningCustomerBlock = '';
+  if (customerProfile && (customerProfile.name || customerProfile.last_address)) {
+    const parts = [];
+    if (customerProfile.name)         parts.push(`שם: ${customerProfile.name}`);
+    if (customerProfile.phone)        parts.push(`טלפון: ${customerProfile.phone}`);
+    if (customerProfile.last_address) parts.push(`כתובת אחרונה: ${customerProfile.last_address}`);
+    if (customerProfile.delivery_method) parts.push(`אספקה קודמת: ${customerProfile.delivery_method === 'delivery' ? 'משלוח' : 'איסוף'}`);
+
+    returningCustomerBlock = `
+══════════════════════════════════════════
+לקוח חוזר — פרטים שמורים
+══════════════════════════════════════════
+${parts.join('\n')}
+
+• ברך אותם בשמם ("שלום ${customerProfile.name || 'חבר'}!")
+• לאחר בחירת פריטים, שאל: "להשתמש באותה כתובת מפעם קודמת (${customerProfile.last_address || ''})?"
+• אם אומרים כן — השתמש בפרטים השמורים ישירות, אל תשאל שוב.
+• אם אומרים לא — אסוף פרטים חדשים כרגיל.
+`;
+  }
+
+  return `אתה ג׳אסל, עוזר הזמנות של פיצה דליבריס.${returningCustomerBlock}
 אתה מנהל שיחות טבעיות ומקצועיות עם לקוחות ב-WhatsApp.
 
 ══════════════════════════════════════════

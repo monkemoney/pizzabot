@@ -3,7 +3,8 @@
 const { callClaude }              = require('../services/claude');
 const { buildSystemPrompt }       = require('./prompts');
 const { sendMessage, sendMenuList, sendCategoryPoll, sendToppingsPoll, resolveCategoryVote } = require('../services/greenapi');
-const { getSession, updateSession, savePendingPayment, saveOrder, getLastOrderByPhone } = require('../services/supabase');
+const { getSession, updateSession, savePendingPayment, saveOrder,
+        getLastOrderByPhone, saveCustomerProfile, getCustomerProfile } = require('../services/supabase');
 const { createPaymentPage }       = require('../services/cardcom');
 const settings                    = require('../services/settings');
 const crypto                      = require('crypto');
@@ -92,9 +93,12 @@ async function handleMessage(phone, userMessage) {
   }
   // ────────────────────────────────────────────────────────────────────────────
 
+  // Load returning customer profile (name, address from previous orders)
+  const customerProfile = await getCustomerProfile(phone).catch(() => null);
+
   let systemPrompt;
   try {
-    systemPrompt = await buildSystemPrompt();
+    systemPrompt = await buildSystemPrompt(customerProfile);
   } catch (err) {
     console.error('[ai-handler] Failed to build system prompt:', err.message);
     systemPrompt = 'You are a pizza ordering assistant. Help the customer order pizza.';
@@ -164,6 +168,17 @@ async function handleMessage(phone, userMessage) {
   // ── SAVE_ORDER (cash payment) ──
   if (actionType === 'SAVE_ORDER' && payload) {
     try {
+      // Persist customer profile for future orders
+      if (payload.customer_name || payload.address) {
+        await saveCustomerProfile(phone, {
+          name:            payload.customer_name  || null,
+          phone:           payload.customer_phone || null,
+          last_address:    payload.address        || null,
+          delivery_method: payload.delivery_method,
+          payment_method:  'cash',
+        });
+      }
+
       const { id, orderNumber } = await saveOrder({
         phone,
         customer_name:   payload.customer_name   || null,
@@ -195,6 +210,16 @@ async function handleMessage(phone, userMessage) {
 
   // ── CREATE_PAYMENT (credit card) ──
   if (actionType === 'CREATE_PAYMENT' && payload) {
+    // Save profile even before payment confirms — address/name are known
+    if (payload.customer_name || payload.address) {
+      await saveCustomerProfile(phone, {
+        name:            payload.customer_name  || null,
+        phone:           payload.customer_phone || null,
+        last_address:    payload.address        || null,
+        delivery_method: payload.delivery_method,
+        payment_method:  'credit',
+      });
+    }
     await updateSession(phone, { conversation_history: updatedHistory });
 
     const returnValue = makeReturnValue();
