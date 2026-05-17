@@ -94,10 +94,8 @@ app.post('/webhook', (req, res) => {
 
     let textMessage = null;
 
-    if (hasBack) {
-      // Back button — return to category poll
-      textMessage = '🔙 חזרה לתפריט';
-    } else if (hasConfirm) {
+    if (hasConfirm) {
+      // Confirm always wins — even if user accidentally also tapped Back
       // Multi-select poll (items or toppings) — user confirmed selection
       const selections = voted.filter((v) => !v.startsWith('✅') && !v.startsWith('🔙'));
       if (selections.length) {
@@ -108,8 +106,11 @@ app.post('/webhook', (req, res) => {
         // Confirmed with nothing selected — treat as "no preference"
         textMessage = 'ללא תוספות';
       }
+    } else if (hasBack) {
+      // Back button only (no confirm) — return to category poll
+      textMessage = '🔙 חזרה לתפריט';
     } else if (!voted.some((v) => v.startsWith('✅') || v.startsWith('🔙'))) {
-      // Single-answer category poll — no control options voted, pass directly
+      // Single-answer category poll — no control options, pass directly
       const selection = voted.find((v) => v.length > 0);
       if (selection) textMessage = selection;
     }
