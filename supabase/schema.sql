@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS products (
   updated_at   TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE products ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES categories(id);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS description TEXT;
 
 -- ── Product additions (תוספות per product) ────────────────
 CREATE TABLE IF NOT EXISTS product_additions (

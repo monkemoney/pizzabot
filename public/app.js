@@ -639,7 +639,8 @@ function openProductModal(b64OrNull, categoryId) {
   document.getElementById('productNameHe').value   = p?.name_he   || '';
   document.getElementById('productNameEn').value   = p?.name_en   || '';
   document.getElementById('productPrice').value    = p?.price      || '';
-  document.getElementById('productImageUrl').value = p?.image_url  || '';
+  document.getElementById('productImageUrl').value    = p?.image_url   || '';
+  document.getElementById('productDescription').value = p?.description || '';
   document.getElementById('productModal').classList.remove('hidden');
 }
 
@@ -650,7 +651,8 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
     name_he:     document.getElementById('productNameHe').value.trim(),
     name_en:     document.getElementById('productNameEn').value.trim(),
     price:       parseFloat(document.getElementById('productPrice').value),
-    image_url:   document.getElementById('productImageUrl').value.trim() || null,
+    image_url:   document.getElementById('productImageUrl').value.trim()    || null,
+    description: document.getElementById('productDescription').value.trim() || null,
     category_id: _productCategoryId || null,
   };
   try {

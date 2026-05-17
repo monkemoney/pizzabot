@@ -296,9 +296,9 @@ router.get('/products', requireAuth, async (req, res) => {
 });
 
 router.post('/products', requireAdmin, async (req, res) => {
-  const { name_he, name_en, price, category_id, sort_order, image_url } = req.body;
+  const { name_he, name_en, price, category_id, sort_order, image_url, description } = req.body;
   const { data, error } = await supabase.from('products')
-    .insert({ name_he, name_en: name_en || name_he, price, category_id, sort_order: sort_order || 0, image_url })
+    .insert({ name_he, name_en: name_en || name_he, price, category_id, sort_order: sort_order || 0, image_url, description: description || null })
     .select().single();
   if (error) return res.status(400).json({ error: error.message });
   invalidateCache();
@@ -388,6 +388,57 @@ router.post('/customers/broadcast', requireAdmin, async (req, res) => {
     }
   }
   res.json(results);
+});
+
+// ─── Public menu (no auth) ────────────────────────────────────────────────────
+
+router.get('/public-menu', async (req, res) => {
+  try {
+    const [allSettings, categoriesRes, productsRes, additionsRes] = await Promise.all([
+      settings.loadAll(),
+      supabase.from('categories').select('*').order('sort_order'),
+      supabase.from('products').select('*').eq('is_available', true).order('sort_order'),
+      supabase.from('product_additions').select('*').eq('is_available', true).order('sort_order'),
+    ]);
+
+    const categories = categoriesRes.data || [];
+    const products   = productsRes.data   || [];
+    const additions  = additionsRes.data  || [];
+
+    const addMap = {};
+    for (const a of additions) {
+      if (!addMap[a.product_id]) addMap[a.product_id] = [];
+      addMap[a.product_id].push(a);
+    }
+
+    const catMap = {};
+    for (const cat of categories) {
+      catMap[cat.id] = { ...cat, products: [] };
+    }
+    for (const p of products) {
+      if (p.category_id && catMap[p.category_id]) {
+        catMap[p.category_id].products.push({ ...p, additions: addMap[p.id] || [] });
+      }
+    }
+
+    // Filter out topping-addon categories and empty categories
+    const menu = categories
+      .filter((c) => !c.is_topping_addon && catMap[c.id]?.products?.length)
+      .map((c) => catMap[c.id]);
+
+    res.json({
+      menu,
+      business_name:    allSettings.business_name    || 'פיצה דליבריס',
+      business_address: allSettings.business_address || '',
+      pickup_address:   allSettings.pickup_address   || '',
+      delivery_price:   allSettings.delivery_price   ?? 30,
+      delivery_enabled: allSettings.delivery_enabled !== false,
+      pickup_enabled:   allSettings.pickup_enabled   !== false,
+      is_open:          allSettings.is_open           !== false,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── Settings ────────────────────────────────────────────────────────────────

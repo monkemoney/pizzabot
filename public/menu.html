@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>התפריט שלנו</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800;900&family=Heebo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --primary:       #5e17eb;
+      --primary-light: #7c3aed;
+      --pink:          #ff66c4;
+      --bg:            #eeede9;
+      --white:         #ffffff;
+      --text:          #1a1325;
+      --text-muted:    #7b6f8c;
+      --border:        #e2ddf0;
+      --card-shadow:   0 4px 24px rgba(94,23,235,.10);
+      --radius:        20px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Heebo', 'Poppins', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding-bottom: 80px;
+    }
+
+    /* ── Hero header ── */
+    .hero {
+      background: linear-gradient(135deg, var(--primary) 0%, #9333ea 60%, var(--pink) 100%);
+      padding: 48px 24px 80px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Ccircle cx='30' cy='30' r='20'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
+    }
+    .hero-logo {
+      font-size: 3rem;
+      margin-bottom: 8px;
+    }
+    .hero-name {
+      font-family: 'Poppins', sans-serif;
+      font-size: 2rem;
+      font-weight: 900;
+      color: #fff;
+      letter-spacing: -0.5px;
+      position: relative;
+    }
+    .hero-tagline {
+      font-size: 1.05rem;
+      color: rgba(255,255,255,.85);
+      margin-top: 8px;
+      font-weight: 500;
+      position: relative;
+    }
+    .hero-badges {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+      position: relative;
+    }
+    .hero-badge {
+      background: rgba(255,255,255,.18);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,.3);
+      color: #fff;
+      font-size: .78rem;
+      font-weight: 700;
+      padding: 6px 14px;
+      border-radius: 50px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #4ade80;
+      display: inline-block;
+      animation: pulse 1.8s infinite;
+    }
+    .status-dot.closed { background: #f87171; animation: none; }
+    @keyframes pulse {
+      0%,100% { opacity:1; } 50% { opacity:.4; }
+    }
+
+    /* ── Category tabs ── */
+    .tabs-wrap {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg);
+      padding: 14px 0 0;
+      box-shadow: 0 4px 16px rgba(0,0,0,.06);
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 0 20px 14px;
+      scrollbar-width: none;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab-btn {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 8px 18px;
+      border-radius: 50px;
+      border: 2px solid var(--border);
+      background: var(--white);
+      font-family: inherit;
+      font-size: .82rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all .2s;
+      white-space: nowrap;
+    }
+    .tab-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .tab-emoji { font-size: 1rem; }
+
+    /* ── Main content ── */
+    .content {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 24px 16px 0;
+    }
+
+    /* ── Category section ── */
+    .cat-section { margin-bottom: 40px; }
+    .cat-section:last-child { margin-bottom: 0; }
+    .cat-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      padding: 0 4px;
+    }
+    .cat-emoji { font-size: 1.5rem; }
+    .cat-name {
+      font-family: 'Poppins', sans-serif;
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: var(--text);
+    }
+    .cat-count {
+      background: var(--primary);
+      color: #fff;
+      font-size: .7rem;
+      font-weight: 800;
+      padding: 2px 9px;
+      border-radius: 50px;
+      margin-right: auto;
+    }
+
+    /* ── Product card ── */
+    .product-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--card-shadow);
+      overflow: hidden;
+      margin-bottom: 14px;
+      border: 1px solid var(--border);
+      transition: transform .2s, box-shadow .2s;
+    }
+    .product-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(94,23,235,.15);
+    }
+
+    /* Card with image: image right, content left (RTL) */
+    .card-inner {
+      display: flex;
+      gap: 0;
+    }
+    .card-img-wrap {
+      flex-shrink: 0;
+      width: 110px;
+      position: relative;
+    }
+    .card-img {
+      width: 110px;
+      height: 110px;
+      object-fit: cover;
+      display: block;
+    }
+    .card-img-placeholder {
+      width: 110px;
+      height: 110px;
+      background: linear-gradient(135deg, #f3eeff, #fde8f7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.4rem;
+    }
+    .card-body {
+      flex: 1;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .card-name {
+      font-family: 'Poppins', sans-serif;
+      font-size: .95rem;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1.25;
+    }
+    .card-name-en {
+      font-size: .72rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      direction: ltr;
+      text-align: right;
+    }
+    .card-desc {
+      font-size: .78rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+      flex: 1;
+    }
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 6px;
+    }
+    .card-price {
+      font-family: 'Poppins', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 900;
+      color: var(--primary);
+    }
+    .card-order-btn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 50px;
+      padding: 7px 16px;
+      font-family: inherit;
+      font-size: .76rem;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background .18s, transform .15s;
+    }
+    .card-order-btn:hover {
+      background: var(--primary-light);
+      transform: scale(1.04);
+    }
+
+    /* ── Toppings accordion ── */
+    .toppings-section {
+      border-top: 1px solid var(--border);
+    }
+    .toppings-toggle {
+      width: 100%;
+      background: none;
+      border: none;
+      font-family: inherit;
+      font-size: .78rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      text-align: right;
+      direction: rtl;
+      transition: color .18s;
+    }
+    .toppings-toggle:hover { color: var(--primary); }
+    .toppings-toggle svg { transition: transform .22s; }
+    .toppings-toggle.open svg { transform: rotate(180deg); }
+    .toppings-list {
+      display: none;
+      padding: 0 16px 14px;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .toppings-list.open { display: flex; }
+    .topping-chip {
+      background: #f3eeff;
+      color: var(--primary);
+      font-size: .73rem;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 50px;
+      border: 1px solid #e0d5fa;
+    }
+    .topping-price {
+      color: var(--pink);
+      font-weight: 800;
+      font-size: .7rem;
+    }
+
+    /* ── Info footer ── */
+    .info-bar {
+      background: var(--white);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin: 0 16px 28px;
+      max-width: 640px;
+      margin-left: auto;
+      margin-right: auto;
+      box-shadow: var(--card-shadow);
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .info-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: .82rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      flex: 1;
+      min-width: 120px;
+    }
+    .info-item svg { color: var(--primary); flex-shrink: 0; }
+    .info-item strong { color: var(--text); }
+
+    /* ── Sticky CTA ── */
+    .sticky-cta {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      padding: 14px 20px;
+      background: rgba(238,237,233,.92);
+      backdrop-filter: blur(12px);
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: center;
+    }
+    .cta-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: linear-gradient(135deg, var(--primary), var(--pink));
+      color: #fff;
+      font-family: 'Poppins', inherit;
+      font-size: 1rem;
+      font-weight: 800;
+      padding: 14px 36px;
+      border-radius: 50px;
+      text-decoration: none;
+      box-shadow: 0 4px 24px rgba(94,23,235,.35);
+      transition: transform .18s, box-shadow .18s;
+    }
+    .cta-btn:hover {
+      transform: scale(1.03);
+      box-shadow: 0 8px 32px rgba(94,23,235,.45);
+    }
+
+    /* ── Loading ── */
+    .loading {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--text-muted);
+      font-size: .9rem;
+    }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 4px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin .75s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 380px) {
+      .hero-name { font-size: 1.6rem; }
+      .card-img-wrap { width: 88px; }
+      .card-img, .card-img-placeholder { width: 88px; height: 88px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Hero ── -->
+<div class="hero" id="hero">
+  <div class="hero-logo">🍕</div>
+  <div class="hero-name" id="businessName">...</div>
+  <div class="hero-tagline" id="heroTagline">טוענים את התפריט...</div>
+  <div class="hero-badges" id="heroBadges"></div>
+</div>
+
+<!-- ── Category tabs ── -->
+<div class="tabs-wrap">
+  <div class="tabs" id="tabs"></div>
+</div>
+
+<!-- ── Info bar ── -->
+<div style="max-width:640px;margin:20px auto 0;padding:0 16px">
+  <div class="info-bar" id="infoBar" style="display:none"></div>
+</div>
+
+<!-- ── Menu sections ── -->
+<div class="content" id="menuContent">
+  <div class="loading">
+    <div class="spinner"></div>
+    טוענים תפריט...
+  </div>
+</div>
+
+<!-- ── Sticky CTA ── -->
+<div class="sticky-cta">
+  <a href="https://wa.me/14707464602" target="_blank" class="cta-btn" id="ctaBtn">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.557 4.126 1.533 5.862L.057 23.428a.75.75 0 0 0 .916.916l5.603-1.476A11.943 11.943 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.886 0-3.655-.505-5.18-1.387l-.372-.22-3.326.876.877-3.284-.236-.385A9.956 9.956 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+    הזמינו עכשיו ב-WhatsApp
+  </a>
+</div>
+
+<script>
+'use strict';
+
+let menuData = null;
+
+async function loadMenu() {
+  try {
+    const res  = await fetch('/api/public-menu');
+    const data = await res.json();
+    menuData = data;
+    render(data);
+  } catch (err) {
+    document.getElementById('menuContent').innerHTML =
+      `<div class="loading" style="color:#e55">שגיאה בטעינת התפריט. נסו לרענן את הדף.</div>`;
+  }
+}
+
+function render(data) {
+  // Hero
+  document.getElementById('businessName').textContent  = data.business_name;
+  document.title = `התפריט של ${data.business_name}`;
+
+  const tagline = data.is_open ? 'מה תרצו להזמין היום? 😊' : '⛔ אנחנו כרגע סגורים – חזרו מאוחר יותר';
+  document.getElementById('heroTagline').textContent = tagline;
+
+  const badges = [];
+  if (data.delivery_enabled) badges.push(`<span class="hero-badge">🛵 משלוח ${data.delivery_price}₪</span>`);
+  if (data.pickup_enabled)   badges.push(`<span class="hero-badge">🏍️ איסוף עצמי חינם</span>`);
+  badges.push(`<span class="hero-badge"><span class="status-dot${data.is_open ? '' : ' closed'}"></span> ${data.is_open ? 'פתוח עכשיו' : 'סגור'}</span>`);
+  document.getElementById('heroBadges').innerHTML = badges.join('');
+
+  // Info bar
+  const info = [];
+  if (data.pickup_address)   info.push(infoItem(iconMap, 'לאיסוף עצמי', data.pickup_address));
+  if (data.delivery_enabled) info.push(infoItem(iconTruck, 'משלוח', `${data.delivery_price}₪ לתל אביב`));
+  if (info.length) {
+    const bar = document.getElementById('infoBar');
+    bar.innerHTML = info.join('');
+    bar.style.display = 'flex';
+  }
+
+  // Tabs
+  const tabs = document.getElementById('tabs');
+  tabs.innerHTML = data.menu.map((cat, i) =>
+    `<button class="tab-btn${i===0?' active':''}" onclick="scrollToSection('cat-${cat.id}', this)">
+      <span class="tab-emoji">${cat.emoji || '🍽️'}</span>${cat.name_he}
+    </button>`
+  ).join('');
+
+  // Sections
+  const content = document.getElementById('menuContent');
+  content.innerHTML = data.menu.map((cat) => renderCategory(cat)).join('');
+}
+
+function infoItem(icon, label, value) {
+  return `<div class="info-item">${icon}<span><strong>${label}:</strong> ${value}</span></div>`;
+}
+
+const iconMap   = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`;
+const iconTruck = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 7v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`;
+
+function renderCategory(cat) {
+  const items = (cat.products || []).map((p) => renderProduct(p, cat)).join('');
+  return `
+    <div class="cat-section" id="cat-${cat.id}">
+      <div class="cat-header">
+        <span class="cat-emoji">${cat.emoji || '🍽️'}</span>
+        <span class="cat-name">${cat.name_he}</span>
+        <span class="cat-count">${cat.products.length}</span>
+      </div>
+      ${items}
+    </div>`;
+}
+
+function renderProduct(p, cat) {
+  const imgHtml = p.image_url
+    ? `<img src="${escHtml(p.image_url)}" alt="${escHtml(p.name_he)}" class="card-img" loading="lazy" onerror="this.parentElement.innerHTML='<div class=card-img-placeholder>${cat.emoji||'🍽️'}</div>'">`
+    : `<div class="card-img-placeholder">${cat.emoji || '🍽️'}</div>`;
+
+  const toppingsHtml = (p.additions && p.additions.length)
+    ? `<div class="toppings-section">
+        <button class="toppings-toggle" onclick="toggleToppings(this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          תוספות לבחירה (${p.additions.length})
+        </button>
+        <div class="toppings-list">
+          ${p.additions.map((a) =>
+            `<span class="topping-chip">${escHtml(a.name_he)} <span class="topping-price">+${a.price}₪</span></span>`
+          ).join('')}
+        </div>
+      </div>`
+    : '';
+
+  const waMsg = encodeURIComponent(`היי! אני רוצה להזמין ${p.name_he} 🍕`);
+
+  return `
+    <div class="product-card">
+      <div class="card-inner">
+        <div class="card-img-wrap">${imgHtml}</div>
+        <div class="card-body">
+          <div class="card-name">${escHtml(p.name_he)}</div>
+          ${p.name_en && p.name_en !== p.name_he ? `<div class="card-name-en">${escHtml(p.name_en)}</div>` : ''}
+          ${p.description ? `<div class="card-desc">${escHtml(p.description)}</div>` : ''}
+          <div class="card-footer">
+            <span class="card-price">${p.price}₪</span>
+            <a href="https://wa.me/14707464602?text=${waMsg}" target="_blank" class="card-order-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.557 4.126 1.533 5.862L.057 23.428a.75.75 0 0 0 .916.916l5.603-1.476A11.943 11.943 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.886 0-3.655-.505-5.18-1.387l-.372-.22-3.326.876.877-3.284-.236-.385A9.956 9.956 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+              הזמן
+            </a>
+          </div>
+        </div>
+      </div>
+      ${toppingsHtml}
+    </div>`;
+}
+
+function toggleToppings(btn) {
+  btn.classList.toggle('open');
+  const list = btn.nextElementSibling;
+  list.classList.toggle('open');
+}
+
+function scrollToSection(id, tabEl) {
+  document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+  tabEl.classList.add('active');
+  const el = document.getElementById(id);
+  if (el) {
+    const offset = 80; // tabs height
+    const y = el.getBoundingClientRect().top + window.scrollY - offset;
+    window.scrollTo({ top: y, behavior: 'smooth' });
+  }
+}
+
+// Highlight active tab on scroll
+const observer = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    if (entry.isIntersecting) {
+      const id = entry.target.id; // e.g. "cat-<uuid>"
+      const tabBtns = document.querySelectorAll('.tab-btn');
+      const sections = document.querySelectorAll('.cat-section');
+      sections.forEach((s, i) => {
+        if (s.id === id && tabBtns[i]) {
+          tabBtns.forEach((b) => b.classList.remove('active'));
+          tabBtns[i].classList.add('active');
+          tabBtns[i].scrollIntoView({ block: 'nearest', inline: 'center' });
+        }
+      });
+    }
+  }
+}, { rootMargin: '-30% 0px -60% 0px' });
+
+// Observe sections after render
+const origRender = render;
+window.render = function(data) {
+  origRender(data);
+  document.querySelectorAll('.cat-section').forEach((el) => observer.observe(el));
+};
+
+function escHtml(str) {
+  return String(str || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+loadMenu();
+</script>
+</body>
+</html>
