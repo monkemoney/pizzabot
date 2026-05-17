@@ -67,12 +67,11 @@ app.post('/webhook', (req, res) => {
     if (!rawSender) return;
     const phone = formatPhone(rawSender);
 
+    // Real format (confirmed): messageData.pollMessageData.votes
     const allOptions = (
-      body.body?.pollMessageData?.stateMessage?.pollOptions ||
-      body.pollMessageData?.stateMessage?.pollOptions ||
+      body.messageData?.pollMessageData?.votes ||
       body.messageData?.pollMessageData?.stateMessage?.pollOptions ||
-      body.messageData?.pollUpdateMessage?.stateMessage?.pollOptions ||
-      body.messageData?.stateMessage?.pollOptions ||
+      body.pollMessageData?.votes ||
       []
     );
 
