@@ -141,7 +141,8 @@ async function sendCategoryPoll(phone, categoryKey, lang = 'he') {
     return;
   }
 
-  const options  = items.map((p) => `${p.name_he} — ${p.price}₪`);
+  const back    = isHe ? '🔙 חזרה לתפריט' : '🔙 Back to menu';
+  const options  = [...items.map((p) => `${p.name_he} — ${p.price}₪`), back];
   const label    = (isHe ? CATEGORY_LABELS : CATEGORY_LABELS_EN)[categoryKey] || '';
   const question = isHe ? `בחר מנה מ${label}:` : `Choose from ${label}:`;
 

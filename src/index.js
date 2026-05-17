@@ -74,22 +74,43 @@ app.post('/webhook', (req, res) => {
     textMessage = messageData.buttonsResponseMessage?.selectedDisplayText
                || messageData.buttonsResponseMessage?.selectedButtonId;
   } else if (messageData.typeMessage === 'pollUpdateMessage') {
-    // Customer voted in a poll — extract the chosen option(s)
-    const pollData = messageData.pollMessageData || messageData.pollUpdateMessage || {};
-    const state    = pollData.stateMessage || pollData;
-    const options  = state.pollOptions || state.votes || [];
-    // Find options where this sender voted (optionVoters is an array of JIDs)
+    // Log full payload once so we can see the exact format
+    console.log('[poll] raw payload:', JSON.stringify(messageData).slice(0, 800));
+
     const senderJid = body.senderData?.sender;
-    let voted = options
-      .filter((o) => Array.isArray(o.optionVoters) && o.optionVoters.some((v) => v === senderJid))
-      .map((o) => o.optionName);
-    // Fallback: if voter list format differs, just pick options with voters > 0
-    if (!voted.length) {
-      voted = options
-        .filter((o) => (o.optionVoters && (Array.isArray(o.optionVoters) ? o.optionVoters.length : o.optionVoters) > 0))
-        .map((o) => o.optionName);
+    let voted = [];
+
+    // Try every known payload shape Green API uses for poll votes
+    const shapes = [
+      messageData.pollMessageData?.stateMessage?.pollOptions,
+      messageData.pollMessageData?.pollOptions,
+      messageData.pollUpdateMessage?.stateMessage?.pollOptions,
+      messageData.pollUpdateMessage?.pollOptions,
+      messageData.stateMessage?.pollOptions,
+    ].filter(Boolean);
+
+    for (const options of shapes) {
+      // Shape A: optionVoters is an array of JIDs
+      const byJid = options.filter((o) =>
+        Array.isArray(o.optionVoters) && o.optionVoters.some((v) => v === senderJid)
+      ).map((o) => o.optionName);
+      if (byJid.length) { voted = byJid; break; }
+
+      // Shape B: optionVoters is a count > 0
+      const byCount = options.filter((o) =>
+        typeof o.optionVoters === 'number' && o.optionVoters > 0
+      ).map((o) => o.optionName);
+      if (byCount.length) { voted = byCount; break; }
+
+      // Shape C: any option that has votes array
+      const byArray = options.filter((o) =>
+        Array.isArray(o.optionVoters) && o.optionVoters.length > 0
+      ).map((o) => o.optionName);
+      if (byArray.length) { voted = byArray; break; }
     }
-    if (voted.length) textMessage = voted[0]; // single-answer poll
+
+    console.log('[poll] voted:', voted);
+    if (voted.length) textMessage = voted[0];
   }
 
   if (!textMessage) return;
