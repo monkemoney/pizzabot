@@ -52,6 +52,76 @@ app.post('/webhook', (req, res) => {
   res.sendStatus(200); // ack immediately — Green API retries on non-200
 
   const body = req.body;
+
+  // Log ALL non-standard webhook types so we can debug
+  if (body.typeWebhook !== 'incomingMessageReceived') {
+    console.log(`[webhook] type=${body.typeWebhook}`, JSON.stringify(body).slice(0, 500));
+    // Fall through — don't return yet, handle poll events below
+  }
+
+  // Handle poll vote events — may arrive with different typeWebhook values
+  if (body.typeWebhook === 'pollUpdateReceived' ||
+      (body.typeWebhook === 'incomingMessageReceived' &&
+       body.messageData?.typeMessage === 'pollUpdateMessage')) {
+    const rawSender = body.senderData?.sender;
+    if (!rawSender) return;
+    const phone = formatPhone(rawSender);
+
+    const allOptions = (
+      body.body?.pollMessageData?.stateMessage?.pollOptions ||
+      body.pollMessageData?.stateMessage?.pollOptions ||
+      body.messageData?.pollMessageData?.stateMessage?.pollOptions ||
+      body.messageData?.pollUpdateMessage?.stateMessage?.pollOptions ||
+      body.messageData?.stateMessage?.pollOptions ||
+      []
+    );
+
+    console.log('[poll] typeWebhook:', body.typeWebhook, 'options:', JSON.stringify(allOptions).slice(0, 300));
+
+    const voted = allOptions.filter((o) => {
+      const v = o.optionVoters;
+      if (Array.isArray(v)) return v.length > 0;
+      if (typeof v === 'number') return v > 0;
+      return false;
+    }).map((o) => o.optionName);
+
+    console.log('[poll] voted:', voted);
+
+    if (!voted.length) return;
+
+    const hasBack    = voted.some((v) => v.includes('🔙'));
+    const hasConfirm = voted.some((v) => v.includes('✅ אישור') || v.includes('✅ Confirm'));
+    const hasNoTop   = voted.some((v) => v.includes('ללא תוספות') || v.includes('No toppings'));
+
+    // Detect poll type: item/topping options contain " — " (price separator)
+    const isItemOrToppingPoll = voted.some((v) => v.includes(' — '));
+
+    let textMessage = null;
+    if (hasBack) {
+      textMessage = '🔙 חזרה לתפריט';
+    } else if (isItemOrToppingPoll) {
+      // Items/toppings poll — only act when customer confirms with ✅
+      if (hasConfirm) {
+        const selections = voted.filter((v) => !v.startsWith('✅') && !v.startsWith('🔙'));
+        textMessage = selections.length
+          ? `בחרתי: ${selections.join(', ')}${hasNoTop ? ' | ללא תוספות' : ''}`
+          : (hasNoTop ? 'ללא תוספות' : null);
+      }
+      // else: intermediate vote in multi-select — wait for confirm
+    } else {
+      // Category poll (single answer, no " — " in options) — pass directly
+      const selection = voted.find((v) => !v.startsWith('✅') && !v.startsWith('🔙'));
+      if (selection) textMessage = selection;
+    }
+
+    if (textMessage) {
+      handleMessage(phone, textMessage).catch((err) =>
+        console.error(`[webhook] poll handleMessage error for ${phone}:`, err.message)
+      );
+    }
+    return;
+  }
+
   if (body.typeWebhook !== 'incomingMessageReceived') return;
 
   const messageData = body.messageData;
