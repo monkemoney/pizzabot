@@ -57,7 +57,29 @@ async function handleMessage(phone, userMessage) {
   }
 
   const session = await getSession(phone);
-  const history = Array.isArray(session.conversation_history) ? session.conversation_history : [];
+  let history = Array.isArray(session.conversation_history) ? session.conversation_history : [];
+
+  // ── Stale session guard ───────────────────────────────────────────────────────
+  // If history is very long but seems stuck or outdated (old poll-based flow),
+  // check the last assistant message. If it contains old-flow markers (בחרתי:/סקר)
+  // or if history is older than 3 hours, reset so Claude starts fresh.
+  if (history.length > 0) {
+    const lastMsg = history[history.length - 1];
+    const lastTs  = session.updated_at ? new Date(session.updated_at) : null;
+    const ageHours = lastTs ? (Date.now() - lastTs.getTime()) / 3600000 : 999;
+    const hasOldFlow = history.some((m) =>
+      typeof m.content === 'string' && (
+        m.content.includes('SHOW_MENU') ||
+        m.content.includes('sendCategoryPoll') ||
+        (m.content.includes('בחרתי:') && m.content.includes(' — '))
+      )
+    );
+    if (ageHours > 3 || hasOldFlow) {
+      console.log(`[ai-handler] resetting stale/old-flow session for ${phone} (age=${ageHours.toFixed(1)}h, oldFlow=${hasOldFlow})`);
+      history = [];
+      await updateSession(phone, { conversation_history: [], pending_order: {} });
+    }
+  }
 
   console.log(`[ai-handler] phone=${phone} historyLen=${history.length} msg="${userMessage.slice(0, 80)}"`);
 
