@@ -3,7 +3,7 @@
 const { callClaude }              = require('../services/claude');
 const { buildSystemPrompt }       = require('./prompts');
 const { sendMessage }             = require('../services/greenapi');
-const { getSession, updateSession, savePendingPayment, saveOrder } = require('../services/supabase');
+const { getSession, updateSession, savePendingPayment, saveOrder, getLastOrderByPhone } = require('../services/supabase');
 const { createPaymentPage }       = require('../services/cardcom');
 const settings                    = require('../services/settings');
 const crypto                      = require('crypto');
@@ -59,6 +59,38 @@ async function handleMessage(phone, userMessage) {
   const history = Array.isArray(session.conversation_history) ? session.conversation_history : [];
 
   console.log(`[ai-handler] phone=${phone} historyLen=${history.length} msg="${userMessage.slice(0, 80)}"`);
+
+  // ── 15-minute edit window ──────────────────────────────────────────────────
+  // If history is empty (new conversation) and the customer has a recent order,
+  // check if they're trying to cancel/modify it.
+  if (history.length === 0) {
+    const lastOrder = await getLastOrderByPhone(phone);
+    if (lastOrder && lastOrder.status === 'new') {
+      const minutesSince = (Date.now() - new Date(lastOrder.created_at).getTime()) / 60000;
+      if (minutesSince <= 15) {
+        const lang = detectLang(userMessage, []);
+        const cancelKeywords = ['בטל', 'ביטול', 'לבטל', 'cancel', 'שנה', 'לשנות'];
+        const wantsCancel = cancelKeywords.some((k) => userMessage.toLowerCase().includes(k));
+        if (wantsCancel) {
+          // Cancel the order
+          const { updateOrderStatus } = require('../services/supabase');
+          await updateOrderStatus(lastOrder.id, 'cancelled');
+          const msg = lang === 'en'
+            ? `✅ Order #${lastOrder.order_number} has been cancelled. Want to place a new order?`
+            : `✅ הזמנה מספר ${lastOrder.order_number} בוטלה. רוצה להזמין מחדש?`;
+          await reply(phone, msg);
+          return;
+        }
+        // Inform them about the edit window
+        const msg = lang === 'en'
+          ? `Your order #${lastOrder.order_number} was placed ${Math.floor(minutesSince)} min ago and is being prepared.\nTo cancel, send *בטל* within ${Math.floor(15 - minutesSince)} more minutes.`
+          : `הזמנה מספר ${lastOrder.order_number} בוצעה לפני ${Math.floor(minutesSince)} דקות ונמצאת בטיפול.\nלביטול שלח *בטל* בתוך ${Math.floor(15 - minutesSince)} דקות נוספות.`;
+        await reply(phone, msg);
+        return;
+      }
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────────
 
   let systemPrompt;
   try {

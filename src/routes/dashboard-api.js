@@ -93,7 +93,7 @@ router.get('/stats', requireAdmin, async (req, res) => {
 
     const { data: dayOrders } = await supabase
       .from('orders')
-      .select('total_price, items, status, created_at, delivery_method')
+      .select('total_price, items, status, created_at, updated_at, delivery_method, payment_status')
       .gte('created_at', start)
       .lt('created_at', end)
       .neq('status', 'cancelled');
@@ -114,6 +114,21 @@ router.get('/stats', requireAdmin, async (req, res) => {
       .slice(0, 3)
       .map(([name, count]) => ({ name, count }));
 
+    // Average delivery time (created_at → delivered updated_at)
+    const deliveredOrders = completed.filter((o) => o.status === 'delivered' || o.status === 'done');
+    const avgDeliveryMin = deliveredOrders.length
+      ? Math.round(
+          deliveredOrders.reduce((sum, o) => {
+            const mins = (new Date(o.updated_at) - new Date(o.created_at)) / 60000;
+            return sum + mins;
+          }, 0) / deliveredOrders.length
+        )
+      : null;
+
+    // Payment breakdown
+    const paid    = completed.filter((o) => o.payment_status === 'paid').length;
+    const pending = completed.filter((o) => o.payment_status === 'pending').length;
+
     // Started conversations (sessions updated today)
     const { count: conversationsStarted } = await supabase
       .from('sessions')
@@ -125,11 +140,14 @@ router.get('/stats', requireAdmin, async (req, res) => {
 
     res.json({
       date,
-      order_count:         completed.length,
-      revenue:             Math.round(revenue * 100) / 100,
-      top_products:        topProducts,
+      order_count:           completed.length,
+      revenue:               Math.round(revenue * 100) / 100,
+      top_products:          topProducts,
+      avg_delivery_minutes:  avgDeliveryMin,
+      paid_count:            paid,
+      pending_payment_count: pending,
       conversations_started: conversationsStarted || 0,
-      not_converted:       Math.max(0, convNotConverted),
+      not_converted:         Math.max(0, convNotConverted),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

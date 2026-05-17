@@ -119,7 +119,8 @@ function renderOrdersTable(orders) {
           <th class="px-4 py-3 text-right">תאריך</th>
           <th class="px-4 py-3 text-right">לקוח</th>
           <th class="px-4 py-3 text-right">סוג</th>
-          <th class="px-4 py-3 text-right">תשלום</th>
+          <th class="px-4 py-3 text-right">אמצעי תשלום</th>
+          <th class="px-4 py-3 text-right">שולם</th>
           <th class="px-4 py-3 text-right">סכום</th>
           <th class="px-4 py-3 text-right">סטטוס</th>
           <th class="px-4 py-3 text-right">פעולות</th>
@@ -140,6 +141,11 @@ function renderOrdersTable(orders) {
             </span>
           </td>
           <td class="px-4 py-3 text-xs text-gray-500">${o.payment_method === 'cash' ? '💵 מזומן' : '💳 אשראי'}</td>
+          <td class="px-4 py-3">
+            <span class="text-xs px-2 py-0.5 rounded-full font-medium ${o.payment_status === 'paid' ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'}">
+              ${o.payment_status === 'paid' ? '✓ שולם' : '⏳ ממתין'}
+            </span>
+          </td>
           <td class="px-4 py-3 font-semibold">₪${(parseFloat(o.total_price) || 0).toFixed(2)}</td>
           <td class="px-4 py-3">
             <select onchange="updateOrderStatus('${o.id}', this.value, ${o.order_number})"
@@ -229,6 +235,17 @@ async function loadStats() {
       <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
         <div class="text-2xl font-bold text-green-600">₪${s.revenue.toFixed(0)}</div>
         <div class="text-xs text-gray-500 mt-1">הכנסות</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+        <div class="text-2xl font-bold text-purple-600">${s.avg_delivery_minutes != null ? s.avg_delivery_minutes + ' דק׳' : '—'}</div>
+        <div class="text-xs text-gray-500 mt-1">זמן מסירה ממוצע</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+        <div class="flex gap-3">
+          <div><div class="text-lg font-bold text-green-600">${s.paid_count}</div><div class="text-xs text-gray-500">שולם</div></div>
+          <div class="border-r border-gray-100"></div>
+          <div><div class="text-lg font-bold text-yellow-500">${s.pending_payment_count}</div><div class="text-xs text-gray-500">ממתין</div></div>
+        </div>
       </div>
       <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm col-span-2 md:col-span-1">
         <div class="text-xs font-semibold text-gray-700 mb-2">🏆 נמכרים ביותר</div>
@@ -538,6 +555,7 @@ function renderCustomersTable(customers) {
         <tr class="text-gray-500 text-xs font-medium">
           <th class="px-4 py-3"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
           <th class="px-4 py-3 text-right">שם</th>
+          <th class="px-4 py-3 text-right">טלפון</th>
           <th class="px-4 py-3 text-right">כתובת אחרונה</th>
           <th class="px-4 py-3 text-right">הזמנות</th>
           <th class="px-4 py-3 text-right">סה"כ רכישות</th>
@@ -553,6 +571,7 @@ function renderCustomersTable(customers) {
           <td class="px-4 py-3">
             <div class="font-medium text-gray-900">${c.name || '—'}</div>
           </td>
+          <td class="px-4 py-3 text-gray-500 text-xs" dir="ltr">${c.customer_phone || c.phone || '—'}</td>
           <td class="px-4 py-3 text-gray-500 text-xs">${c.last_address || '—'}</td>
           <td class="px-4 py-3 text-center font-semibold text-orange-500">${c.order_count}</td>
           <td class="px-4 py-3 font-semibold">₪${parseFloat(c.total_spent || 0).toFixed(0)}</td>
@@ -610,6 +629,9 @@ async function loadSettings() {
   }
 }
 
+const DAY_LABELS = { sun:'ראשון', mon:'שני', tue:'שלישי', wed:'רביעי', thu:'חמישי', fri:'שישי', sat:'שבת' };
+const DAY_ORDER  = ['sun','mon','tue','wed','thu','fri','sat'];
+
 function renderSettingsForm(s) {
   const card = (title, content) => `
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
@@ -618,10 +640,24 @@ function renderSettingsForm(s) {
     </div>`;
 
   const toggle = (key, label, checked) => `
-    <label class="flex items-center justify-between cursor-pointer py-1">
+    <label class="flex items-center justify-between cursor-pointer py-1.5">
       <span class="text-sm text-gray-700">${label}</span>
       <input type="checkbox" class="setting-toggle w-4 h-4 accent-orange-500" data-key="${key}" ${checked ? 'checked' : ''}>
     </label>`;
+
+  const hours = s.business_hours || {};
+  const hoursRows = DAY_ORDER.map((day) => {
+    const h = hours[day] || { open: '10:00', close: '23:00' };
+    return `
+      <div class="flex items-center gap-3 py-1.5 border-b border-gray-50 last:border-0">
+        <span class="text-sm text-gray-700 w-16 flex-shrink-0">יום ${DAY_LABELS[day]}</span>
+        <input type="time" value="${h.open}"  data-day="${day}" data-field="open"
+          class="hours-input border border-gray-200 rounded-lg px-2 py-1 text-sm w-28">
+        <span class="text-gray-400 text-sm">—</span>
+        <input type="time" value="${h.close}" data-day="${day}" data-field="close"
+          class="hours-input border border-gray-200 rounded-lg px-2 py-1 text-sm w-28">
+      </div>`;
+  }).join('');
 
   document.getElementById('settingsForm').innerHTML = `
     ${card('🍕 הזמנות', `
@@ -634,10 +670,17 @@ function renderSettingsForm(s) {
       ${toggle('payment_credit', 'קבלת אשראי',  s.payment_credit !== false)}
     `)}
     ${card('🛵 משלוח', `
-      <div class="mb-3">
-        <label class="text-sm text-gray-700 block mb-1">מחיר משלוח (₪)</label>
-        <input type="number" id="deliveryPrice" value="${s.delivery_price ?? 30}" min="0" step="1"
-          class="border border-gray-300 rounded-lg px-3 py-2 text-sm w-32">
+      <div class="grid grid-cols-2 gap-4 mb-3">
+        <div>
+          <label class="text-sm text-gray-700 block mb-1">מחיר משלוח (₪)</label>
+          <input type="number" id="deliveryPrice" value="${s.delivery_price ?? 30}" min="0" step="1"
+            class="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full">
+        </div>
+        <div>
+          <label class="text-sm text-gray-700 block mb-1">מינימום הזמנה למשלוח (₪)</label>
+          <input type="number" id="minOrderDelivery" value="${s.min_order_delivery ?? 0}" min="0" step="1"
+            class="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full">
+        </div>
       </div>
       <div>
         <label class="text-sm text-gray-700 block mb-1">ערים למשלוח (מופרדות בפסיקים)</label>
@@ -645,6 +688,7 @@ function renderSettingsForm(s) {
           class="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full">
       </div>
     `)}
+    ${card('🕐 שעות פתיחה', hoursRows)}
     <div class="flex justify-end">
       <button onclick="saveSettings()" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2.5 rounded-xl font-medium">
         שמור הגדרות
@@ -657,9 +701,19 @@ async function saveSettings() {
   document.querySelectorAll('.setting-toggle').forEach((el) => {
     updates[el.dataset.key] = el.checked;
   });
-  updates.delivery_price  = parseFloat(document.getElementById('deliveryPrice').value) || 30;
-  updates.delivery_cities = document.getElementById('deliveryCities').value
+  updates.delivery_price      = parseFloat(document.getElementById('deliveryPrice').value) || 30;
+  updates.min_order_delivery  = parseFloat(document.getElementById('minOrderDelivery').value) || 0;
+  updates.delivery_cities     = document.getElementById('deliveryCities').value
     .split(',').map((c) => c.trim()).filter(Boolean);
+
+  // Business hours
+  const businessHours = {};
+  document.querySelectorAll('.hours-input').forEach((el) => {
+    const { day, field } = el.dataset;
+    if (!businessHours[day]) businessHours[day] = {};
+    businessHours[day][field] = el.value;
+  });
+  updates.business_hours = businessHours;
 
   try {
     await api('PATCH', '/settings', updates);

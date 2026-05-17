@@ -153,6 +153,20 @@ async function getOrderById(id) {
   return data;
 }
 
+/** Get the most recent order for a phone number */
+async function getLastOrderByPhone(phone) {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('phone', phone)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error) return null;
+  return data;
+}
+
 async function updateOrderStatus(id, status) {
   const { data, error } = await supabase
     .from('orders')
@@ -188,6 +202,7 @@ module.exports = {
   saveOrder,
   getOrders,
   getOrderById,
+  getLastOrderByPhone,
   updateOrderStatus,
   autoCompleteDeliveredOrders,
 };
