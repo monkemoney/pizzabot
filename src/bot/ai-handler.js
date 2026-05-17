@@ -2,14 +2,14 @@
 
 const { callClaude }              = require('../services/claude');
 const { buildSystemPrompt }       = require('./prompts');
-const { sendMessage }             = require('../services/greenapi');
+const { sendMessage, sendMenuList } = require('../services/greenapi');
 const { getSession, updateSession, savePendingPayment, saveOrder, getLastOrderByPhone } = require('../services/supabase');
 const { createPaymentPage }       = require('../services/cardcom');
 const settings                    = require('../services/settings');
 const crypto                      = require('crypto');
 
-// <!--ACTION:TYPE:{json}--> or <!--ACTION:RESET-->
-const ACTION_RE = /<!--ACTION:(CREATE_PAYMENT|SAVE_ORDER|RESET)(?::(\{[\s\S]*?\}))?-->/;
+// <!--ACTION:TYPE:{json}--> or <!--ACTION:RESET/SHOW_MENU-->
+const ACTION_RE = /<!--ACTION:(CREATE_PAYMENT|SAVE_ORDER|RESET|SHOW_MENU)(?::(\{[\s\S]*?\}))?-->/;
 
 function stripAction(text) {
   return text.replace(ACTION_RE, '').trim();
@@ -129,6 +129,14 @@ async function handleMessage(phone, userMessage) {
 
   const actionType = match[1];
   const payload    = match[2] ? parsePayload(match[2]) : null;
+
+  // ── SHOW_MENU — send interactive list ──
+  if (actionType === 'SHOW_MENU') {
+    const lang = detectLang(userMessage, history);
+    await sendMenuList(phone, lang).catch(() => {});
+    await updateSession(phone, { conversation_history: updatedHistory });
+    return;
+  }
 
   // ── RESET ──
   if (actionType === 'RESET') {

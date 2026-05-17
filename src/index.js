@@ -55,15 +55,29 @@ app.post('/webhook', (req, res) => {
   if (body.typeWebhook !== 'incomingMessageReceived') return;
 
   const messageData = body.messageData;
-  if (!messageData || messageData.typeMessage !== 'textMessage') return;
+  if (!messageData) return;
 
-  const rawSender   = body.senderData?.sender;
-  const textMessage = messageData.textMessageData?.textMessage;
-  if (!rawSender || !textMessage) return;
+  const rawSender = body.senderData?.sender;
+  if (!rawSender) return;
 
   // Ignore messages from the business bot instance
   const instanceId = body.instanceData?.idInstance?.toString();
   if (instanceId && instanceId === process.env.GREEN_API_BUSINESS_INSTANCE_ID) return;
+
+  let textMessage = null;
+
+  if (messageData.typeMessage === 'textMessage') {
+    textMessage = messageData.textMessageData?.textMessage;
+  } else if (messageData.typeMessage === 'listResponseMessage') {
+    // Customer tapped an item in the interactive list menu
+    textMessage = messageData.listResponseMessage?.title || messageData.listResponseMessage?.sticker;
+  } else if (messageData.typeMessage === 'buttonsResponseMessage') {
+    // Customer tapped a button
+    textMessage = messageData.buttonsResponseMessage?.selectedDisplayText
+               || messageData.buttonsResponseMessage?.selectedButtonId;
+  }
+
+  if (!textMessage) return;
 
   const phone = formatPhone(rawSender);
 
