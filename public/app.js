@@ -920,18 +920,33 @@ function renderSettingsForm(s) {
   const hoursRows = DAY_ORDER.map((day) => {
     const h = hours[day] || { open: '10:00', close: '23:00', is_open: true };
     const open = h.is_open !== false;
-    return `<div class="hours-row" style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:#faf8ff;border-radius:12px;margin-bottom:8px">
-      <input type="checkbox" class="hours-active" data-day="${day}" ${open?'checked':''} style="width:16px;height:16px;accent-color:var(--primary)">
-      <span class="hours-day" style="font-weight:700;color:var(--primary);min-width:62px">יום ${DAY_LABELS[day]}</span>
+    return `<div class="hours-row" style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:var(--primary-soft);border-radius:14px;margin-bottom:8px">
+      <label class="toggle-switch">
+        <input type="checkbox" class="hours-active" data-day="${day}" ${open?'checked':''}>
+        <span class="toggle-track"></span>
+      </label>
+      <span style="font-weight:700;font-size:.85rem;color:var(--text);min-width:62px">יום ${DAY_LABELS[day]}</span>
       <input type="time" value="${h.open}"  data-day="${day}" data-field="open"  class="hours-input" style="width:110px" ${!open?'disabled':''}>
       <span style="color:var(--text-muted);font-size:.82rem">—</span>
       <input type="time" value="${h.close}" data-day="${day}" data-field="close" class="hours-input" style="width:110px" ${!open?'disabled':''}>
     </div>`;
   }).join('');
 
+  const ico = (path, vb='0 0 24 24') =>
+    `<svg width="16" height="16" viewBox="${vb}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-left:6px">${path}</svg>`;
+
+  const ICONS = {
+    biz:     ico('<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>'),
+    pay:     ico('<rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>'),
+    delivery:ico('<rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 7v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>'),
+    edit:    ico('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'),
+    clock:   ico('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'),
+    pin:     ico('<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>'),
+  };
+
   document.getElementById('settingsForm').innerHTML = `
 
-    ${sCard('🏢 פרטי העסק', `
+    ${sCard(`${ICONS.biz} פרטי העסק`, `
       ${sField('biz_name',    'שם העסק',           s.business_name    || '', 'text', 'פיצה דליבריס')}
       ${sField('biz_address', 'כתובת העסק',         s.business_address || '', 'text', 'רוטשילד 19, תל אביב')}
       ${sField('biz_bot_url', 'כתובת שרת הבוט',     s.bot_url          || '', 'url',  'https://...')}
@@ -939,23 +954,23 @@ function renderSettingsForm(s) {
       ${saveBtn('saveBizInfo')}
     `)}
 
-    ${sCard('💳 אמצעי תשלום', `
-      ${sToggle('payment_cash',   '💵 מזומן',   s.payment_cash   !== false)}
-      ${sToggle('payment_credit', '💳 אשראי',   s.payment_credit !== false)}
-      ${sToggle('payment_bit',    '🔵 ביט',      !!s.payment_bit)}
-      ${sToggle('payment_paybox', '🟣 פייבוקס',  !!s.payment_paybox)}
-      ${sToggle('payment_other',  '💸 אחר',      !!s.payment_other)}
+    ${sCard(`${ICONS.pay} אמצעי תשלום`, `
+      ${sToggle('payment_cash',   'מזומן',   s.payment_cash   !== false)}
+      ${sToggle('payment_credit', 'אשראי',   s.payment_credit !== false)}
+      ${sToggle('payment_bit',    'ביט',      !!s.payment_bit)}
+      ${sToggle('payment_paybox', 'פייבוקס',  !!s.payment_paybox)}
+      ${sToggle('payment_other',  'אחר',      !!s.payment_other)}
       ${saveBtn('savePayments')}
     `)}
 
-    ${sCard('🛵 סוגי הזמנה', `
+    ${sCard(`${ICONS.delivery} סוגי הזמנה`, `
       ${sToggle('delivery_enabled', 'משלוח מאופשר',      s.delivery_enabled !== false)}
       ${sToggle('pickup_enabled',   'איסוף עצמי מאופשר', s.pickup_enabled   !== false)}
       ${sToggle('is_open',          'בוט פתוח לקבלת הזמנות', s.is_open !== false)}
       ${saveBtn('saveOrderTypes')}
     `)}
 
-    ${sCard('✏️ הגדרות שינוי הזמנות', `
+    ${sCard(`${ICONS.edit} הגדרות שינוי הזמנות`, `
       ${sToggle('allow_order_edits', 'אפשר ללקוח לשנות/לבטל הזמנה', s.allow_order_edits !== false)}
       <div style="margin-top:14px;padding:14px;background:#faf8ff;border-radius:12px">
         <div style="font-weight:700;font-size:.85rem;margin-bottom:12px;color:var(--text)">תנאי לשינוי</div>
@@ -976,12 +991,12 @@ function renderSettingsForm(s) {
       ${saveBtn('saveEditSettings')}
     `)}
 
-    ${sCard('🕐 שעות פעילות', `
+    ${sCard(`${ICONS.clock} שעות פעילות`, `
       <div>${hoursRows}</div>
       ${saveBtn('saveHours')}
     `)}
 
-    ${sCard('📍 אזורי משלוח', `
+    ${sCard(`${ICONS.pin} אזורי משלוח`, `
       <div id="zonesTable"></div>
       <div style="margin-top:12px">
         <button onclick="addZoneRow()" class="btn btn-outline btn-sm">+ הוסף אזור</button>
@@ -992,13 +1007,17 @@ function renderSettingsForm(s) {
 
   renderZonesTable();
 
-  // Sync hours-active toggles
+  // Sync hours-active toggle → enable/disable time inputs
   document.querySelectorAll('.hours-active').forEach((cb) => {
     cb.addEventListener('change', () => {
       const day = cb.dataset.day;
       document.querySelectorAll(`.hours-input[data-day="${day}"]`)
-        .forEach((inp) => inp.disabled = !cb.checked);
+        .forEach((inp) => { inp.disabled = !cb.checked; inp.style.opacity = cb.checked ? '1' : '.4'; });
     });
+    // Set initial opacity
+    const day = cb.dataset.day;
+    document.querySelectorAll(`.hours-input[data-day="${day}"]`)
+      .forEach(inp => inp.style.opacity = cb.checked ? '1' : '.4');
   });
 }
 
@@ -1128,14 +1147,20 @@ function toggleTheme() {
   const next   = isDark ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('theme', next);
-  document.getElementById('themeBtn').textContent = next === 'dark' ? '🌙' : '☀️';
+  updateThemeIcon(next);
+}
+
+function updateThemeIcon(theme) {
+  const sun  = document.getElementById('iconSun');
+  const moon = document.getElementById('iconMoon');
+  if (sun)  sun.style.display  = theme === 'dark'  ? 'none'  : 'block';
+  if (moon) moon.style.display = theme === 'dark'  ? 'block' : 'none';
 }
 
 function initTheme() {
   const saved = localStorage.getItem('theme') || 'light';
   document.documentElement.setAttribute('data-theme', saved);
-  const btn = document.getElementById('themeBtn');
-  if (btn) btn.textContent = saved === 'dark' ? '🌙' : '☀️';
+  updateThemeIcon(saved);
 }
 
 // ─── Notifications ────────────────────────────────────────────────────────────
