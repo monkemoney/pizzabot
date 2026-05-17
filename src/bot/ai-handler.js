@@ -2,15 +2,15 @@
 
 const { callClaude }              = require('../services/claude');
 const { buildSystemPrompt }       = require('./prompts');
-const { sendMessage, sendMenuList, sendToppingsPoll } = require('../services/greenapi');
+const { sendMessage, sendToppingsPoll } = require('../services/greenapi');
 const { getSession, updateSession, savePendingPayment, saveOrder,
         getLastOrderByPhone, saveCustomerProfile, getCustomerProfile } = require('../services/supabase');
 const { createPaymentPage }       = require('../services/cardcom');
 const settings                    = require('../services/settings');
 const crypto                      = require('crypto');
 
-// <!--ACTION:TYPE:{json}--> or <!--ACTION:RESET/SHOW_MENU-->
-const ACTION_RE = /<!--ACTION:(CREATE_PAYMENT|SAVE_ORDER|RESET|SHOW_MENU|SHOW_TOPPINGS)(?::(\{[\s\S]*?\}))?-->/;
+// <!--ACTION:TYPE:{json}--> or <!--ACTION:RESET/SHOW_TOPPINGS-->
+const ACTION_RE = /<!--ACTION:(CREATE_PAYMENT|SAVE_ORDER|RESET|SHOW_TOPPINGS)(?::(\{[\s\S]*?\}))?-->/;
 
 function stripAction(text) {
   return text.replace(ACTION_RE, '').trim();
@@ -133,14 +133,6 @@ async function handleMessage(phone, userMessage) {
 
   const actionType = match[1];
   const payload    = match[2] ? parsePayload(match[2]) : null;
-
-  // ── SHOW_MENU — category poll (step 1) ──
-  if (actionType === 'SHOW_MENU') {
-    const lang = detectLang(userMessage, history);
-    await sendMenuList(phone, lang).catch(() => {});
-    await updateSession(phone, { conversation_history: updatedHistory });
-    return;
-  }
 
   // ── SHOW_TOPPINGS — toppings poll ──
   if (actionType === 'SHOW_TOPPINGS') {

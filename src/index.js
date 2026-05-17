@@ -9,8 +9,7 @@ const dashboardApi     = require('./routes/dashboard-api');
 const paymentRouter    = require('./routes/payment');
 const businessBotRouter = require('./routes/business-bot');
 const { handleMessage }   = require('./bot/handler');
-const { formatPhone, isControlOption, CTRL_CONFIRM, CTRL_BACK, CTRL_NO_TOP,
-        sendMenuList, sendCategoryPoll, resolveCategoryVote } = require('./services/greenapi');
+const { formatPhone } = require('./services/greenapi');
 const { autoCompleteDeliveredOrders } = require('./services/supabase');
 
 const app  = express();
@@ -80,9 +79,9 @@ app.post('/webhook', (req, res) => {
                || messageData.buttonsResponseMessage?.selectedButtonId;
 
   } else if (messageData.typeMessage === 'pollUpdateMessage') {
-    // ── Poll vote handler ─────────────────────────────────────────────────────
-    // Green API sends a webhook on EVERY vote change (add/remove).
-    // Confirmed format: messageData.pollMessageData.votes[].optionVoters = [jid]
+    // ── Toppings poll handler ─────────────────────────────────────────────────
+    // Only toppings polls remain in the new waiter flow.
+    // Toppings always have " — " (price separator) + a ✅ confirm button.
 
     const allOptions = messageData.pollMessageData?.votes || [];
     const voted = allOptions
@@ -93,44 +92,21 @@ app.post('/webhook', (req, res) => {
 
     if (!voted.length) return;
 
-    const hasBack    = voted.some((v) => v.startsWith('🔙'));
-    // Match any ✅ confirm option that is NOT "ללא תוספות"
     const hasConfirm = voted.some((v) => v.startsWith('✅') && !v.includes('ללא') && !v.includes('No topping'));
     const hasNoTop   = voted.some((v) => v.includes('ללא תוספות') || v.includes('No topping'));
-    // Item/topping polls always have " — " (price separator); category polls never do
-    const hasItemVotes = voted.some((v) => v.includes(' — '));
+    const hasItems   = voted.some((v) => v.includes(' — '));
 
     if (hasConfirm) {
-      // User confirmed multi-select → build selection text for Claude
-      const selections = voted.filter((v) => !v.startsWith('✅') && !v.startsWith('🔙'));
-      if (selections.length) {
-        textMessage = `בחרתי: ${selections.join(', ')}${hasNoTop ? ' | ללא תוספות' : ''}`;
-      } else {
-        textMessage = 'ללא תוספות';
-      }
-
-    } else if (hasBack) {
-      // Back button → resend category poll directly (no Claude)
-      sendMenuList(phone).catch(() => {});
+      // User confirmed topping selection → build text for Claude
+      const selections = voted.filter((v) => !v.startsWith('✅'));
+      textMessage = selections.length
+        ? `בחרתי: ${selections.join(', ')}`
+        : 'ללא תוספות';
+    } else if (!hasItems) {
+      // Intermediate vote with no price separator → ignore
       return;
-
-    } else if (!hasItemVotes) {
-      // Single-answer category poll (no " — " in voted options, no control buttons)
-      // → resolve label to UUID and send item poll directly
-      const selection = voted.find((v) => !v.startsWith('✅') && !v.startsWith('🔙'));
-      if (selection) {
-        resolveCategoryVote(selection).then((categoryId) => {
-          if (categoryId) {
-            sendCategoryPoll(phone, categoryId).catch(() => {});
-          } else {
-            handleMessage(phone, selection).catch(() => {});
-          }
-        }).catch(() => {});
-      }
-      return;
-
     } else {
-      // hasItemVotes=true but no confirm yet → intermediate multi-select vote → ignore
+      // Has item votes but no confirm yet → ignore (wait for confirm)
       return;
     }
   }
