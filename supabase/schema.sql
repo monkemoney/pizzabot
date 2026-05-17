@@ -5,21 +5,24 @@
 
 -- ── Categories ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS categories (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name_he      TEXT NOT NULL,
-  name_en      TEXT NOT NULL,
-  emoji        TEXT DEFAULT '🍽️',
-  sort_order   INTEGER DEFAULT 0,
-  has_toppings BOOLEAN DEFAULT false,
-  is_active    BOOLEAN DEFAULT true,
-  created_at   TIMESTAMPTZ DEFAULT NOW()
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name_he         TEXT NOT NULL,
+  name_en         TEXT NOT NULL,
+  emoji           TEXT DEFAULT '🍽️',
+  sort_order      INTEGER DEFAULT 0,
+  has_toppings    BOOLEAN DEFAULT false,
+  is_topping_addon BOOLEAN DEFAULT false,
+  is_active       BOOLEAN DEFAULT true,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_topping_addon BOOLEAN DEFAULT false;
 
-INSERT INTO categories (id, name_he, name_en, emoji, sort_order, has_toppings) VALUES
-  ('11111111-cafe-cafe-cafe-000000000001', 'פיצות',       'Pizzas',     '🍕', 1, true),
-  ('11111111-cafe-cafe-cafe-000000000002', 'פסטות',       'Pastas',     '🍝', 2, false),
-  ('11111111-cafe-cafe-cafe-000000000003', 'מנות נוספות', 'More Items', '🥗', 3, false),
-  ('11111111-cafe-cafe-cafe-000000000004', 'משהו לשתות',  'Drinks',     '🥤', 4, false)
+INSERT INTO categories (id, name_he, name_en, emoji, sort_order, has_toppings, is_topping_addon) VALUES
+  ('11111111-cafe-cafe-cafe-000000000001', 'פיצות',         'Pizzas',         '🍕', 1,  true,  false),
+  ('11111111-cafe-cafe-cafe-000000000002', 'פסטות',         'Pastas',         '🍝', 2,  false, false),
+  ('11111111-cafe-cafe-cafe-000000000003', 'מנות נוספות',   'More Items',     '🥗', 3,  false, false),
+  ('11111111-cafe-cafe-cafe-000000000004', 'משהו לשתות',    'Drinks',         '🥤', 4,  false, false),
+  ('22222222-cafe-cafe-cafe-000000000001', 'תוספות לפיצה', 'Pizza Toppings', '🧀', 99, false, true)
 ON CONFLICT (id) DO NOTHING;
 
 -- ── Products ──────────────────────────────────────────────

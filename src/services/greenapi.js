@@ -110,8 +110,8 @@ async function sendMenuList(phone, lang = 'he') {
   const { categories, byCategory } = await getProducts();
 
   const isHe = lang !== 'en';
-  // Only show categories that have products
-  const active = categories.filter((c) => (byCategory[c.id]?.items || []).length > 0);
+  // Only show non-addon categories that have products
+  const active = categories.filter((c) => !c.is_topping_addon && (byCategory[c.id]?.items || []).length > 0);
   const options  = active.map(buildCategoryLabel);
   const question = isHe ? 'מה תרצה להזמין? 👇' : 'What would you like? 👇';
 
@@ -150,32 +150,25 @@ async function sendCategoryPoll(phone, categoryId, lang = 'he') {
 
 /**
  * Step 3 — Toppings poll for pizza orders.
- * Fetches live toppings from product_additions for pizza products.
+ * Loads from the standalone is_topping_addon category in products.
+ * Only triggered when the customer selected a pizza.
  */
 async function sendToppingsPoll(phone, lang = 'he') {
   const { getProducts } = require('./menu-service');
-  const { main, raw } = await getProducts();
+  const { categories, byCategory } = await getProducts();
 
   const isHe = lang !== 'en';
 
-  // Get unique toppings from pizza products
-  // Items with toppings = categories where has_toppings = true
-  const { categories, byCategory } = await getProducts();
-  const toppingCats = categories.filter((c) => c.has_toppings);
-  const pizzaIds    = toppingCats.flatMap((c) => (byCategory[c.id]?.items || []).map((p) => p.id));
-  const toppings = (raw || []).filter((p) => p.category === 'topping');
+  // Find the dedicated topping-addon category
+  const toppingCat = categories.find((c) => c.is_topping_addon);
+  const toppings   = toppingCat ? (byCategory[toppingCat.id]?.items || []) : [];
 
-  // Fallback: use product_additions via a separate query if needed
-  const { createClient } = require('@supabase/supabase-js');
-  const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-  const { data: additions } = await supabase
-    .from('product_additions')
-    .select('name_he, name_en, price')
-    .in('product_id', pizzaIds.length ? pizzaIds : ['00000000-0000-0000-0000-000000000000'])
-    .eq('is_available', true)
-    .order('sort_order');
+  if (!toppings.length) {
+    await sendMessage(phone, isHe ? 'אין תוספות זמינות כרגע.' : 'No toppings available right now.');
+    return;
+  }
 
-  const toppingOptions = (additions || []).map((t) => `${t.name_he} — +${t.price}₪`);
+  const toppingOptions = toppings.map((t) => `${t.name_he} — +${t.price}₪`);
 
   const noTop  = isHe ? CTRL_NO_TOP    : CTRL_NO_TOP_EN;
   const confirm= isHe ? CTRL_CONFIRM   : CTRL_CONFIRM_EN;
@@ -183,10 +176,10 @@ async function sendToppingsPoll(phone, lang = 'he') {
 
   const options  = [...toppingOptions, noTop, confirm, back];
   const question = isHe
-    ? 'אילו תוספות תרצה לפיצה? 🍕 (ניתן לבחור כמה):'
-    : 'Which toppings for your pizza? 🍕 (pick multiple):';
+    ? '🧀 אילו תוספות תרצה לפיצה? (ניתן לבחור כמה):'
+    : '🧀 Which toppings for your pizza? (pick multiple):';
 
-  await sendPoll(phone, question, options, true); // multipleAnswers: true
+  await sendPoll(phone, question, options, true);
 }
 
 /**

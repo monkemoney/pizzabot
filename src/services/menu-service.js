@@ -19,7 +19,6 @@ async function getProducts() {
   const { data: cats, error: cErr } = await supabase
     .from('categories')
     .select('*')
-    .eq('is_active', true)
     .order('sort_order');
 
   if (cErr) {
@@ -72,7 +71,8 @@ async function buildMenuText(settings) {
   const deliveryEnabled = settings?.delivery_enabled !== false;
   const pickupEnabled   = settings?.pickup_enabled   !== false;
 
-  const sections = categories.map((cat) => {
+  // Exclude topping-addon categories from the menu text (they're follow-ups, not main items)
+  const sections = categories.filter((c) => !c.is_topping_addon).map((cat) => {
     const items = (byCategory[cat.id]?.items || []);
     if (!items.length) return null;
     const lines = items.map((p) => `• ${p.name_he} — ${p.price}₪`).join('\n');
