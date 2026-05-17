@@ -573,21 +573,65 @@ let selectedPhones = new Set();
 
 async function loadCustomers() {
   const container = document.getElementById('customersTable');
-  container.innerHTML = '<div class="p-8 text-center text-gray-400">טוען...</div>';
+  container.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-muted)">טוען...</div>';
   selectedPhones.clear();
-  const returning = document.getElementById('returningOnly').checked ? '1' : '0';
   try {
-    allCustomers = await api('GET', `/customers?returning=${returning}`);
-    renderCustomersTable(allCustomers);
+    // Always load all customers — filtering is client-side
+    allCustomers = await api('GET', '/customers');
+    renderCustomerStats(allCustomers);
+    filterCustomers();
   } catch (err) {
-    container.innerHTML = `<div class="p-8 text-center text-red-500">${err.message}</div>`;
+    container.innerHTML = `<div style="padding:20px;color:red">${err.message}</div>`;
   }
+}
+
+function renderCustomerStats(customers) {
+  const statsEl = document.getElementById('customerStats');
+  if (!statsEl) return;
+
+  const total      = customers.length;
+  const returning  = customers.filter((c) => parseInt(c.order_count) >= 2).length;
+  const retPct     = total ? Math.round((returning / total) * 100) : 0;
+  const totalOrders = customers.reduce((s, c) => s + parseInt(c.order_count || 0), 0);
+  const totalRev   = customers.reduce((s, c) => s + parseFloat(c.total_spent || 0), 0);
+
+  statsEl.innerHTML = `
+    <div class="stat-card violet">
+      <div class="stat-value">${total}</div>
+      <div class="stat-label">סה"כ לקוחות</div>
+    </div>
+    <div class="stat-card accent">
+      <div class="stat-value" style="color:var(--accent)">${returning}</div>
+      <div class="stat-label">לקוחות חוזרים <span style="font-size:.75rem;background:var(--accent-soft);color:var(--accent);padding:1px 8px;border-radius:50px">${retPct}%</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color:var(--primary)">${totalOrders}</div>
+      <div class="stat-label">סה"כ הזמנות</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-value">₪${Math.round(totalRev).toLocaleString()}</div>
+      <div class="stat-label">סה"כ הכנסות</div>
+    </div>`;
+}
+
+function filterCustomers() {
+  const q          = (document.getElementById('customerSearch')?.value || '').trim().toLowerCase();
+  const returningOnly = document.getElementById('returningOnly')?.checked;
+
+  let filtered = allCustomers;
+  if (returningOnly) filtered = filtered.filter((c) => parseInt(c.order_count) >= 2);
+  if (q) filtered = filtered.filter((c) =>
+    (c.name         || '').toLowerCase().includes(q) ||
+    (c.customer_phone || c.phone || '').includes(q)  ||
+    (c.last_address || '').toLowerCase().includes(q)
+  );
+  renderCustomersTable(filtered);
 }
 
 function renderCustomersTable(customers) {
   const container = document.getElementById('customersTable');
   if (!customers.length) {
-    container.innerHTML = '<div class="p-12 text-center text-gray-400">אין לקוחות</div>';
+    container.innerHTML = '<div class="empty-state">אין לקוחות תואמים לחיפוש</div>';
     return;
   }
   container.innerHTML = `
@@ -596,21 +640,26 @@ function renderCustomersTable(customers) {
       <thead>
         <tr>
           <th><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
-          <th>שם</th><th>טלפון</th><th>כתובת אחרונה</th>
-          <th>הזמנות</th><th>סה"כ רכישות</th><th>הזמנה אחרונה</th>
+          <th>שם לקוח</th>
+          <th>טלפון</th>
+          <th>הזמנות</th>
+          <th>סה"כ רכישות</th>
         </tr>
       </thead>
       <tbody>
-        ${customers.map((c) => `
-        <tr>
-          <td><input type="checkbox" value="${c.phone}" onchange="toggleCustomer('${c.phone}',this.checked)" class="customer-checkbox"></td>
-          <td style="font-weight:700">${c.name||'—'}</td>
-          <td style="color:var(--text-muted);font-size:.8rem" dir="ltr">${c.customer_phone||c.phone||'—'}</td>
-          <td style="color:var(--text-muted);font-size:.8rem">${c.last_address||'—'}</td>
-          <td style="text-align:center;font-weight:800;color:var(--primary)">${c.order_count}</td>
-          <td style="font-weight:800">₪${parseFloat(c.total_spent||0).toFixed(0)}</td>
-          <td style="color:var(--text-muted);font-size:.8rem">${formatDate(c.last_order_at)}</td>
-        </tr>`).join('')}
+        ${customers.map((c) => {
+          const isReturning = parseInt(c.order_count) >= 2;
+          return `<tr>
+            <td><input type="checkbox" value="${c.phone}" onchange="toggleCustomer('${c.phone}',this.checked)" class="customer-checkbox"></td>
+            <td>
+              <div style="font-weight:700">${c.name||'—'}</div>
+              ${isReturning ? '<span style="font-size:.68rem;background:var(--accent-soft);color:var(--accent);padding:1px 8px;border-radius:50px;font-weight:700">חוזר</span>' : ''}
+            </td>
+            <td style="color:var(--text-muted);font-size:.82rem" dir="ltr">${c.customer_phone||c.phone||'—'}</td>
+            <td style="text-align:center;font-weight:800;color:var(--primary)">${c.order_count}</td>
+            <td style="font-weight:800;color:var(--text)">₪${parseFloat(c.total_spent||0).toFixed(0)}</td>
+          </tr>`;
+        }).join('')}
       </tbody>
     </table>
     </div>`;
