@@ -314,33 +314,35 @@ function renderProductsTable() {
   const categoryBlocks = categoriesWithProducts.map((cat) => {
     const isCatExpanded = expandedCategories.has(cat.id);
     const products = cat.products || [];
+
     const catHeader = `
-      <div class="flex items-center justify-between px-5 py-3.5 bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-gray-100"
-           onclick="toggleCategoryExpand('${cat.id}')">
-        <div class="flex items-center gap-2">
-          <span class="text-lg">${isCatExpanded ? '▾' : '▸'}</span>
-          <span class="text-xl">${cat.emoji || '🍽️'}</span>
-          <span class="font-semibold text-gray-800">${cat.name_he}</span>
-          <span class="text-xs text-gray-400 mr-1">(${products.length} פריטים)</span>
-          ${cat.has_toppings ? '<span class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">תוספות</span>' : ''}
+      <div class="cat-header" onclick="toggleCategoryExpand('${cat.id}')">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="font-size:.9rem;color:var(--text-muted);transition:transform .2s;display:inline-block;transform:rotate(${isCatExpanded?'0deg':'-90deg'})"">▾</span>
+          <span style="font-size:1.5rem;line-height:1">${cat.emoji || '🍽️'}</span>
+          <div>
+            <span style="font-weight:700;font-size:.95rem;color:var(--text)">${cat.name_he}</span>
+            <span style="font-size:.75rem;color:var(--text-muted);margin-right:8px">${products.length} פריטים</span>
+            ${cat.has_toppings ? `<span style="font-size:.72rem;background:var(--primary-soft);color:var(--primary);padding:2px 10px;border-radius:50px;font-weight:600">תוספות</span>` : ''}
+          </div>
         </div>
-        <div class="flex gap-2" onclick="event.stopPropagation()">
-          <button onclick="openProductModal(null,'${cat.id}')" class="text-xs text-orange-500 hover:text-orange-700 font-medium">+ מוצר</button>
-          <button onclick="openCategoryModal(${encodeProduct(cat)})" class="text-xs text-gray-500 hover:text-gray-700">עריכה</button>
-          <button onclick="deleteCategory('${cat.id}','${cat.name_he}')" class="text-xs text-red-400 hover:text-red-600">מחיקה</button>
+        <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
+          <button onclick="openProductModal(null,'${cat.id}')" class="btn btn-primary btn-sm">+ מוצר</button>
+          <button onclick="openCategoryModal(${encodeProduct(cat)})" class="btn btn-ghost btn-sm">עריכה</button>
+          <button onclick="deleteCategory('${cat.id}','${cat.name_he}')" class="btn-danger">מחיקה</button>
         </div>
       </div>`;
 
-    if (!isCatExpanded) return catHeader;
+    if (!isCatExpanded) return `<div style="margin-bottom:12px;border-radius:18px;overflow:hidden;box-shadow:0 4px 24px rgba(94,23,235,.07)">${catHeader}</div>`;
 
     const productRows = products.length
       ? products.map((p) => renderProductRow(p, cat)).join('')
-      : '<div class="px-5 py-4 text-gray-400 text-sm">אין מוצרים — לחץ "+ מוצר"</div>';
+      : `<div style="padding:32px;text-align:center;color:var(--text-muted);font-size:.88rem">אין מוצרים — לחץ "+ מוצר"</div>`;
 
-    return catHeader + productRows;
+    return `<div style="margin-bottom:16px;border-radius:18px;overflow:hidden;box-shadow:0 4px 24px rgba(94,23,235,.07);background:#fff">${catHeader}${productRows}</div>`;
   }).join('');
 
-  container.innerHTML = `<div class="overflow-hidden">${categoryBlocks}</div>`;
+  container.innerHTML = `<div>${categoryBlocks}</div>`;
 }
 
 function renderProductRow(p, cat) {
@@ -349,62 +351,48 @@ function renderProductRow(p, cat) {
   const showAdditions = cat?.has_toppings;
 
   const additionsSection = (isExpanded && showAdditions) ? `
-    <div class="mx-4 mb-3 rounded-xl border border-orange-100 overflow-hidden">
-      <table class="w-full text-xs">
-        <thead class="bg-orange-50 border-b border-orange-100">
-          <tr class="text-gray-500 font-medium">
-            <th class="px-4 py-2 text-right">תוספת</th>
-            <th class="px-4 py-2 text-right">מחיר</th>
-            <th class="px-4 py-2 text-right">תמונה</th>
-            <th class="px-4 py-2 text-right">זמין</th>
-            <th class="px-4 py-2 text-right">פעולות</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-orange-50">
-          ${(p.additions || []).map((a) => `
-            <tr class="hover:bg-orange-50/60">
-              <td class="px-4 py-2.5 font-medium text-gray-800">${a.name_he}</td>
-              <td class="px-4 py-2.5 font-semibold text-gray-700">₪${parseFloat(a.price).toFixed(2)}</td>
-              <td class="px-4 py-2.5">${imgThumb(a.image_url)}</td>
-              <td class="px-4 py-2.5">${toggleSwitch(a.is_available, `toggleAddition('${p.id}','${a.id}',${!a.is_available})`)}</td>
-              <td class="px-4 py-2.5">
-                <div class="flex gap-3">
-                  <button onclick="openAdditionModal('${p.id}',${encodeAddition(a)})" class="text-orange-500 hover:text-orange-700">עריכה</button>
-                  <button onclick="deleteAddition('${p.id}','${a.id}','${a.name_he}')" class="text-red-400 hover:text-red-600">מחיקה</button>
-                </div>
-              </td>
-            </tr>`).join('')}
-          ${!(p.additions||[]).length ? '<tr><td colspan="5" class="px-4 py-3 text-gray-400 text-center">אין תוספות</td></tr>' : ''}
-        </tbody>
-      </table>
-      <div class="px-4 py-2 border-t border-orange-100">
-        <button onclick="openAdditionModal('${p.id}',null)" class="text-xs text-orange-600 hover:text-orange-800 font-medium">+ הוסף תוספת</button>
+    <div style="margin:0 20px 16px;border-radius:14px;border:1.5px solid var(--primary-soft);overflow:hidden;background:#faf8ff">
+      <div style="display:grid;grid-template-columns:1fr 80px 44px 44px 100px;padding:10px 18px;background:var(--primary-soft);font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.04em;gap:16px">
+        <span>תוספת</span><span>מחיר</span><span>תמונה</span><span>זמין</span><span></span>
+      </div>
+      ${(p.additions||[]).map((a) => `
+        <div style="display:grid;grid-template-columns:1fr 80px 44px 44px 100px;padding:12px 18px;border-top:1px solid var(--primary-soft);align-items:center;gap:16px;font-size:.85rem">
+          <span style="font-weight:600">${a.name_he}</span>
+          <span style="font-weight:700;color:var(--primary)">₪${parseFloat(a.price).toFixed(2)}</span>
+          <span>${imgThumb(a.image_url)}</span>
+          <span>${toggleSwitch(a.is_available, `toggleAddition('${p.id}','${a.id}',${!a.is_available})`)}</span>
+          <div style="display:flex;gap:6px">
+            <button onclick="openAdditionModal('${p.id}',${encodeAddition(a)})" class="btn btn-ghost btn-sm" style="padding:4px 10px;font-size:.75rem">עריכה</button>
+            <button onclick="deleteAddition('${p.id}','${a.id}','${a.name_he}')" class="btn-danger" style="font-size:.75rem;padding:4px 8px">מחק</button>
+          </div>
+        </div>`).join('')}
+      ${!(p.additions||[]).length ? `<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:.82rem">אין תוספות עדיין</div>` : ''}
+      <div style="padding:12px 18px;border-top:1px solid var(--primary-soft)">
+        <button onclick="openAdditionModal('${p.id}',null)" class="btn btn-outline btn-sm">+ הוסף תוספת</button>
       </div>
     </div>` : '';
 
   const expandBtn = showAdditions
-    ? `<span class="text-gray-400 text-sm cursor-pointer select-none" onclick="toggleExpand('${p.id}')">${isExpanded ? '▾' : '▸'}</span>`
-    : '<span class="w-4"></span>';
+    ? `<button onclick="toggleExpand('${p.id}')" style="background:var(--primary-soft);border:none;border-radius:8px;width:28px;height:28px;cursor:pointer;font-size:.85rem;color:var(--primary);display:flex;align-items:center;justify-content:center;flex-shrink:0">${isExpanded ? '▾' : '▸'}</button>`
+    : `<span style="width:28px;flex-shrink:0"></span>`;
 
   return `
-    <div class="border-b border-gray-50 hover:bg-gray-50/50">
-      <div class="flex items-center gap-3 px-5 py-3">
-        ${expandBtn}
-        ${imgThumb(p.image_url)}
-        <div class="flex-1 min-w-0">
-          <div class="font-medium text-gray-900 text-sm">${p.name_he}</div>
-          <div class="text-xs text-gray-400" dir="ltr">${p.name_en || ''}</div>
-        </div>
-        <div class="font-semibold text-gray-800 text-sm w-16 text-left">₪${parseFloat(p.price).toFixed(2)}</div>
-        ${showAdditions ? `<div class="text-xs text-gray-400 w-16">${(p.additions||[]).length} תוספות</div>` : '<div class="w-16"></div>'}
-        <div>${toggleSwitch(p.is_available, `toggleProduct('${p.id}',${!p.is_available})`)}</div>
-        <div class="flex gap-3 mr-2">
-          <button onclick="openProductModal(${pData},'${p.category_id||''}')" class="text-xs text-orange-500 hover:text-orange-700 font-medium">עריכה</button>
-          <button onclick="deleteProduct('${p.id}','${p.name_he}')" class="text-xs text-red-400 hover:text-red-600">מחיקה</button>
-        </div>
+    <div class="product-row">
+      ${expandBtn}
+      ${imgThumb(p.image_url)}
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:.92rem">${p.name_he}</div>
+        ${p.name_en ? `<div style="font-size:.75rem;color:var(--text-muted)" dir="ltr">${p.name_en}</div>` : ''}
       </div>
-      ${additionsSection}
-    </div>`;
+      <div style="font-weight:800;font-size:.95rem;color:var(--primary);min-width:70px">₪${parseFloat(p.price).toFixed(2)}</div>
+      ${showAdditions ? `<div style="font-size:.75rem;color:var(--text-muted);min-width:60px;text-align:center">${(p.additions||[]).length} תוספות</div>` : `<div style="min-width:60px"></div>`}
+      ${toggleSwitch(p.is_available, `toggleProduct('${p.id}',${!p.is_available})`)}
+      <div style="display:flex;gap:8px;margin-right:4px">
+        <button onclick="openProductModal(${pData},'${p.category_id||''}')" class="btn btn-ghost btn-sm">עריכה</button>
+        <button onclick="deleteProduct('${p.id}','${p.name_he}')" class="btn-danger">מחק</button>
+      </div>
+    </div>
+    ${additionsSection}`;
 }
 
 function encodeProduct(p) {
