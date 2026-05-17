@@ -112,7 +112,7 @@ function getCategory(product) {
 const CATEGORY_LABELS = {
   pizzas: '🍕 פיצות',
   pastas: '🍝 פסטות',
-  drinks: '🥤 שתיות',
+  drinks: '🥤 משהו לשתות',
   other:  '🥗 מנות נוספות',
 };
 
