@@ -114,6 +114,7 @@ async function loadOrders() {
     const data = await api('GET', '/orders');
     currentOrders = data.orders || [];
     renderStatusSummaryCards(currentOrders);
+    updateNotifBadge();
     filterOrders();
     if (role === 'admin') loadStats(currentPeriod);
   } catch (err) {
@@ -377,7 +378,7 @@ function updateEditSummary(order) {
   const deliveryFee = order?.delivery_method === 'delivery' ? (parseFloat(order?.delivery_fee) || 30) : 0;
   const subtotal = _editItems.reduce((s, item) => s + (parseFloat(item.price)||0) * (item.quantity||1), 0);
   const total = subtotal + deliveryFee;
-  const vat   = total * 17 / 117;
+  const vat   = total * 18 / 118;
 
   document.getElementById('editSubtotal').textContent    = `₪${subtotal.toFixed(2)}`;
   document.getElementById('editDeliveryFee').textContent  = `₪${deliveryFee.toFixed(0)}`;
@@ -875,8 +876,11 @@ function sField(id, label, value, type='text', placeholder='') {
 
 function sToggle(key, label, checked, cls='') {
   return `<div class="setting-row ${cls}">
-    <label style="font-weight:600;cursor:pointer">${label}</label>
-    <input type="checkbox" class="setting-toggle" data-key="${key}" ${checked?'checked':''}>
+    <span style="font-weight:600;font-size:.9rem">${label}</span>
+    <label class="toggle-switch">
+      <input type="checkbox" class="setting-toggle" data-key="${key}" ${checked?'checked':''}>
+      <span class="toggle-track"></span>
+    </label>
   </div>`;
 }
 
@@ -1117,8 +1121,49 @@ async function saveZones() {
   await saveSection({ delivery_zones: _deliveryZones });
 }
 
+// ─── Dark / Light Mode ────────────────────────────────────────────────────────
+
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const next   = isDark ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+  document.getElementById('themeBtn').textContent = next === 'dark' ? '🌙' : '☀️';
+}
+
+function initTheme() {
+  const saved = localStorage.getItem('theme') || 'light';
+  document.documentElement.setAttribute('data-theme', saved);
+  const btn = document.getElementById('themeBtn');
+  if (btn) btn.textContent = saved === 'dark' ? '🌙' : '☀️';
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+function updateNotifBadge() {
+  const newOrders = currentOrders.filter(o => o.status === 'new').length;
+  const badge     = document.getElementById('notifBadge');
+  if (!badge) return;
+  if (newOrders > 0) {
+    badge.style.display = 'flex';
+    badge.textContent   = newOrders > 9 ? '9+' : newOrders;
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function toggleNotifPanel() {
+  const newOrders = currentOrders.filter(o => o.status === 'new');
+  if (!newOrders.length) { showToast('אין הזמנות חדשות'); return; }
+  // Switch to orders tab filtered to 'new'
+  showTab('orders');
+  const sf = document.getElementById('statusFilter');
+  if (sf) { sf.value = 'new'; filterOrders(); }
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
+initTheme();
 // Init: show orders tab
 showTab('orders');
 // Auto-refresh orders every 30s

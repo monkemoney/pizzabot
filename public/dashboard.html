@@ -1,5 +1,5 @@
 <!doctype html>
-<html dir="rtl" lang="he">
+<html dir="rtl" lang="he" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -155,23 +155,88 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); }
 input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--primary); }
 input[type=time] { direction: ltr; }
 
-/* ── Toggle switch ── */
+/* ── Toggle switch (beautiful, used in products + settings) ── */
 .toggle {
   display: inline-flex; align-items: center;
-  width: 42px; height: 24px; border-radius: 999px;
-  border: none; cursor: pointer; transition: background .2s; position: relative;
+  width: 46px; height: 26px; border-radius: 999px;
+  border: none; cursor: pointer; transition: background .25s; position: relative;
   flex-shrink: 0;
 }
-.toggle.on  { background: #22c55e; }
+.toggle.on  { background: var(--primary); }
 .toggle.off { background: #d1d5db; }
 .toggle-dot {
-  width: 18px; height: 18px; border-radius: 50%;
+  width: 20px; height: 20px; border-radius: 50%;
   background: #fff; position: absolute;
-  top: 3px; transition: right .2s;
-  box-shadow: 0 1px 4px rgba(0,0,0,.2);
+  top: 3px; transition: right .25s;
+  box-shadow: 0 2px 6px rgba(0,0,0,.18);
 }
 .toggle.on  .toggle-dot { right: 3px; }
-.toggle.off .toggle-dot { right: 21px; }
+.toggle.off .toggle-dot { right: 23px; }
+
+/* ── Settings toggle switch ── */
+.toggle-switch {
+  position: relative; display: inline-block;
+  width: 50px; height: 28px; flex-shrink: 0;
+  direction: ltr;
+}
+.toggle-switch input {
+  opacity: 0; width: 0; height: 0; position: absolute;
+}
+.toggle-track {
+  position: absolute; inset: 0;
+  background: #d1d5db; border-radius: 999px;
+  cursor: pointer; transition: background .25s;
+}
+.toggle-track::after {
+  content: '';
+  position: absolute; left: 4px; top: 4px;
+  width: 20px; height: 20px;
+  background: #fff; border-radius: 50%;
+  transition: transform .25s;
+  box-shadow: 0 2px 6px rgba(0,0,0,.18);
+}
+.toggle-switch input:checked ~ .toggle-track { background: var(--primary); }
+.toggle-switch input:checked ~ .toggle-track::after { transform: translateX(22px); }
+
+/* ── Dark mode ── */
+[data-theme="dark"] {
+  --bg:           #130d20;
+  --white:        #1e1530;
+  --text:         #ede8ff;
+  --text-muted:   #8b7faa;
+  --border:       #2e2248;
+  --primary-soft: #2a1860;
+  --accent-soft:  #3d0a25;
+}
+[data-theme="dark"] .card,
+[data-theme="dark"] .stat-card { box-shadow: 0 4px 24px rgba(0,0,0,.4); }
+[data-theme="dark"] table th  { background: #1e1530; }
+[data-theme="dark"] tr:hover td { background: #1e1530; }
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea  { background: #1e1530; color: var(--text); border-color: var(--border); }
+[data-theme="dark"] .cat-header   { background: #1e1530; }
+[data-theme="dark"] .cat-header:hover { background: #2a1860; }
+[data-theme="dark"] .product-row:hover { background: #1e1530; }
+[data-theme="dark"] .modal-footer { background: #1e1530; }
+
+/* ── Notification bell ── */
+.notif-btn {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 50%;
+  border: none; background: rgba(255,255,255,.12);
+  cursor: pointer; color: #fff; font-size: 1.1rem;
+  transition: background .15s; flex-shrink: 0;
+}
+.notif-btn:hover { background: rgba(255,255,255,.22); }
+.notif-badge {
+  position: absolute; top: -2px; left: -2px;
+  background: var(--accent); color: #fff;
+  font-size: .6rem; font-weight: 800;
+  width: 16px; height: 16px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  display: none;
+}
 
 /* ── Stat cards ── */
 .stat-card {
@@ -293,8 +358,21 @@ input[type=time] { direction: ltr; }
     <div class="logo-sub">ממשק ניהול</div>
   </div>
   <div class="sidebar-user">
-    <span id="userDisplayName">—</span>
-    <span id="userRole" style="color:rgba(255,255,255,.5);font-size:.72rem"></span>
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <span id="userDisplayName">—</span>
+        <span id="userRole" style="color:rgba(255,255,255,.5);font-size:.72rem;display:block"></span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <!-- Notifications bell -->
+        <button class="notif-btn" onclick="toggleNotifPanel()" title="התראות">
+          🔔
+          <span class="notif-badge" id="notifBadge"></span>
+        </button>
+        <!-- Day / Night toggle -->
+        <button class="notif-btn" onclick="toggleTheme()" id="themeBtn" title="מצב לילה/יום">☀️</button>
+      </div>
+    </div>
   </div>
   <nav>
     <button onclick="showTab('orders')"   id="tab-orders"    class="nav-btn active">
@@ -494,7 +572,7 @@ input[type=time] { direction: ltr; }
           <span id="editTotal" style="font-weight:800;color:var(--primary)">₪0</span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:.75rem;color:var(--text-muted);margin-top:4px">
-          <span>כולל מע"מ 17%</span>
+          <span>כולל מע"מ 18%</span>
           <span id="editVat">₪0</span>
         </div>
       </div>
