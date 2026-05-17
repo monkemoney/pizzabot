@@ -3,272 +3,513 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>פיצה דליבריס — ניהול</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script>tailwind.config = { theme: { extend: { colors: { brand: { 50:'#fff7ed', 500:'#f97316', 600:'#ea580c', 700:'#c2410c' } } } } }</script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<title>Jasell — ניהול</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-* { font-family: 'Inter', sans-serif; }
-.tab-active { background: #f97316; color: white; }
-.tab-btn { transition: all .15s; }
-.status-badge { font-size:.75rem; padding:.2rem .6rem; border-radius:9999px; font-weight:600; display:inline-block; }
-.status-new           { background:#dbeafe; color:#1d4ed8; }
-.status-preparing     { background:#fef9c3; color:#854d0e; }
-.status-out_for_delivery { background:#e0f2fe; color:#0369a1; }
-.status-delivered     { background:#dcfce7; color:#166534; }
-.status-done          { background:#f3f4f6; color:#4b5563; }
-.status-cancelled     { background:#fee2e2; color:#991b1b; }
-.spinner { animation: spin 1s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --primary:      #5e17eb;
+  --primary-dark: #4a0fd4;
+  --primary-soft: #ede8fd;
+  --accent:       #ff66c4;
+  --accent-soft:  #fff0f9;
+  --bg:           #eeede9;
+  --white:        #ffffff;
+  --text:         #1a1028;
+  --text-muted:   #7a6f8a;
+  --border:       #e5e0f0;
+  --radius:       14px;
+  --sidebar-w:    240px;
+}
+body {
+  font-family: 'Nunito', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* ── Sidebar ── */
+#sidebar {
+  position: fixed; inset-y: 0; right: 0;
+  width: var(--sidebar-w);
+  background: var(--primary);
+  display: flex; flex-direction: column;
+  z-index: 30;
+}
+.sidebar-logo {
+  padding: 24px 20px 20px;
+  border-bottom: 1px solid rgba(255,255,255,.12);
+}
+.sidebar-logo img { height: 40px; }
+.sidebar-logo .logo-fallback {
+  font-size: 1.6rem; font-weight: 800;
+  color: #fff; letter-spacing: -1px; display: none;
+}
+.sidebar-logo .logo-sub {
+  font-size: .72rem; color: rgba(255,255,255,.6);
+  margin-top: 2px;
+}
+.sidebar-user {
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255,255,255,.12);
+  font-size: .78rem; color: rgba(255,255,255,.7);
+}
+.sidebar-user span { display: block; font-weight: 700; color: #fff; font-size: .85rem; }
+nav { flex: 1; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; }
+.nav-btn {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: none; background: transparent;
+  color: rgba(255,255,255,.8);
+  font-family: inherit; font-size: .9rem; font-weight: 600;
+  cursor: pointer; transition: all .15s;
+  width: 100%; text-align: right;
+}
+.nav-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
+.nav-btn.active { background: #fff; color: var(--primary); }
+.nav-btn .icon { font-size: 1.1rem; }
+.sidebar-footer {
+  padding: 16px 12px;
+  border-top: 1px solid rgba(255,255,255,.12);
+}
+.logout-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-radius: 10px;
+  border: none; background: transparent;
+  color: rgba(255,255,255,.6);
+  font-family: inherit; font-size: .85rem; font-weight: 600;
+  cursor: pointer; transition: all .15s; width: 100%; text-align: right;
+}
+.logout-btn:hover { background: rgba(255,255,255,.1); color: #fff; }
+
+/* ── Main content ── */
+.main { margin-right: var(--sidebar-w); min-height: 100vh; padding: 28px; }
+
+/* ── Cards ── */
+.card {
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: 0 2px 12px rgba(94,23,235,.06);
+  overflow: hidden;
+}
+.card-header {
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.card-title { font-size: 1rem; font-weight: 800; color: var(--text); }
+
+/* ── Buttons ── */
+.btn { display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 18px; border-radius: 10px; border: none;
+  font-family: inherit; font-size: .85rem; font-weight: 700;
+  cursor: pointer; transition: all .15s; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-accent { background: var(--accent); color: #fff; }
+.btn-accent:hover { filter: brightness(1.05); }
+.btn-outline { background: transparent; color: var(--primary);
+  border: 2px solid var(--primary); }
+.btn-outline:hover { background: var(--primary-soft); }
+.btn-ghost { background: transparent; color: var(--text-muted);
+  border: 1.5px solid var(--border); }
+.btn-ghost:hover { border-color: var(--primary); color: var(--primary); }
+.btn-sm { padding: 6px 12px; font-size: .78rem; border-radius: 8px; }
+.btn-danger { background: transparent; color: #e0004d;
+  border: 1.5px solid #ffd0e6; font-size: .78rem; border-radius: 8px; padding: 5px 10px; font-family: inherit; font-weight: 700; cursor: pointer; }
+.btn-danger:hover { background: #fff0f6; }
+
+/* ── Badges / status ── */
+.badge {
+  display: inline-block; padding: 3px 10px;
+  border-radius: 999px; font-size: .72rem; font-weight: 700;
+}
+.badge-new         { background: #f0ebff; color: var(--primary); }
+.badge-preparing   { background: #fff8e0; color: #c07000; }
+.badge-delivery    { background: #e0f0ff; color: #005faa; }
+.badge-delivered   { background: #e0fbef; color: #008043; }
+.badge-done        { background: #f0f0f0; color: #666; }
+.badge-cancelled   { background: #fff0f5; color: #c0006a; }
+.badge-paid        { background: #e0fbef; color: #008043; }
+.badge-pending-pay { background: #fff8e0; color: #c07000; }
+
+/* ── Table ── */
+table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+th { background: #f8f6ff; color: var(--text-muted); font-size: .72rem;
+  font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  padding: 10px 16px; text-align: right; }
+td { padding: 12px 16px; border-bottom: 1px solid #f5f2fc; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #faf8ff; }
+
+/* ── Form inputs ── */
+input, select, textarea {
+  font-family: inherit; border: 2px solid var(--border);
+  border-radius: 10px; padding: 9px 14px; font-size: .88rem;
+  color: var(--text); outline: none; transition: border-color .15s;
+  background: #fff;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--primary); }
+input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--primary); }
+input[type=time] { direction: ltr; }
+
+/* ── Toggle switch ── */
+.toggle {
+  display: inline-flex; align-items: center;
+  width: 42px; height: 24px; border-radius: 999px;
+  border: none; cursor: pointer; transition: background .2s; position: relative;
+  flex-shrink: 0;
+}
+.toggle.on  { background: #22c55e; }
+.toggle.off { background: #d1d5db; }
+.toggle-dot {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; position: absolute;
+  top: 3px; transition: right .2s;
+  box-shadow: 0 1px 4px rgba(0,0,0,.2);
+}
+.toggle.on  .toggle-dot { right: 3px; }
+.toggle.off .toggle-dot { right: 21px; }
+
+/* ── Stat cards ── */
+.stat-card {
+  background: var(--white); border-radius: var(--radius);
+  box-shadow: 0 2px 12px rgba(94,23,235,.06);
+  padding: 20px 22px;
+}
+.stat-value { font-size: 1.8rem; font-weight: 800; color: var(--primary); line-height: 1; }
+.stat-label { font-size: .75rem; color: var(--text-muted); margin-top: 4px; font-weight: 600; }
+.stat-card.accent .stat-value { color: var(--accent); }
+.stat-card.green  .stat-value { color: #16a34a; }
+.stat-card.violet .stat-value { color: var(--primary); }
+
+/* ── Page header ── */
+.page-header { margin-bottom: 22px; display: flex; align-items: center; justify-content: space-between; }
+.page-title { font-size: 1.4rem; font-weight: 800; color: var(--text); }
+
+/* ── Category blocks ── */
+.cat-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; background: var(--primary-soft);
+  border-bottom: 1px solid var(--border); cursor: pointer;
+}
+.cat-header:hover { background: #e6dcfc; }
+
+/* ── Modals ── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(30,0,60,.35);
+  z-index: 50; display: none; align-items: center; justify-content: center; padding: 16px;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--white); border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(94,23,235,.18);
+  width: 100%; max-width: 460px; max-height: 90vh; overflow-y: auto;
+}
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 24px; border-bottom: 1px solid var(--border);
+}
+.modal-title { font-size: 1.05rem; font-weight: 800; color: var(--text); }
+.modal-close { font-size: 1.5rem; line-height: 1; color: var(--text-muted);
+  cursor: pointer; background: none; border: none; padding: 0 4px; }
+.modal-close:hover { color: var(--text); }
+.modal-body { padding: 22px 24px; }
+.modal-body .form-group { margin-bottom: 16px; }
+.modal-body label { display: block; font-size: .82rem; font-weight: 700;
+  color: #3d3352; margin-bottom: 6px; }
+.modal-body input, .modal-body select, .modal-body textarea { width: 100%; }
+.modal-footer {
+  display: flex; gap: 10px; padding: 16px 24px;
+  border-top: 1px solid var(--border);
+}
+.modal-footer .btn { flex: 1; justify-content: center; }
+
+/* ── Select in filters ── */
+.filter-select {
+  padding: 8px 14px; border-radius: 10px;
+  border: 2px solid var(--border); font-family: inherit;
+  font-size: .85rem; color: var(--text); background: #fff;
+  outline: none; cursor: pointer;
+}
+.filter-select:focus { border-color: var(--primary); }
+
+/* ── Misc ── */
+.empty-state { padding: 48px; text-align: center; color: var(--text-muted); font-size: .9rem; }
+.divider { height: 1px; background: var(--border); margin: 8px 0; }
+
+/* ── Settings toggle row ── */
+.setting-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.setting-row:last-child { border-bottom: none; }
+.setting-row label { font-size: .9rem; font-weight: 600; color: var(--text); }
+
+/* ── IMG thumb ── */
+.img-thumb {
+  width: 36px; height: 36px; border-radius: 8px; object-fit: cover;
+  border: 2px solid var(--border);
+}
+
+/* ── Additions table ── */
+.additions-table { margin: 0 16px 14px; border: 1.5px solid #e8e2f8;
+  border-radius: 10px; overflow: hidden; font-size: .8rem; }
+.additions-table th { background: #f5f0ff; color: var(--primary);
+  font-size: .72rem; padding: 8px 12px; }
+.additions-table td { padding: 9px 12px; border-bottom: 1px solid #f0ebff; }
+.additions-table tr:last-child td { border-bottom: none; }
+
+/* ── Hours grid ── */
+.hours-grid { display: grid; gap: 8px; }
+.hours-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 12px; background: #faf8ff; border-radius: 10px;
+}
+.hours-day { font-size: .82rem; font-weight: 700; color: var(--primary); width: 60px; }
 </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body>
 
-<!-- Sidebar -->
-<div id="sidebar" class="fixed inset-y-0 right-0 w-64 bg-white border-l border-gray-200 flex flex-col z-30">
-  <div class="p-5 border-b border-gray-100">
-    <div class="flex items-center gap-3">
-      <span class="text-3xl">🍕</span>
-      <div>
-        <div class="font-bold text-gray-900">פיצה דליבריס</div>
-        <div id="userBadge" class="text-xs text-gray-400"></div>
-      </div>
-    </div>
+<!-- ── Sidebar ── -->
+<aside id="sidebar">
+  <div class="sidebar-logo">
+    <img src="/jas-3.png" alt="Jasell"
+      onerror="this.style.display='none';document.querySelector('.logo-fallback').style.display='block'">
+    <div class="logo-fallback">Jasell</div>
+    <div class="logo-sub">ממשק ניהול</div>
   </div>
-
-  <nav class="flex-1 p-3 space-y-1">
-    <button onclick="showTab('orders')"   id="tab-orders"    class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-700 hover:bg-orange-50 hover:text-orange-600 font-medium">
-      <span>📋</span> הזמנות
+  <div class="sidebar-user">
+    <span id="userDisplayName">—</span>
+    <span id="userRole" style="color:rgba(255,255,255,.5);font-size:.72rem"></span>
+  </div>
+  <nav>
+    <button onclick="showTab('orders')"   id="tab-orders"    class="nav-btn active">
+      <span class="icon">📋</span> הזמנות
     </button>
-    <button onclick="showTab('products')" id="tab-products"  class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-700 hover:bg-orange-50 hover:text-orange-600 font-medium admin-only hidden">
-      <span>🍕</span> מוצרים
+    <button onclick="showTab('products')" id="tab-products"  class="nav-btn admin-only" style="display:none">
+      <span class="icon">🍕</span> מוצרים
     </button>
-    <button onclick="showTab('customers')" id="tab-customers" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-700 hover:bg-orange-50 hover:text-orange-600 font-medium admin-only hidden">
-      <span>👥</span> לקוחות
+    <button onclick="showTab('customers')" id="tab-customers" class="nav-btn admin-only" style="display:none">
+      <span class="icon">👥</span> לקוחות
     </button>
-    <button onclick="showTab('settings')" id="tab-settings"  class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-700 hover:bg-orange-50 hover:text-orange-600 font-medium admin-only hidden">
-      <span>⚙️</span> הגדרות
+    <button onclick="showTab('settings')" id="tab-settings"  class="nav-btn admin-only" style="display:none">
+      <span class="icon">⚙️</span> הגדרות
     </button>
   </nav>
-
-  <div class="p-4 border-t border-gray-100">
-    <button onclick="logout()" class="w-full text-sm text-gray-500 hover:text-red-600 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-red-50 transition-colors">
+  <div class="sidebar-footer">
+    <button onclick="logout()" class="logout-btn">
       <span>🚪</span> יציאה
     </button>
   </div>
-</div>
+</aside>
 
-<!-- Main content -->
-<div class="mr-64 min-h-screen">
-  <div class="p-6 max-w-7xl">
+<!-- ── Main ── -->
+<div class="main">
 
-    <!-- ── ORDERS TAB ── -->
-    <div id="page-orders" class="hidden">
-      <!-- Stats (admin only) -->
-      <div id="statsSection" class="admin-only hidden mb-6">
-        <div class="flex items-center gap-4 mb-4">
-          <h2 class="text-xl font-bold text-gray-900">סטטיסטיקות</h2>
-          <input type="date" id="statsDate" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm">
-        </div>
-        <div class="grid grid-cols-2 md:grid-cols-5 gap-4" id="statsCards"></div>
+  <!-- ORDERS -->
+  <div id="page-orders" style="display:none">
+    <div id="statsSection" class="admin-only" style="display:none; margin-bottom:24px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <div class="page-title">סטטיסטיקות</div>
+        <input type="date" id="statsDate" style="padding:7px 12px;border-radius:10px;border:2px solid var(--border);font-family:inherit;font-size:.82rem">
       </div>
-
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-bold text-gray-900">הזמנות</h2>
-        <div class="flex gap-2">
-          <select id="orderStatusFilter" class="border border-gray-200 rounded-lg px-3 py-2 text-sm">
-            <option value="all">כל הסטטוסים</option>
-            <option value="new" selected>חדשות</option>
-            <option value="preparing">בהכנה</option>
-            <option value="out_for_delivery">בדרך</option>
-            <option value="delivered">נמסרו</option>
-            <option value="done">הסתיימו</option>
-            <option value="cancelled">בוטלו</option>
-          </select>
-          <button onclick="loadOrders()" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium">רענן</button>
-        </div>
-      </div>
-
-      <div id="ordersTable" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"></div>
+      <div id="statsCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px"></div>
     </div>
 
-    <!-- ── PRODUCTS TAB ── -->
-    <div id="page-products" class="hidden">
-      <div class="flex items-center justify-between mb-6">
-        <h2 class="text-xl font-bold text-gray-900">מוצרים</h2>
-        <div class="flex gap-2">
-          <button onclick="openCategoryModal()" class="border border-orange-400 text-orange-600 hover:bg-orange-50 px-4 py-2 rounded-lg text-sm font-medium">+ קטגוריה</button>
-          <button onclick="openProductModal()" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium">+ מוצר</button>
-        </div>
+    <div class="page-header">
+      <div class="page-title">הזמנות</div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <select id="orderStatusFilter" class="filter-select">
+          <option value="all">כל הסטטוסים</option>
+          <option value="new" selected>חדשות</option>
+          <option value="preparing">בהכנה</option>
+          <option value="out_for_delivery">בדרך</option>
+          <option value="delivered">נמסרו</option>
+          <option value="done">הסתיימו</option>
+          <option value="cancelled">בוטלו</option>
+        </select>
+        <button onclick="loadOrders()" class="btn btn-primary btn-sm">רענן</button>
       </div>
-      <div id="productsTable" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"></div>
     </div>
-
-    <!-- ── CUSTOMERS TAB ── -->
-    <div id="page-customers" class="hidden">
-      <div class="flex items-center justify-between mb-6">
-        <h2 class="text-xl font-bold text-gray-900">לקוחות</h2>
-        <div class="flex gap-3">
-          <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-            <input type="checkbox" id="returningOnly" onchange="loadCustomers()" class="rounded"> לקוחות חוזרים בלבד
-          </label>
-          <button onclick="openBroadcastModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium">📤 שליחת הודעה</button>
-        </div>
-      </div>
-      <div id="customersTable" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"></div>
-    </div>
-
-    <!-- ── SETTINGS TAB ── -->
-    <div id="page-settings" class="hidden">
-      <h2 class="text-xl font-bold text-gray-900 mb-6">הגדרות</h2>
-      <div id="settingsForm" class="space-y-6"></div>
-    </div>
-
+    <div id="ordersTable" class="card"></div>
   </div>
+
+  <!-- PRODUCTS -->
+  <div id="page-products" style="display:none">
+    <div class="page-header">
+      <div class="page-title">מוצרים</div>
+      <div style="display:flex;gap:10px">
+        <button onclick="openCategoryModal()" class="btn btn-outline btn-sm">+ קטגוריה</button>
+        <button onclick="openProductModal()" class="btn btn-primary btn-sm">+ מוצר</button>
+      </div>
+    </div>
+    <div id="productsTable" class="card"></div>
+  </div>
+
+  <!-- CUSTOMERS -->
+  <div id="page-customers" style="display:none">
+    <div class="page-header">
+      <div class="page-title">לקוחות</div>
+      <div style="display:flex;gap:12px;align-items:center">
+        <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;font-weight:600;cursor:pointer">
+          <input type="checkbox" id="returningOnly" onchange="loadCustomers()"> לקוחות חוזרים בלבד
+        </label>
+        <button onclick="openBroadcastModal()" class="btn btn-accent btn-sm">📤 שלח הודעה</button>
+      </div>
+    </div>
+    <div id="customersTable" class="card"></div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div id="page-settings" style="display:none">
+    <div class="page-header"><div class="page-title">הגדרות</div></div>
+    <div id="settingsForm" style="display:flex;flex-direction:column;gap:18px"></div>
+  </div>
+
 </div>
 
 <!-- ── Order Detail Modal ── -->
-<div id="orderModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-    <div class="p-6">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-bold text-gray-900" id="orderModalTitle">פרטי הזמנה</h3>
-        <button onclick="closeModal('orderModal')" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
-      </div>
-      <div id="orderModalContent"></div>
+<div id="orderModal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="orderModalTitle">פרטי הזמנה</div>
+      <button onclick="closeModal('orderModal')" class="modal-close">&times;</button>
     </div>
-  </div>
-</div>
-
-<!-- ── Product Modal ── -->
-<div id="productModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
-    <div class="p-6">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-bold text-gray-900" id="productModalTitle">מוצר חדש</h3>
-        <button onclick="closeModal('productModal')" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
-      </div>
-      <form id="productForm" class="space-y-4">
-        <input type="hidden" id="productId">
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">שם (עברית)</label>
-            <input type="text" id="productNameHe" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">שם (אנגלית)</label>
-            <input type="text" id="productNameEn" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" dir="ltr">
-          </div>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">מחיר (₪)</label>
-          <input type="number" id="productPrice" step="0.1" min="0" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">קישור תמונה (URL)</label>
-          <input type="url" id="productImageUrl" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" dir="ltr" placeholder="https://...">
-        </div>
-        <div class="flex gap-4 pt-2">
-          <button type="button" onclick="closeModal('productModal')" class="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">ביטול</button>
-          <button type="submit" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg text-sm font-medium">שמור</button>
-        </div>
-      </form>
-    </div>
+    <div class="modal-body" id="orderModalContent"></div>
   </div>
 </div>
 
 <!-- ── Category Modal ── -->
-<div id="categoryModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
-    <div class="p-6">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-bold text-gray-900" id="categoryModalTitle">קטגוריה חדשה</h3>
-        <button onclick="closeModal('categoryModal')" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
-      </div>
-      <form id="categoryForm" class="space-y-4">
-        <input type="hidden" id="categoryId">
-        <div class="grid grid-cols-4 gap-3">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">אמוג׳י</label>
-            <input type="text" id="categoryEmoji" maxlength="4" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-center text-xl" placeholder="🍕">
-          </div>
-          <div class="col-span-3">
-            <label class="block text-sm font-medium text-gray-700 mb-1">שם הקטגוריה</label>
-            <input type="text" id="categoryNameHe" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="פיצות">
-          </div>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">שם באנגלית</label>
-          <input type="text" id="categoryNameEn" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" dir="ltr" placeholder="Pizzas">
-        </div>
-        <label class="flex items-center gap-3 cursor-pointer py-1">
-          <input type="checkbox" id="categoryHasToppings" class="w-4 h-4 accent-orange-500">
-          <span class="text-sm text-gray-700">קטגוריה זו תומכת בתוספות (לדוגמה: פיצות)</span>
-        </label>
-        <div class="flex gap-4 pt-2">
-          <button type="button" onclick="closeModal('categoryModal')" class="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">ביטול</button>
-          <button type="submit" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg text-sm font-medium">שמור</button>
-        </div>
-      </form>
+<div id="categoryModal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="categoryModalTitle">קטגוריה חדשה</div>
+      <button onclick="closeModal('categoryModal')" class="modal-close">&times;</button>
     </div>
+    <form id="categoryForm">
+      <div class="modal-body">
+        <input type="hidden" id="categoryId">
+        <div style="display:grid;grid-template-columns:56px 1fr;gap:12px;margin-bottom:16px">
+          <div class="form-group" style="margin:0">
+            <label>אמוג׳י</label>
+            <input type="text" id="categoryEmoji" maxlength="4" style="text-align:center;font-size:1.4rem;padding:8px" placeholder="🍕">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>שם הקטגוריה</label>
+            <input type="text" id="categoryNameHe" required placeholder="פיצות">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>שם באנגלית</label>
+          <input type="text" id="categoryNameEn" dir="ltr" placeholder="Pizzas">
+        </div>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:.88rem;font-weight:600">
+          <input type="checkbox" id="categoryHasToppings">
+          קטגוריה זו תומכת בתוספות (לדוגמה: פיצות)
+        </label>
+      </div>
+      <div class="modal-footer">
+        <button type="button" onclick="closeModal('categoryModal')" class="btn btn-ghost">ביטול</button>
+        <button type="submit" class="btn btn-primary">שמור</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Product Modal ── -->
+<div id="productModal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="productModalTitle">מוצר חדש</div>
+      <button onclick="closeModal('productModal')" class="modal-close">&times;</button>
+    </div>
+    <form id="productForm">
+      <div class="modal-body">
+        <input type="hidden" id="productId">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label>שם (עברית)</label>
+            <input type="text" id="productNameHe" required>
+          </div>
+          <div class="form-group">
+            <label>שם (אנגלית)</label>
+            <input type="text" id="productNameEn" dir="ltr">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>מחיר (₪)</label>
+          <input type="number" id="productPrice" step="0.1" min="0" required>
+        </div>
+        <div class="form-group">
+          <label>קישור תמונה (URL)</label>
+          <input type="url" id="productImageUrl" dir="ltr" placeholder="https://...">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" onclick="closeModal('productModal')" class="btn btn-ghost">ביטול</button>
+        <button type="submit" class="btn btn-primary">שמור</button>
+      </div>
+    </form>
   </div>
 </div>
 
 <!-- ── Addition Modal ── -->
-<div id="additionModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
-    <div class="p-6">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-bold text-gray-900" id="additionModalTitle">תוספת חדשה</h3>
-        <button onclick="closeModal('additionModal')" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
-      </div>
-      <form id="additionForm" class="space-y-4">
-        <input type="hidden" id="additionId">
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">שם (עברית)</label>
-            <input type="text" id="additionNameHe" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">שם (אנגלית)</label>
-            <input type="text" id="additionNameEn" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" dir="ltr">
-          </div>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">מחיר (₪)</label>
-          <input type="number" id="additionPrice" step="0.1" min="0" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">קישור תמונה (URL)</label>
-          <input type="url" id="additionImageUrl" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" dir="ltr" placeholder="https://...">
-        </div>
-        <div class="flex gap-4 pt-2">
-          <button type="button" onclick="closeModal('additionModal')" class="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">ביטול</button>
-          <button type="submit" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg text-sm font-medium">שמור</button>
-        </div>
-      </form>
+<div id="additionModal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="additionModalTitle">תוספת חדשה</div>
+      <button onclick="closeModal('additionModal')" class="modal-close">&times;</button>
     </div>
+    <form id="additionForm">
+      <div class="modal-body">
+        <input type="hidden" id="additionId">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label>שם (עברית)</label>
+            <input type="text" id="additionNameHe" required>
+          </div>
+          <div class="form-group">
+            <label>שם (אנגלית)</label>
+            <input type="text" id="additionNameEn" dir="ltr">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>מחיר (₪)</label>
+          <input type="number" id="additionPrice" step="0.1" min="0" required>
+        </div>
+        <div class="form-group">
+          <label>קישור תמונה (URL)</label>
+          <input type="url" id="additionImageUrl" dir="ltr" placeholder="https://...">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" onclick="closeModal('additionModal')" class="btn btn-ghost">ביטול</button>
+        <button type="submit" class="btn btn-primary">שמור</button>
+      </div>
+    </form>
   </div>
 </div>
 
 <!-- ── Broadcast Modal ── -->
-<div id="broadcastModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg">
-    <div class="p-6">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-bold text-gray-900">שליחת הודעת WhatsApp</h3>
-        <button onclick="closeModal('broadcastModal')" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+<div id="broadcastModal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">שליחת הודעת WhatsApp</div>
+      <button onclick="closeModal('broadcastModal')" class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:#fff0f9;border:1.5px solid #ff66c4;border-radius:10px;padding:12px 14px;font-size:.82rem;color:#a0006a;margin-bottom:14px">
+        ⚠️ שליחת הודעות ללא יזימת לקוח עלולה לגרום לחסימה. מומלץ עד 50 נמענים.
       </div>
-      <div class="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 text-sm text-yellow-800 mb-4">
-        ⚠️ שליחת הודעות ללא יזימת לקוח עלולה לגרום לחסימת המספר. מומלץ עד 50 נמענים בפעם.
-      </div>
-      <div id="broadcastRecipients" class="text-sm text-gray-600 mb-3"></div>
-      <textarea id="broadcastMessage" rows="4" placeholder="כתוב הודעה..."
-        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4" dir="rtl"></textarea>
-      <div class="flex gap-3">
-        <button onclick="closeModal('broadcastModal')" class="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">ביטול</button>
-        <button onclick="sendBroadcast()" class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-medium">שלח</button>
-      </div>
+      <div id="broadcastRecipients" style="font-size:.85rem;color:var(--text-muted);margin-bottom:10px"></div>
+      <textarea id="broadcastMessage" rows="4" dir="rtl"
+        style="width:100%;border-radius:10px" placeholder="כתוב הודעה..."></textarea>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeModal('broadcastModal')" class="btn btn-ghost">ביטול</button>
+      <button onclick="sendBroadcast()" class="btn btn-accent">שלח</button>
     </div>
   </div>
 </div>

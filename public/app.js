@@ -8,11 +8,14 @@ const username = localStorage.getItem('username');
 
 if (!token) { window.location.href = '/'; }
 
-document.getElementById('userBadge').textContent = `${username} (${role === 'admin' ? 'מנהל' : 'מנג׳ר'})`;
+document.getElementById('userDisplayName').textContent = username || '';
+document.getElementById('userRole').textContent = role === 'admin' ? 'מנהל' : 'מנג׳ר';
 
 // Show admin-only elements
 if (role === 'admin') {
-  document.querySelectorAll('.admin-only').forEach((el) => el.classList.remove('hidden'));
+  document.querySelectorAll('.admin-only').forEach((el) => {
+    el.style.display = el.tagName === 'BUTTON' ? 'flex' : 'block';
+  });
 }
 
 function logout() {
@@ -40,11 +43,15 @@ const TABS = ['orders', 'products', 'customers', 'settings'];
 
 function showTab(name) {
   TABS.forEach((t) => {
-    document.getElementById('page-' + t).classList.add('hidden');
-    document.getElementById('tab-'  + t)?.classList.remove('tab-active');
+    const page = document.getElementById('page-' + t);
+    const tab  = document.getElementById('tab-'  + t);
+    if (page) page.style.display = 'none';
+    if (tab)  tab.classList.remove('active');
   });
-  document.getElementById('page-' + name).classList.remove('hidden');
-  document.getElementById('tab-'  + name)?.classList.add('tab-active');
+  const page = document.getElementById('page-' + name);
+  const tab  = document.getElementById('tab-'  + name);
+  if (page) page.style.display = 'block';
+  if (tab)  tab.classList.add('active');
 
   if (name === 'orders')    loadOrders();
   if (name === 'products')  loadProducts();
@@ -54,7 +61,22 @@ function showTab(name) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+function closeModal(id) {
+  const el = document.getElementById(id);
+  el.classList.remove('open');
+  el.style.display = 'none';
+}
+function openModal(id) {
+  const el = document.getElementById(id);
+  el.style.display = 'flex';
+  el.classList.add('open');
+}
+// Close modal when clicking backdrop
+document.querySelectorAll('.modal-overlay').forEach((overlay) => {
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeModal(overlay.id);
+  });
+});
 
 function formatDate(iso) {
   if (!iso) return '';
@@ -70,17 +92,14 @@ const STATUS_LABELS = {
   done:             'הסתיימה',
   cancelled:        'בוטלה',
 };
-const STATUS_NEXT = {
-  new:              ['preparing', 'cancelled'],
-  preparing:        ['out_for_delivery', 'cancelled'],
-  out_for_delivery: ['delivered', 'cancelled'],
-  delivered:        ['done'],
-  done:             [],
-  cancelled:        [],
-};
 
 function statusBadge(status) {
-  return `<span class="status-badge status-${status}">${STATUS_LABELS[status] || status}</span>`;
+  const cls = {
+    new: 'badge-new', preparing: 'badge-preparing',
+    out_for_delivery: 'badge-delivery', delivered: 'badge-delivered',
+    done: 'badge-done', cancelled: 'badge-cancelled',
+  }[status] || 'badge-done';
+  return `<span class="badge ${cls}">${STATUS_LABELS[status] || status}</span>`;
 }
 
 // ─── ORDERS ───────────────────────────────────────────────────────────────────
@@ -111,53 +130,46 @@ function renderOrdersTable(orders) {
   }
 
   container.innerHTML = `
-    <div class="overflow-x-auto">
-    <table class="w-full text-sm">
-      <thead class="bg-gray-50 border-b border-gray-100">
-        <tr class="text-gray-500 text-xs font-medium">
-          <th class="px-4 py-3 text-right">#</th>
-          <th class="px-4 py-3 text-right">תאריך</th>
-          <th class="px-4 py-3 text-right">לקוח</th>
-          <th class="px-4 py-3 text-right">סוג</th>
-          <th class="px-4 py-3 text-right">אמצעי תשלום</th>
-          <th class="px-4 py-3 text-right">שולם</th>
-          <th class="px-4 py-3 text-right">סכום</th>
-          <th class="px-4 py-3 text-right">סטטוס</th>
-          <th class="px-4 py-3 text-right">פעולות</th>
+    <div style="overflow-x:auto">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>תאריך</th><th>לקוח</th><th>סוג</th>
+          <th>תשלום</th><th>שולם</th><th>סכום</th><th>סטטוס</th><th>פעולות</th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-gray-50">
+      <tbody>
         ${orders.map((o) => `
-        <tr class="hover:bg-gray-50 transition-colors">
-          <td class="px-4 py-3 font-semibold text-orange-600">${o.order_number || '—'}</td>
-          <td class="px-4 py-3 text-gray-500 text-xs">${formatDate(o.created_at)}</td>
-          <td class="px-4 py-3">
-            <div class="font-medium text-gray-900">${o.customer_name || '—'}</div>
-            <div class="text-xs text-gray-400">${o.address ? o.address.slice(0, 30) : ''}</div>
+        <tr>
+          <td style="font-weight:800;color:var(--primary)">${o.order_number || '—'}</td>
+          <td style="color:var(--text-muted);font-size:.78rem">${formatDate(o.created_at)}</td>
+          <td>
+            <div style="font-weight:700">${o.customer_name || '—'}</div>
+            <div style="font-size:.75rem;color:var(--text-muted)">${o.address ? o.address.slice(0,28) : ''}</div>
           </td>
-          <td class="px-4 py-3">
-            <span class="text-xs px-2 py-1 rounded-full ${o.delivery_method === 'delivery' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'}">
+          <td>
+            <span class="badge ${o.delivery_method === 'delivery' ? 'badge-delivery' : 'badge-done'}">
               ${o.delivery_method === 'delivery' ? '🛵 משלוח' : '🏍️ איסוף'}
             </span>
           </td>
-          <td class="px-4 py-3 text-xs text-gray-500">${o.payment_method === 'cash' ? '💵 מזומן' : '💳 אשראי'}</td>
-          <td class="px-4 py-3">
-            <span class="text-xs px-2 py-0.5 rounded-full font-medium ${o.payment_status === 'paid' ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'}">
+          <td style="font-size:.82rem;color:var(--text-muted)">${o.payment_method === 'cash' ? '💵 מזומן' : '💳 אשראי'}</td>
+          <td>
+            <span class="badge ${o.payment_status === 'paid' ? 'badge-paid' : 'badge-pending-pay'}">
               ${o.payment_status === 'paid' ? '✓ שולם' : '⏳ ממתין'}
             </span>
           </td>
-          <td class="px-4 py-3 font-semibold">₪${(parseFloat(o.total_price) || 0).toFixed(2)}</td>
-          <td class="px-4 py-3">
-            <select onchange="updateOrderStatus('${o.id}', this.value, ${o.order_number})"
-              class="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white cursor-pointer">
+          <td style="font-weight:800">₪${(parseFloat(o.total_price)||0).toFixed(2)}</td>
+          <td>
+            <select onchange="updateOrderStatus('${o.id}',this.value,${o.order_number})"
+              style="padding:5px 10px;border-radius:8px;border:2px solid var(--border);font-family:inherit;font-size:.8rem;cursor:pointer">
               ${Object.entries(STATUS_LABELS).map(([val, label]) =>
-                `<option value="${val}" ${val === o.status ? 'selected' : ''}>${label}</option>`
+                `<option value="${val}" ${val===o.status?'selected':''}>${label}</option>`
               ).join('')}
             </select>
           </td>
-          <td class="px-4 py-3">
+          <td>
             <button onclick="showOrderDetail('${o.id}')"
-              class="text-orange-500 hover:text-orange-700 text-xs font-medium hover:underline">
+              style="font-size:.78rem;font-weight:700;color:var(--primary);background:var(--primary-soft);border:none;padding:5px 10px;border-radius:8px;cursor:pointer">
               פרטים
             </button>
           </td>
@@ -183,40 +195,33 @@ async function showOrderDetail(orderId) {
 
   document.getElementById('orderModalTitle').textContent = `הזמנה #${order.order_number}`;
   document.getElementById('orderModalContent').innerHTML = `
-    <div class="space-y-4">
-      <div class="grid grid-cols-2 gap-4 text-sm">
-        <div><span class="text-gray-500">לקוח:</span> <strong>${order.customer_name || '—'}</strong></div>
-        <div><span class="text-gray-500">טלפון:</span> <strong>${order.customer_phone || order.phone || '—'}</strong></div>
-        <div><span class="text-gray-500">אספקה:</span> <strong>${order.delivery_method === 'delivery' ? '🛵 משלוח' : '🏍️ איסוף'}</strong></div>
-        <div><span class="text-gray-500">תשלום:</span> <strong>${order.payment_method === 'cash' ? '💵 מזומן' : '💳 אשראי'}</strong></div>
-        ${order.address ? `<div class="col-span-2"><span class="text-gray-500">כתובת:</span> <strong>${order.address}</strong></div>` : ''}
-        ${order.notes  ? `<div class="col-span-2"><span class="text-gray-500">הערות:</span> <strong>${order.notes}</strong></div>` : ''}
-      </div>
-
-      <div class="border-t pt-4">
-        <p class="text-sm font-semibold text-gray-700 mb-2">פריטים:</p>
-        <ul class="space-y-1">
-          ${(order.items || []).map((item) => `
-            <li class="text-sm flex justify-between">
-              <span>${item.name || item.name_he || 'פריט'}
-                ${(item.toppings || []).length ? `<span class="text-gray-400 text-xs"> + ${item.toppings.map(t => t.name || t.name_he).join(', ')}</span>` : ''}
-              </span>
-              <span class="font-medium">₪${item.price || 0}</span>
-            </li>`).join('')}
-        </ul>
-      </div>
-
-      <div class="border-t pt-3 flex justify-between font-bold text-base">
-        <span>סה"כ</span>
-        <span>₪${(parseFloat(order.total_price) || 0).toFixed(2)}</span>
-      </div>
-
-      <div class="flex justify-between items-center border-t pt-3">
-        <span class="text-sm text-gray-500">סטטוס: ${statusBadge(order.status)}</span>
-        <span class="text-xs text-gray-400">${formatDate(order.created_at)}</span>
-      </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:.88rem;margin-bottom:16px">
+      <div><span style="color:var(--text-muted)">לקוח:</span> <strong>${order.customer_name||'—'}</strong></div>
+      <div><span style="color:var(--text-muted)">טלפון:</span> <strong>${order.customer_phone||order.phone||'—'}</strong></div>
+      <div><span style="color:var(--text-muted)">אספקה:</span> <strong>${order.delivery_method==='delivery'?'🛵 משלוח':'🏍️ איסוף'}</strong></div>
+      <div><span style="color:var(--text-muted)">תשלום:</span> <strong>${order.payment_method==='cash'?'💵 מזומן':'💳 אשראי'}</strong></div>
+      ${order.address?`<div style="grid-column:span 2"><span style="color:var(--text-muted)">כתובת:</span> <strong>${order.address}</strong></div>`:''}
+      ${order.notes?`<div style="grid-column:span 2"><span style="color:var(--text-muted)">הערות:</span> <strong>${order.notes}</strong></div>`:''}
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:14px">
+      <div style="font-weight:700;font-size:.82rem;color:var(--text-muted);margin-bottom:8px">פריטים</div>
+      ${(order.items||[]).map(item=>`
+        <div style="display:flex;justify-content:space-between;font-size:.88rem;padding:5px 0;border-bottom:1px solid var(--border)">
+          <span>${item.name||item.name_he||'פריט'}
+            ${(item.toppings||[]).length?`<span style="color:var(--text-muted);font-size:.78rem"> + ${item.toppings.map(t=>t.name||t.name_he).join(', ')}</span>`:''}
+          </span>
+          <span style="font-weight:700">₪${item.price||0}</span>
+        </div>`).join('')}
+    </div>
+    <div style="display:flex;justify-content:space-between;font-weight:800;font-size:1rem;padding:10px 0;border-top:2px solid var(--border)">
+      <span>סה"כ</span>
+      <span style="color:var(--primary)">₪${(parseFloat(order.total_price)||0).toFixed(2)}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:.8rem;color:var(--text-muted)">
+      <span>סטטוס: ${statusBadge(order.status)}</span>
+      <span>${formatDate(order.created_at)}</span>
     </div>`;
-  document.getElementById('orderModal').classList.remove('hidden');
+  openModal('orderModal');
 }
 
 // ─── STATS ────────────────────────────────────────────────────────────────────
@@ -228,39 +233,39 @@ async function loadStats() {
   try {
     const s = await api('GET', `/stats?date=${dateInput.value}`);
     document.getElementById('statsCards').innerHTML = `
-      <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-        <div class="text-2xl font-bold text-orange-500">${s.order_count}</div>
-        <div class="text-xs text-gray-500 mt-1">הזמנות היום</div>
+      <div class="stat-card violet">
+        <div class="stat-value">${s.order_count}</div>
+        <div class="stat-label">הזמנות היום</div>
       </div>
-      <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-        <div class="text-2xl font-bold text-green-600">₪${s.revenue.toFixed(0)}</div>
-        <div class="text-xs text-gray-500 mt-1">הכנסות</div>
+      <div class="stat-card green">
+        <div class="stat-value">₪${s.revenue.toFixed(0)}</div>
+        <div class="stat-label">הכנסות</div>
       </div>
-      <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-        <div class="text-2xl font-bold text-purple-600">${s.avg_delivery_minutes != null ? s.avg_delivery_minutes + ' דק׳' : '—'}</div>
-        <div class="text-xs text-gray-500 mt-1">זמן מסירה ממוצע</div>
+      <div class="stat-card violet">
+        <div class="stat-value">${s.avg_delivery_minutes != null ? s.avg_delivery_minutes + '′' : '—'}</div>
+        <div class="stat-label">זמן מסירה ממוצע</div>
       </div>
-      <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-        <div class="flex gap-3">
-          <div><div class="text-lg font-bold text-green-600">${s.paid_count}</div><div class="text-xs text-gray-500">שולם</div></div>
-          <div class="border-r border-gray-100"></div>
-          <div><div class="text-lg font-bold text-yellow-500">${s.pending_payment_count}</div><div class="text-xs text-gray-500">ממתין</div></div>
+      <div class="stat-card">
+        <div style="display:flex;gap:16px">
+          <div><div class="stat-value" style="font-size:1.4rem;color:#16a34a">${s.paid_count}</div><div class="stat-label">שולם</div></div>
+          <div style="width:1px;background:var(--border)"></div>
+          <div><div class="stat-value" style="font-size:1.4rem;color:#c07000">${s.pending_payment_count}</div><div class="stat-label">ממתין</div></div>
         </div>
       </div>
-      <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm col-span-2 md:col-span-1">
-        <div class="text-xs font-semibold text-gray-700 mb-2">🏆 נמכרים ביותר</div>
+      <div class="stat-card" style="grid-column:span 2">
+        <div style="font-size:.75rem;font-weight:700;color:var(--primary);margin-bottom:8px">🏆 נמכרים ביותר</div>
         ${s.top_products.map((p, i) => `
-          <div class="text-xs flex justify-between py-0.5">
-            <span>${i + 1}. ${p.name}</span><span class="font-medium">${p.count}x</span>
-          </div>`).join('') || '<div class="text-xs text-gray-400">אין נתונים</div>'}
+          <div style="display:flex;justify-content:space-between;font-size:.8rem;padding:3px 0;color:var(--text)">
+            <span>${i+1}. ${p.name}</span><span style="font-weight:700;color:var(--primary)">${p.count}x</span>
+          </div>`).join('') || '<div style="font-size:.8rem;color:var(--text-muted)">אין נתונים</div>'}
       </div>
-      <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-        <div class="text-2xl font-bold text-blue-600">${s.conversations_started}</div>
-        <div class="text-xs text-gray-500 mt-1">שיחות התחילו</div>
+      <div class="stat-card">
+        <div class="stat-value" style="color:var(--accent)">${s.conversations_started}</div>
+        <div class="stat-label">שיחות התחילו</div>
       </div>
-      <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-        <div class="text-2xl font-bold text-gray-400">${s.not_converted}</div>
-        <div class="text-xs text-gray-500 mt-1">לא הזמינו</div>
+      <div class="stat-card">
+        <div class="stat-value" style="color:#9b93b0">${s.not_converted}</div>
+        <div class="stat-label">לא הזמינו</div>
       </div>`;
   } catch { /* stats are non-critical */ }
 }
@@ -294,9 +299,8 @@ function imgThumb(url) {
 }
 
 function toggleSwitch(isOn, onClickFn) {
-  return `<button onclick="${onClickFn}"
-    class="w-10 h-6 rounded-full transition-colors flex-shrink-0 relative ${isOn ? 'bg-green-500' : 'bg-gray-300'}">
-    <span class="block w-4 h-4 rounded-full bg-white shadow absolute top-1 transition-all ${isOn ? 'right-1' : 'left-1'}"></span>
+  return `<button onclick="${onClickFn}" class="toggle ${isOn?'on':'off'}">
+    <span class="toggle-dot"></span>
   </button>`;
 }
 
@@ -599,33 +603,25 @@ function renderCustomersTable(customers) {
     return;
   }
   container.innerHTML = `
-    <div class="overflow-x-auto">
-    <table class="w-full text-sm">
-      <thead class="bg-gray-50 border-b border-gray-100">
-        <tr class="text-gray-500 text-xs font-medium">
-          <th class="px-4 py-3"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
-          <th class="px-4 py-3 text-right">שם</th>
-          <th class="px-4 py-3 text-right">טלפון</th>
-          <th class="px-4 py-3 text-right">כתובת אחרונה</th>
-          <th class="px-4 py-3 text-right">הזמנות</th>
-          <th class="px-4 py-3 text-right">סה"כ רכישות</th>
-          <th class="px-4 py-3 text-right">הזמנה אחרונה</th>
+    <div style="overflow-x:auto">
+    <table>
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
+          <th>שם</th><th>טלפון</th><th>כתובת אחרונה</th>
+          <th>הזמנות</th><th>סה"כ רכישות</th><th>הזמנה אחרונה</th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-gray-50">
+      <tbody>
         ${customers.map((c) => `
-        <tr class="hover:bg-gray-50">
-          <td class="px-4 py-3">
-            <input type="checkbox" value="${c.phone}" onchange="toggleCustomer('${c.phone}', this.checked)" class="customer-checkbox">
-          </td>
-          <td class="px-4 py-3">
-            <div class="font-medium text-gray-900">${c.name || '—'}</div>
-          </td>
-          <td class="px-4 py-3 text-gray-500 text-xs" dir="ltr">${c.customer_phone || c.phone || '—'}</td>
-          <td class="px-4 py-3 text-gray-500 text-xs">${c.last_address || '—'}</td>
-          <td class="px-4 py-3 text-center font-semibold text-orange-500">${c.order_count}</td>
-          <td class="px-4 py-3 font-semibold">₪${parseFloat(c.total_spent || 0).toFixed(0)}</td>
-          <td class="px-4 py-3 text-xs text-gray-400">${formatDate(c.last_order_at)}</td>
+        <tr>
+          <td><input type="checkbox" value="${c.phone}" onchange="toggleCustomer('${c.phone}',this.checked)" class="customer-checkbox"></td>
+          <td style="font-weight:700">${c.name||'—'}</td>
+          <td style="color:var(--text-muted);font-size:.8rem" dir="ltr">${c.customer_phone||c.phone||'—'}</td>
+          <td style="color:var(--text-muted);font-size:.8rem">${c.last_address||'—'}</td>
+          <td style="text-align:center;font-weight:800;color:var(--primary)">${c.order_count}</td>
+          <td style="font-weight:800">₪${parseFloat(c.total_spent||0).toFixed(0)}</td>
+          <td style="color:var(--text-muted);font-size:.8rem">${formatDate(c.last_order_at)}</td>
         </tr>`).join('')}
       </tbody>
     </table>
@@ -644,13 +640,10 @@ function toggleCustomer(phone, selected) {
 }
 
 function openBroadcastModal() {
-  if (selectedPhones.size === 0) {
-    alert('יש לבחור לקוחות לפני השליחה');
-    return;
-  }
+  if (selectedPhones.size === 0) { alert('יש לבחור לקוחות לפני השליחה'); return; }
   document.getElementById('broadcastRecipients').textContent = `נמענים נבחרו: ${selectedPhones.size}`;
   document.getElementById('broadcastMessage').value = '';
-  document.getElementById('broadcastModal').classList.remove('hidden');
+  openModal('broadcastModal');
 }
 
 async function sendBroadcast() {
@@ -684,28 +677,26 @@ const DAY_ORDER  = ['sun','mon','tue','wed','thu','fri','sat'];
 
 function renderSettingsForm(s) {
   const card = (title, content) => `
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-      <h3 class="font-semibold text-gray-900 mb-4">${title}</h3>
+    <div class="card" style="padding:22px 24px">
+      <div style="font-size:1rem;font-weight:800;color:var(--text);margin-bottom:16px">${title}</div>
       ${content}
     </div>`;
 
   const toggle = (key, label, checked) => `
-    <label class="flex items-center justify-between cursor-pointer py-1.5">
-      <span class="text-sm text-gray-700">${label}</span>
-      <input type="checkbox" class="setting-toggle w-4 h-4 accent-orange-500" data-key="${key}" ${checked ? 'checked' : ''}>
-    </label>`;
+    <div class="setting-row">
+      <label style="cursor:pointer">${label}</label>
+      <input type="checkbox" class="setting-toggle" data-key="${key}" ${checked?'checked':''}>
+    </div>`;
 
   const hours = s.business_hours || {};
   const hoursRows = DAY_ORDER.map((day) => {
     const h = hours[day] || { open: '10:00', close: '23:00' };
     return `
-      <div class="flex items-center gap-3 py-1.5 border-b border-gray-50 last:border-0">
-        <span class="text-sm text-gray-700 w-16 flex-shrink-0">יום ${DAY_LABELS[day]}</span>
-        <input type="time" value="${h.open}"  data-day="${day}" data-field="open"
-          class="hours-input border border-gray-200 rounded-lg px-2 py-1 text-sm w-28">
-        <span class="text-gray-400 text-sm">—</span>
-        <input type="time" value="${h.close}" data-day="${day}" data-field="close"
-          class="hours-input border border-gray-200 rounded-lg px-2 py-1 text-sm w-28">
+      <div class="hours-row">
+        <span class="hours-day">יום ${DAY_LABELS[day]}</span>
+        <input type="time" value="${h.open}"  data-day="${day}" data-field="open"  class="hours-input" style="width:110px">
+        <span style="color:var(--text-muted);font-size:.82rem">—</span>
+        <input type="time" value="${h.close}" data-day="${day}" data-field="close" class="hours-input" style="width:110px">
       </div>`;
   }).join('');
 
@@ -720,27 +711,27 @@ function renderSettingsForm(s) {
       ${toggle('payment_credit', 'קבלת אשראי',  s.payment_credit !== false)}
     `)}
     ${card('🛵 משלוח', `
-      <div class="grid grid-cols-2 gap-4 mb-3">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
         <div>
-          <label class="text-sm text-gray-700 block mb-1">מחיר משלוח (₪)</label>
-          <input type="number" id="deliveryPrice" value="${s.delivery_price ?? 30}" min="0" step="1"
-            class="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full">
+          <label style="display:block;font-size:.82rem;font-weight:700;color:#3d3352;margin-bottom:6px">מחיר משלוח (₪)</label>
+          <input type="number" id="deliveryPrice" value="${s.delivery_price ?? 30}" min="0" step="1" style="width:100%">
         </div>
         <div>
-          <label class="text-sm text-gray-700 block mb-1">מינימום הזמנה למשלוח (₪)</label>
-          <input type="number" id="minOrderDelivery" value="${s.min_order_delivery ?? 0}" min="0" step="1"
-            class="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full">
+          <label style="display:block;font-size:.82rem;font-weight:700;color:#3d3352;margin-bottom:6px">מינימום הזמנה (₪)</label>
+          <input type="number" id="minOrderDelivery" value="${s.min_order_delivery ?? 0}" min="0" step="1" style="width:100%">
         </div>
       </div>
       <div>
-        <label class="text-sm text-gray-700 block mb-1">ערים למשלוח (מופרדות בפסיקים)</label>
-        <input type="text" id="deliveryCities" value="${(s.delivery_cities || []).join(', ')}"
-          class="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full">
+        <label style="display:block;font-size:.82rem;font-weight:700;color:#3d3352;margin-bottom:6px">ערים למשלוח (מופרדות בפסיקים)</label>
+        <input type="text" id="deliveryCities" value="${(s.delivery_cities||[]).join(', ')}" style="width:100%">
       </div>
     `)}
-    ${card('🕐 שעות פתיחה', hoursRows)}
-    <div class="flex justify-end">
-      <button onclick="saveSettings()" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2.5 rounded-xl font-medium">
+    <div class="card" style="padding:22px 24px">
+      <div style="font-size:1rem;font-weight:800;color:var(--text);margin-bottom:16px">🕐 שעות פתיחה</div>
+      <div class="hours-grid">${hoursRows}</div>
+    </div>
+    <div style="display:flex;justify-content:flex-end">
+      <button onclick="saveSettings()" class="btn btn-primary" style="padding:12px 28px;font-size:.95rem">
         שמור הגדרות
       </button>
     </div>`;
@@ -773,6 +764,7 @@ async function saveSettings() {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
+// Init: show orders tab
 showTab('orders');
 // Auto-refresh orders every 30s
 setInterval(() => {
