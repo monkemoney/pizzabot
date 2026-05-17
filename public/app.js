@@ -649,112 +649,277 @@ async function sendBroadcast() {
 
 // ─── SETTINGS ─────────────────────────────────────────────────────────────────
 
+// ─── SETTINGS ────────────────────────────────────────────────────────────────
+
+let _currentSettings = {};
+let _deliveryZones   = [];
+
 async function loadSettings() {
   const container = document.getElementById('settingsForm');
-  container.innerHTML = '<div class="text-gray-400">טוען...</div>';
+  container.innerHTML = '<div style="color:var(--text-muted);padding:20px">טוען...</div>';
   try {
-    const s = await api('GET', '/settings');
-    renderSettingsForm(s);
+    _currentSettings = await api('GET', '/settings');
+    _deliveryZones   = Array.isArray(_currentSettings.delivery_zones) ? _currentSettings.delivery_zones : [];
+    renderSettingsForm(_currentSettings);
   } catch (err) {
-    container.innerHTML = `<div class="text-red-500">${err.message}</div>`;
+    container.innerHTML = `<div style="color:red">${err.message}</div>`;
   }
 }
 
 const DAY_LABELS = { sun:'ראשון', mon:'שני', tue:'שלישי', wed:'רביעי', thu:'חמישי', fri:'שישי', sat:'שבת' };
 const DAY_ORDER  = ['sun','mon','tue','wed','thu','fri','sat'];
 
+// ── Helpers ──
+
+function sField(id, label, value, type='text', placeholder='') {
+  return `<div style="margin-bottom:14px">
+    <label style="display:block;font-size:.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">${label}</label>
+    <input type="${type}" id="${id}" value="${value||''}" placeholder="${placeholder}" style="width:100%">
+  </div>`;
+}
+
+function sToggle(key, label, checked, cls='') {
+  return `<div class="setting-row ${cls}">
+    <label style="font-weight:600;cursor:pointer">${label}</label>
+    <input type="checkbox" class="setting-toggle" data-key="${key}" ${checked?'checked':''}>
+  </div>`;
+}
+
+function saveBtn(fn, label='שמור') {
+  return `<div style="display:flex;justify-content:flex-end;margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
+    <button onclick="${fn}()" class="btn btn-primary">${label}</button>
+  </div>`;
+}
+
+function sCard(title, content) {
+  return `<div class="card" style="padding:24px 26px;margin-bottom:18px">
+    <div style="font-size:1rem;font-weight:800;color:var(--text);margin-bottom:18px">${title}</div>
+    ${content}
+  </div>`;
+}
+
+async function saveSection(updates, successMsg) {
+  try {
+    await api('PATCH', '/settings', updates);
+    showToast(successMsg || 'נשמר ✅');
+  } catch (err) { alert(err.message); }
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:var(--primary);color:#fff;padding:10px 24px;border-radius:50px;font-weight:700;font-size:.88rem;z-index:9999;box-shadow:0 4px 20px rgba(94,23,235,.3)';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+// ── Render ──
+
 function renderSettingsForm(s) {
-  const card = (title, content) => `
-    <div class="card" style="padding:22px 24px">
-      <div style="font-size:1rem;font-weight:800;color:var(--text);margin-bottom:16px">${title}</div>
-      ${content}
-    </div>`;
-
-  const toggle = (key, label, checked) => `
-    <div class="setting-row">
-      <label style="cursor:pointer">${label}</label>
-      <input type="checkbox" class="setting-toggle" data-key="${key}" ${checked?'checked':''}>
-    </div>`;
-
   const hours = s.business_hours || {};
+
   const hoursRows = DAY_ORDER.map((day) => {
-    const h = hours[day] || { open: '10:00', close: '23:00' };
-    return `
-      <div class="hours-row">
-        <span class="hours-day">יום ${DAY_LABELS[day]}</span>
-        <input type="time" value="${h.open}"  data-day="${day}" data-field="open"  class="hours-input" style="width:110px">
-        <span style="color:var(--text-muted);font-size:.82rem">—</span>
-        <input type="time" value="${h.close}" data-day="${day}" data-field="close" class="hours-input" style="width:110px">
-      </div>`;
+    const h = hours[day] || { open: '10:00', close: '23:00', is_open: true };
+    const open = h.is_open !== false;
+    return `<div class="hours-row" style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:#faf8ff;border-radius:12px;margin-bottom:8px">
+      <input type="checkbox" class="hours-active" data-day="${day}" ${open?'checked':''} style="width:16px;height:16px;accent-color:var(--primary)">
+      <span class="hours-day" style="font-weight:700;color:var(--primary);min-width:62px">יום ${DAY_LABELS[day]}</span>
+      <input type="time" value="${h.open}"  data-day="${day}" data-field="open"  class="hours-input" style="width:110px" ${!open?'disabled':''}>
+      <span style="color:var(--text-muted);font-size:.82rem">—</span>
+      <input type="time" value="${h.close}" data-day="${day}" data-field="close" class="hours-input" style="width:110px" ${!open?'disabled':''}>
+    </div>`;
   }).join('');
 
   document.getElementById('settingsForm').innerHTML = `
-    ${card('🍕 הזמנות', `
-      ${toggle('is_open',          'פתוח לקבלת הזמנות', s.is_open !== false)}
-      ${toggle('delivery_enabled', 'משלוח מאופשר',       s.delivery_enabled !== false)}
-      ${toggle('pickup_enabled',   'איסוף עצמי מאופשר',  s.pickup_enabled   !== false)}
+
+    ${sCard('🏢 פרטי העסק', `
+      ${sField('biz_name',    'שם העסק',           s.business_name    || '', 'text', 'פיצה דליבריס')}
+      ${sField('biz_address', 'כתובת העסק',         s.business_address || '', 'text', 'רוטשילד 19, תל אביב')}
+      ${sField('biz_bot_url', 'כתובת שרת הבוט',     s.bot_url          || '', 'url',  'https://...')}
+      ${sField('biz_pickup',  'כתובת לאיסוף עצמי', s.pickup_address   || '', 'text', 'רוטשילד 19, תל אביב')}
+      ${saveBtn('saveBizInfo')}
     `)}
-    ${card('💳 תשלום', `
-      ${toggle('payment_cash',   'קבלת מזומן',  s.payment_cash   !== false)}
-      ${toggle('payment_credit', 'קבלת אשראי',  s.payment_credit !== false)}
+
+    ${sCard('💳 אמצעי תשלום', `
+      ${sToggle('payment_cash',   '💵 מזומן',   s.payment_cash   !== false)}
+      ${sToggle('payment_credit', '💳 אשראי',   s.payment_credit !== false)}
+      ${sToggle('payment_bit',    '🔵 ביט',      !!s.payment_bit)}
+      ${sToggle('payment_paybox', '🟣 פייבוקס',  !!s.payment_paybox)}
+      ${sToggle('payment_other',  '💸 אחר',      !!s.payment_other)}
+      ${saveBtn('savePayments')}
     `)}
-    ${card('🛵 משלוח', `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-        <div>
-          <label style="display:block;font-size:.82rem;font-weight:700;color:#3d3352;margin-bottom:6px">מחיר משלוח (₪)</label>
-          <input type="number" id="deliveryPrice" value="${s.delivery_price ?? 30}" min="0" step="1" style="width:100%">
-        </div>
-        <div>
-          <label style="display:block;font-size:.82rem;font-weight:700;color:#3d3352;margin-bottom:6px">מינימום הזמנה (₪)</label>
-          <input type="number" id="minOrderDelivery" value="${s.min_order_delivery ?? 0}" min="0" step="1" style="width:100%">
-        </div>
+
+    ${sCard('🛵 סוגי הזמנה', `
+      ${sToggle('delivery_enabled', 'משלוח מאופשר',      s.delivery_enabled !== false)}
+      ${sToggle('pickup_enabled',   'איסוף עצמי מאופשר', s.pickup_enabled   !== false)}
+      ${sToggle('is_open',          'בוט פתוח לקבלת הזמנות', s.is_open !== false)}
+      ${saveBtn('saveOrderTypes')}
+    `)}
+
+    ${sCard('✏️ הגדרות שינוי הזמנות', `
+      ${sToggle('allow_order_edits', 'אפשר ללקוח לשנות/לבטל הזמנה', s.allow_order_edits !== false)}
+      <div style="margin-top:14px;padding:14px;background:#faf8ff;border-radius:12px">
+        <div style="font-weight:700;font-size:.85rem;margin-bottom:12px;color:var(--text)">תנאי לשינוי</div>
+        <label style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;font-size:.88rem">
+          <input type="radio" name="editMode" value="time" ${!s.edit_from_confirmation?'checked':''}
+            onchange="document.getElementById('editTimeLimitRow').style.display='flex'">
+          בתוך
+          <input type="number" id="editTimeLimit" value="${s.edit_time_limit ?? 15}" min="1" max="60"
+            style="width:64px;padding:5px 10px;border-radius:8px;border:2px solid var(--border);font-family:inherit;font-weight:700">
+          דקות מביצוע ההזמנה
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:.88rem">
+          <input type="radio" name="editMode" value="confirm" ${s.edit_from_confirmation?'checked':''}
+            onchange="document.getElementById('editTimeLimitRow').style.display='none'">
+          מרגע אישור ההזמנה (ללא מגבלת זמן)
+        </label>
       </div>
-      <div>
-        <label style="display:block;font-size:.82rem;font-weight:700;color:#3d3352;margin-bottom:6px">ערים למשלוח (מופרדות בפסיקים)</label>
-        <input type="text" id="deliveryCities" value="${(s.delivery_cities||[]).join(', ')}" style="width:100%">
-      </div>
+      ${saveBtn('saveEditSettings')}
     `)}
-    ${card('📍 כתובת איסוף עצמי', `
-      <div>
-        <label style="display:block;font-size:.82rem;font-weight:700;color:#3d3352;margin-bottom:6px">כתובת מלאה (תוצג ללקוחות שבוחרים איסוף)</label>
-        <input type="text" id="pickupAddress" value="${s.pickup_address || ''}" style="width:100%" placeholder="רוטשילד 19, תל אביב">
-      </div>
+
+    ${sCard('🕐 שעות פעילות', `
+      <div>${hoursRows}</div>
+      ${saveBtn('saveHours')}
     `)}
-    <div class="card" style="padding:22px 24px">
-      <div style="font-size:1rem;font-weight:800;color:var(--text);margin-bottom:16px">🕐 שעות פתיחה</div>
-      <div class="hours-grid">${hoursRows}</div>
-    </div>
-    <div style="display:flex;justify-content:flex-end">
-      <button onclick="saveSettings()" class="btn btn-primary" style="padding:12px 28px;font-size:.95rem">
-        שמור הגדרות
-      </button>
-    </div>`;
+
+    ${sCard('📍 אזורי משלוח', `
+      <div id="zonesTable"></div>
+      <div style="margin-top:12px">
+        <button onclick="addZoneRow()" class="btn btn-outline btn-sm">+ הוסף אזור</button>
+      </div>
+      ${saveBtn('saveZones')}
+    `)}
+  `;
+
+  renderZonesTable();
+
+  // Sync hours-active toggles
+  document.querySelectorAll('.hours-active').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const day = cb.dataset.day;
+      document.querySelectorAll(`.hours-input[data-day="${day}"]`)
+        .forEach((inp) => inp.disabled = !cb.checked);
+    });
+  });
 }
 
-async function saveSettings() {
+// ── Section save functions ──
+
+async function saveBizInfo() {
+  await saveSection({
+    business_name:    document.getElementById('biz_name').value.trim(),
+    business_address: document.getElementById('biz_address').value.trim(),
+    bot_url:          document.getElementById('biz_bot_url').value.trim(),
+    pickup_address:   document.getElementById('biz_pickup').value.trim(),
+  });
+}
+
+async function savePayments() {
   const updates = {};
-  document.querySelectorAll('.setting-toggle').forEach((el) => {
+  document.querySelectorAll('.setting-toggle[data-key^="payment_"]').forEach((el) => {
     updates[el.dataset.key] = el.checked;
   });
-  updates.pickup_address      = document.getElementById('pickupAddress').value.trim() || null;
-  updates.delivery_price      = parseFloat(document.getElementById('deliveryPrice').value) || 30;
-  updates.min_order_delivery  = parseFloat(document.getElementById('minOrderDelivery').value) || 0;
-  updates.delivery_cities     = document.getElementById('deliveryCities').value
-    .split(',').map((c) => c.trim()).filter(Boolean);
+  await saveSection(updates);
+}
 
-  // Business hours
-  const businessHours = {};
-  document.querySelectorAll('.hours-input').forEach((el) => {
-    const { day, field } = el.dataset;
-    if (!businessHours[day]) businessHours[day] = {};
-    businessHours[day][field] = el.value;
+async function saveOrderTypes() {
+  const updates = {};
+  ['delivery_enabled','pickup_enabled','is_open'].forEach((key) => {
+    const el = document.querySelector(`.setting-toggle[data-key="${key}"]`);
+    if (el) updates[key] = el.checked;
   });
-  updates.business_hours = businessHours;
+  await saveSection(updates);
+}
 
-  try {
-    await api('PATCH', '/settings', updates);
-    alert('הגדרות נשמרו בהצלחה ✅');
-  } catch (err) { alert(err.message); }
+async function saveEditSettings() {
+  const allow  = document.querySelector('.setting-toggle[data-key="allow_order_edits"]')?.checked ?? true;
+  const mode   = document.querySelector('input[name="editMode"]:checked')?.value;
+  const limit  = parseInt(document.getElementById('editTimeLimit')?.value) || 15;
+  await saveSection({
+    allow_order_edits:    allow,
+    edit_from_confirmation: mode === 'confirm',
+    edit_time_limit:      limit,
+  });
+}
+
+async function saveHours() {
+  const businessHours = {};
+  DAY_ORDER.forEach((day) => {
+    const active = document.querySelector(`.hours-active[data-day="${day}"]`)?.checked ?? true;
+    const open   = document.querySelector(`.hours-input[data-day="${day}"][data-field="open"]`)?.value || '10:00';
+    const close  = document.querySelector(`.hours-input[data-day="${day}"][data-field="close"]`)?.value || '23:00';
+    businessHours[day] = { open, close, is_open: active };
+  });
+  await saveSection({ business_hours: businessHours });
+}
+
+// ── Delivery Zones ──
+
+function renderZonesTable() {
+  const t = document.getElementById('zonesTable');
+  if (!t) return;
+  if (!_deliveryZones.length) {
+    t.innerHTML = '<div style="color:var(--text-muted);font-size:.85rem;padding:8px 0">אין אזורי משלוח — הוסף אזור ראשון</div>';
+    return;
+  }
+  t.innerHTML = `
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:.83rem">
+      <thead>
+        <tr style="background:var(--primary-soft);text-align:right">
+          <th style="padding:9px 12px;font-weight:700;color:var(--primary)">עיר</th>
+          <th style="padding:9px 12px;font-weight:700;color:var(--primary)">אזור</th>
+          <th style="padding:9px 12px;font-weight:700;color:var(--primary)">דמי משלוח (₪)</th>
+          <th style="padding:9px 12px;font-weight:700;color:var(--primary)">מינימום (₪)</th>
+          <th style="padding:9px 12px;font-weight:700;color:var(--primary)">זמן משוער (דק׳)</th>
+          <th style="padding:9px 12px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${_deliveryZones.map((z, i) => `
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 10px"><input type="text" value="${z.city||''}" data-zi="${i}" data-zf="city"
+            style="width:100%;min-width:80px" class="zone-inp"></td>
+          <td style="padding:8px 10px"><input type="text" value="${z.area||''}" data-zi="${i}" data-zf="area"
+            style="width:100%;min-width:80px" class="zone-inp"></td>
+          <td style="padding:8px 10px"><input type="number" value="${z.fee||0}" data-zi="${i}" data-zf="fee"
+            style="width:80px" class="zone-inp" min="0"></td>
+          <td style="padding:8px 10px"><input type="number" value="${z.min_order||0}" data-zi="${i}" data-zf="min_order"
+            style="width:80px" class="zone-inp" min="0"></td>
+          <td style="padding:8px 10px"><input type="number" value="${z.eta_minutes||45}" data-zi="${i}" data-zf="eta_minutes"
+            style="width:80px" class="zone-inp" min="1"></td>
+          <td style="padding:8px 10px">
+            <button onclick="removeZone(${i})" class="btn-danger" style="font-size:.75rem;padding:4px 10px">הסר</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>`;
+
+  document.querySelectorAll('.zone-inp').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      const i = parseInt(inp.dataset.zi);
+      const f = inp.dataset.zf;
+      if (!_deliveryZones[i]) return;
+      _deliveryZones[i][f] = ['fee','min_order','eta_minutes'].includes(f)
+        ? parseFloat(inp.value) || 0
+        : inp.value;
+    });
+  });
+}
+
+function addZoneRow() {
+  _deliveryZones.push({ city: '', area: '', fee: 30, min_order: 0, eta_minutes: 45 });
+  renderZonesTable();
+}
+
+function removeZone(i) {
+  _deliveryZones.splice(i, 1);
+  renderZonesTable();
+}
+
+async function saveZones() {
+  await saveSection({ delivery_zones: _deliveryZones });
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
