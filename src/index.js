@@ -92,26 +92,28 @@ app.post('/webhook', (req, res) => {
     const hasConfirm = voted.some((v) => v.includes('✅ אישור') || v.includes('✅ Confirm'));
     const hasNoTop   = voted.some((v) => v.includes('ללא תוספות') || v.includes('No toppings'));
 
-    // Detect poll type: item/topping options contain " — " (price separator)
-    const isItemOrToppingPoll = voted.some((v) => v.includes(' — '));
-
     let textMessage = null;
+
     if (hasBack) {
+      // Back button — return to category poll
       textMessage = '🔙 חזרה לתפריט';
-    } else if (isItemOrToppingPoll) {
-      // Items/toppings poll — only act when customer confirms with ✅
-      if (hasConfirm) {
-        const selections = voted.filter((v) => !v.startsWith('✅') && !v.startsWith('🔙'));
-        textMessage = selections.length
-          ? `בחרתי: ${selections.join(', ')}${hasNoTop ? ' | ללא תוספות' : ''}`
-          : (hasNoTop ? 'ללא תוספות' : null);
+    } else if (hasConfirm) {
+      // Multi-select poll (items or toppings) — user confirmed selection
+      const selections = voted.filter((v) => !v.startsWith('✅') && !v.startsWith('🔙'));
+      if (selections.length) {
+        textMessage = `בחרתי: ${selections.join(', ')}${hasNoTop ? ' | ללא תוספות' : ''}`;
+      } else if (hasNoTop) {
+        textMessage = 'ללא תוספות';
+      } else {
+        // Confirmed with nothing selected — treat as "no preference"
+        textMessage = 'ללא תוספות';
       }
-      // else: intermediate vote in multi-select — wait for confirm
-    } else {
-      // Category poll (single answer, no " — " in options) — pass directly
-      const selection = voted.find((v) => !v.startsWith('✅') && !v.startsWith('🔙'));
+    } else if (!voted.some((v) => v.startsWith('✅') || v.startsWith('🔙'))) {
+      // Single-answer category poll — no control options voted, pass directly
+      const selection = voted.find((v) => v.length > 0);
       if (selection) textMessage = selection;
     }
+    // else: intermediate multi-select vote (no confirm yet) — ignore
 
     if (textMessage) {
       handleMessage(phone, textMessage).catch((err) =>
