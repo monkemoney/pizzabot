@@ -26,7 +26,7 @@ async function getProducts() {
     return cache || { main: [], toppings: [] };
   }
 
-  const main     = data.filter((p) => p.category === 'main');
+  const main     = data.filter((p) => p.category === 'main' || p.category === 'drinks');
   const toppings = data.filter((p) => p.category === 'topping');
   cache     = { main, toppings, raw: data };
   cacheTime = now;
@@ -46,18 +46,23 @@ async function buildMenuText(settings) {
   const deliveryEnabled = settings?.delivery_enabled  !== false;
   const pickupEnabled   = settings?.pickup_enabled    !== false;
 
-  const itemLines = main.map((p) => `• ${p.name_he} — ${p.price}₪`).join('\n');
+  const mainItems  = main.filter((p) => p.category === 'main');
+  const drinks     = main.filter((p) => p.category === 'drinks');
+
+  const itemLines    = mainItems.map((p) => `• ${p.name_he} — ${p.price}₪`).join('\n');
+  const drinkLines   = drinks.map((p) => `• ${p.name_he} — ${p.price}₪`).join('\n');
   const toppingLines = toppings.map((t) => `• ${t.name_he} — +${t.price}₪`).join('\n');
 
-  const deliveryLine = deliveryEnabled
-    ? `משלוח: ${deliveryPrice}₪ (לתל אביב בלבד)`
-    : '';
-  const pickupLine = pickupEnabled ? 'איסוף עצמי: חינם' : '';
+  const deliveryLine = deliveryEnabled ? `משלוח: ${deliveryPrice}₪ (לתל אביב בלבד)` : '';
+  const pickupLine   = pickupEnabled   ? 'איסוף עצמי: חינם' : '';
 
   return [
     'תפריט:',
     '──────────────',
     itemLines,
+    '',
+    'שתיות:',
+    drinkLines,
     '',
     'תוספות לפיצה:',
     toppingLines,

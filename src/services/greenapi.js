@@ -97,22 +97,29 @@ async function sendPoll(phone, question, options, multiple = false) {
   }
 }
 
-// Product categories — derived from product name keywords
-function getCategory(nameHe) {
-  if (nameHe.includes('פיצה'))  return 'pizzas';
-  if (nameHe.includes('פסטה'))  return 'pastas';
+// Product categories — derived from DB category field or name keywords
+function getCategory(product) {
+  // Prefer explicit DB category field
+  if (product.category === 'drinks') return 'drinks';
+  const name = product.name_he || product;
+  if (typeof name === 'string') {
+    if (name.includes('פיצה')) return 'pizzas';
+    if (name.includes('פסטה')) return 'pastas';
+  }
   return 'other';
 }
 
 const CATEGORY_LABELS = {
   pizzas: '🍕 פיצות',
   pastas: '🍝 פסטות',
+  drinks: '🥤 שתיות',
   other:  '🥗 מנות נוספות',
 };
 
 const CATEGORY_LABELS_EN = {
   pizzas: '🍕 Pizzas',
   pastas: '🍝 Pastas',
+  drinks: '🥤 Drinks',
   other:  '🥗 More Items',
 };
 
@@ -128,7 +135,7 @@ async function sendMenuList(phone, lang = 'he') {
   const labels = isHe ? CATEGORY_LABELS : CATEGORY_LABELS_EN;
 
   // Find which categories have products
-  const usedCategories = [...new Set(main.map((p) => getCategory(p.name_he)))]
+  const usedCategories = [...new Set(main.map((p) => getCategory(p)))]
     .filter((c) => labels[c]);
 
   const options  = usedCategories.map((c) => labels[c]);
@@ -148,7 +155,7 @@ async function sendCategoryPoll(phone, categoryKey, lang = 'he') {
   const { main } = await getProducts();
 
   const isHe  = lang !== 'en';
-  const items  = main.filter((p) => getCategory(p.name_he) === categoryKey);
+  const items  = main.filter((p) => getCategory(p) === categoryKey);
 
   if (!items.length) {
     await sendMessage(phone, isHe ? 'אין פריטים בקטגוריה זו כרגע.' : 'No items in this category right now.');
@@ -181,7 +188,7 @@ async function sendToppingsPoll(phone, lang = 'he') {
   const isHe = lang !== 'en';
 
   // Get unique toppings from pizza products
-  const pizzaIds = main.filter((p) => getCategory(p.name_he) === 'pizzas').map((p) => p.id);
+  const pizzaIds = main.filter((p) => getCategory(p) === 'pizzas').map((p) => p.id);
   const toppings = (raw || []).filter((p) => p.category === 'topping');
 
   // Fallback: use product_additions via a separate query if needed
