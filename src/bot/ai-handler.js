@@ -2,14 +2,14 @@
 
 const { callClaude }              = require('../services/claude');
 const { buildSystemPrompt }       = require('./prompts');
-const { sendMessage, sendMenuList, sendCategoryPoll, resolveCategoryVote } = require('../services/greenapi');
+const { sendMessage, sendMenuList, sendCategoryPoll, sendToppingsPoll, resolveCategoryVote } = require('../services/greenapi');
 const { getSession, updateSession, savePendingPayment, saveOrder, getLastOrderByPhone } = require('../services/supabase');
 const { createPaymentPage }       = require('../services/cardcom');
 const settings                    = require('../services/settings');
 const crypto                      = require('crypto');
 
 // <!--ACTION:TYPE:{json}--> or <!--ACTION:RESET/SHOW_MENU-->
-const ACTION_RE = /<!--ACTION:(CREATE_PAYMENT|SAVE_ORDER|RESET|SHOW_MENU|SHOW_CATEGORY)(?::([^-]+))?-->/;
+const ACTION_RE = /<!--ACTION:(CREATE_PAYMENT|SAVE_ORDER|RESET|SHOW_MENU|SHOW_CATEGORY|SHOW_TOPPINGS)(?::([^-]+))?-->/;
 
 function stripAction(text) {
   return text.replace(ACTION_RE, '').trim();
@@ -138,11 +138,19 @@ async function handleMessage(phone, userMessage) {
     return;
   }
 
-  // ── SHOW_CATEGORY — item poll for a specific category (step 2) ──
+  // ── SHOW_CATEGORY — item poll (multi-select + confirm) ──
   if (actionType === 'SHOW_CATEGORY') {
     const lang        = detectLang(userMessage, history);
     const categoryKey = (match[2] || '').trim();
     await sendCategoryPoll(phone, categoryKey, lang).catch(() => {});
+    await updateSession(phone, { conversation_history: updatedHistory });
+    return;
+  }
+
+  // ── SHOW_TOPPINGS — toppings poll for pizza ──
+  if (actionType === 'SHOW_TOPPINGS') {
+    const lang = detectLang(userMessage, history);
+    await sendToppingsPoll(phone, lang).catch(() => {});
     await updateSession(phone, { conversation_history: updatedHistory });
     return;
   }

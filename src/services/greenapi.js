@@ -60,20 +60,34 @@ async function sendListMessage(phone, title, description, buttonText, sections) 
 
 // ─── Poll helpers ─────────────────────────────────────────────────────────────
 
+// Control options (never treated as item selections)
+const CTRL_CONFIRM   = '✅ אישור בחירה';
+const CTRL_CONFIRM_EN= '✅ Confirm';
+const CTRL_BACK      = '🔙 חזרה לתפריט';
+const CTRL_BACK_EN   = '🔙 Back to menu';
+const CTRL_NO_TOP    = '✅ ללא תוספות';
+const CTRL_NO_TOP_EN = '✅ No toppings';
+
+function isControlOption(opt) {
+  return [CTRL_CONFIRM, CTRL_CONFIRM_EN, CTRL_BACK, CTRL_BACK_EN,
+          CTRL_NO_TOP, CTRL_NO_TOP_EN].some((c) => opt.includes(c));
+}
+
 /**
- * Send a WhatsApp poll (native — works on all WhatsApp accounts).
+ * Send a WhatsApp poll.
  * @param {string}   phone
- * @param {string}   question   poll title/question
- * @param {string[]} options    up to 12 option strings
+ * @param {string}   question
+ * @param {string[]} options    up to 12 options
+ * @param {boolean}  multiple   allow multiple selections (default false)
  */
-async function sendPoll(phone, question, options) {
+async function sendPoll(phone, question, options, multiple = false) {
   const chatId = toChatId(phone);
   try {
     const r = await axios.post(apiUrl('sendPoll'), {
       chatId,
       message:         question,
       options:         options.map((o) => ({ optionName: o })),
-      multipleAnswers: false,
+      multipleAnswers: multiple,
     });
     return r.data;
   } catch (err) {
@@ -141,12 +155,57 @@ async function sendCategoryPoll(phone, categoryKey, lang = 'he') {
     return;
   }
 
-  const back    = isHe ? '🔙 חזרה לתפריט' : '🔙 Back to menu';
-  const options  = [...items.map((p) => `${p.name_he} — ${p.price}₪`), back];
+  const confirm = isHe ? CTRL_CONFIRM    : CTRL_CONFIRM_EN;
+  const back    = isHe ? CTRL_BACK       : CTRL_BACK_EN;
+  const options  = [
+    ...items.map((p) => `${p.name_he} — ${p.price}₪`),
+    confirm,
+    back,
+  ];
   const label    = (isHe ? CATEGORY_LABELS : CATEGORY_LABELS_EN)[categoryKey] || '';
-  const question = isHe ? `בחר מנה מ${label}:` : `Choose from ${label}:`;
+  const question = isHe
+    ? `בחר מנה מ${label} (ניתן לבחור כמה שתרצה):`
+    : `Choose from ${label} (multiple OK):`;
 
-  await sendPoll(phone, question, options);
+  await sendPoll(phone, question, options, true); // multipleAnswers: true
+}
+
+/**
+ * Step 3 — Toppings poll for pizza orders.
+ * Fetches live toppings from product_additions for pizza products.
+ */
+async function sendToppingsPoll(phone, lang = 'he') {
+  const { getProducts } = require('./menu-service');
+  const { main, raw } = await getProducts();
+
+  const isHe = lang !== 'en';
+
+  // Get unique toppings from pizza products
+  const pizzaIds = main.filter((p) => getCategory(p.name_he) === 'pizzas').map((p) => p.id);
+  const toppings = (raw || []).filter((p) => p.category === 'topping');
+
+  // Fallback: use product_additions via a separate query if needed
+  const { createClient } = require('@supabase/supabase-js');
+  const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  const { data: additions } = await supabase
+    .from('product_additions')
+    .select('name_he, name_en, price')
+    .in('product_id', pizzaIds.length ? pizzaIds : ['00000000-0000-0000-0000-000000000000'])
+    .eq('is_available', true)
+    .order('sort_order');
+
+  const toppingOptions = (additions || []).map((t) => `${t.name_he} — +${t.price}₪`);
+
+  const noTop  = isHe ? CTRL_NO_TOP    : CTRL_NO_TOP_EN;
+  const confirm= isHe ? CTRL_CONFIRM   : CTRL_CONFIRM_EN;
+  const back   = isHe ? CTRL_BACK      : CTRL_BACK_EN;
+
+  const options  = [...toppingOptions, noTop, confirm, back];
+  const question = isHe
+    ? 'אילו תוספות תרצה לפיצה? 🍕 (ניתן לבחור כמה):'
+    : 'Which toppings for your pizza? 🍕 (pick multiple):';
+
+  await sendPoll(phone, question, options, true); // multipleAnswers: true
 }
 
 /**
@@ -188,5 +247,7 @@ async function sendButtons(phone, message, buttons) {
 
 module.exports = {
   sendMessage, sendListMessage, sendMenuList, sendCategoryPoll,
-  sendPoll, resolveCategoryVote, sendButtons, formatPhone, toChatId,
+  sendToppingsPoll, sendPoll, resolveCategoryVote,
+  isControlOption, CTRL_CONFIRM, CTRL_BACK, CTRL_NO_TOP,
+  sendButtons, formatPhone, toChatId,
 };

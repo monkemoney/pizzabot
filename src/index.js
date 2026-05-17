@@ -9,7 +9,7 @@ const dashboardApi     = require('./routes/dashboard-api');
 const paymentRouter    = require('./routes/payment');
 const businessBotRouter = require('./routes/business-bot');
 const { handleMessage }   = require('./bot/handler');
-const { formatPhone }     = require('./services/greenapi');
+const { formatPhone, isControlOption, CTRL_CONFIRM, CTRL_BACK, CTRL_NO_TOP } = require('./services/greenapi');
 const { autoCompleteDeliveredOrders } = require('./services/supabase');
 
 const app  = express();
@@ -74,43 +74,51 @@ app.post('/webhook', (req, res) => {
     textMessage = messageData.buttonsResponseMessage?.selectedDisplayText
                || messageData.buttonsResponseMessage?.selectedButtonId;
   } else if (messageData.typeMessage === 'pollUpdateMessage') {
-    // Log full payload once so we can see the exact format
-    console.log('[poll] raw payload:', JSON.stringify(messageData).slice(0, 800));
+    console.log('[poll] raw:', JSON.stringify(messageData).slice(0, 600));
 
     const senderJid = body.senderData?.sender;
-    let voted = [];
 
-    // Try every known payload shape Green API uses for poll votes
-    const shapes = [
-      messageData.pollMessageData?.stateMessage?.pollOptions,
-      messageData.pollMessageData?.pollOptions,
-      messageData.pollUpdateMessage?.stateMessage?.pollOptions,
-      messageData.pollUpdateMessage?.pollOptions,
-      messageData.stateMessage?.pollOptions,
-    ].filter(Boolean);
+    // Extract all options that currently have votes — try every known payload shape
+    const allOptions = (
+      messageData.pollMessageData?.stateMessage?.pollOptions ||
+      messageData.pollMessageData?.pollOptions ||
+      messageData.pollUpdateMessage?.stateMessage?.pollOptions ||
+      messageData.pollUpdateMessage?.pollOptions ||
+      messageData.stateMessage?.pollOptions ||
+      []
+    );
 
-    for (const options of shapes) {
-      // Shape A: optionVoters is an array of JIDs
-      const byJid = options.filter((o) =>
-        Array.isArray(o.optionVoters) && o.optionVoters.some((v) => v === senderJid)
-      ).map((o) => o.optionName);
-      if (byJid.length) { voted = byJid; break; }
+    const voted = allOptions.filter((o) => {
+      const v = o.optionVoters;
+      if (Array.isArray(v)) return v.length > 0; // any voter (incl. by JID match)
+      if (typeof v === 'number') return v > 0;
+      return false;
+    }).map((o) => o.optionName);
 
-      // Shape B: optionVoters is a count > 0
-      const byCount = options.filter((o) =>
-        typeof o.optionVoters === 'number' && o.optionVoters > 0
-      ).map((o) => o.optionName);
-      if (byCount.length) { voted = byCount; break; }
+    console.log('[poll] voted options:', voted);
 
-      // Shape C: any option that has votes array
-      const byArray = options.filter((o) =>
-        Array.isArray(o.optionVoters) && o.optionVoters.length > 0
-      ).map((o) => o.optionName);
-      if (byArray.length) { voted = byArray; break; }
+    if (!voted.length) return; // no votes yet / intermediate state
+
+    const hasConfirm = voted.some((v) => v.includes('✅ אישור') || v.includes('✅ Confirm'));
+    const hasBack    = voted.some((v) => v.includes('🔙'));
+    const hasNoTop   = voted.some((v) => v.includes('ללא תוספות') || v.includes('No toppings'));
+
+    if (hasBack) {
+      textMessage = CTRL_BACK; // Claude will trigger SHOW_MENU
+    } else if (hasConfirm) {
+      // Confirmed — pass actual selections (excluding control options) as text
+      const selections = voted.filter((v) => !isControlOption(v));
+      if (hasNoTop) {
+        textMessage = selections.length
+          ? `בחרתי: ${selections.join(', ')} | ללא תוספות`
+          : 'ללא תוספות';
+      } else {
+        textMessage = selections.length
+          ? `בחרתי: ${selections.join(', ')}`
+          : CTRL_CONFIRM;
+      }
     }
-
-    console.log('[poll] voted:', voted);
-    if (voted.length) textMessage = voted[0];
+    // If only intermediate votes (no confirm/back) → ignore until user confirms
   }
 
   if (!textMessage) return;
