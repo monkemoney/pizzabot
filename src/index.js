@@ -54,88 +54,6 @@ app.post('/webhook', (req, res) => {
 
   const body = req.body;
 
-  // Log ALL non-standard webhook types so we can debug
-  if (body.typeWebhook !== 'incomingMessageReceived') {
-    console.log(`[webhook] type=${body.typeWebhook}`, JSON.stringify(body).slice(0, 500));
-    // Fall through — don't return yet, handle poll events below
-  }
-
-  // Handle poll vote events — may arrive with different typeWebhook values
-  if (body.typeWebhook === 'pollUpdateReceived' ||
-      (body.typeWebhook === 'incomingMessageReceived' &&
-       body.messageData?.typeMessage === 'pollUpdateMessage')) {
-    const rawSender = body.senderData?.sender;
-    if (!rawSender) return;
-    const phone = formatPhone(rawSender);
-
-    // Real format (confirmed): messageData.pollMessageData.votes
-    const allOptions = (
-      body.messageData?.pollMessageData?.votes ||
-      body.messageData?.pollMessageData?.stateMessage?.pollOptions ||
-      body.pollMessageData?.votes ||
-      []
-    );
-
-    console.log('[poll] typeWebhook:', body.typeWebhook, 'options:', JSON.stringify(allOptions).slice(0, 300));
-
-    const voted = allOptions.filter((o) => {
-      const v = o.optionVoters;
-      if (Array.isArray(v)) return v.length > 0;
-      if (typeof v === 'number') return v > 0;
-      return false;
-    }).map((o) => o.optionName);
-
-    console.log('[poll] voted:', voted);
-
-    if (!voted.length) return;
-
-    const hasBack    = voted.some((v) => v.includes('🔙'));
-    const hasConfirm = voted.some((v) => v.includes('✅ אישור') || v.includes('✅ Confirm'));
-    const hasNoTop   = voted.some((v) => v.includes('ללא תוספות') || v.includes('No toppings'));
-
-    let textMessage = null;
-
-    if (hasConfirm) {
-      // Confirm always wins — even if user accidentally also tapped Back
-      // Multi-select poll (items or toppings) — user confirmed selection
-      const selections = voted.filter((v) => !v.startsWith('✅') && !v.startsWith('🔙'));
-      if (selections.length) {
-        textMessage = `בחרתי: ${selections.join(', ')}${hasNoTop ? ' | ללא תוספות' : ''}`;
-      } else if (hasNoTop) {
-        textMessage = 'ללא תוספות';
-      } else {
-        // Confirmed with nothing selected — treat as "no preference"
-        textMessage = 'ללא תוספות';
-      }
-    } else if (hasBack) {
-      // Back — resend category poll directly, no Claude needed
-      sendMenuList(phone).catch(() => {});
-      return;
-    } else if (!voted.some((v) => v.startsWith('✅') || v.startsWith('🔙'))) {
-      // Single-answer category poll — resolve label → UUID → send item poll directly
-      const selection = voted.find((v) => v.length > 0);
-      if (selection) {
-        resolveCategoryVote(selection).then((categoryId) => {
-          if (categoryId) {
-            sendCategoryPoll(phone, categoryId).catch(() => {});
-          } else {
-            // Unknown category — fall back to Claude
-            handleMessage(phone, selection).catch(() => {});
-          }
-        }).catch(() => {});
-      }
-      return;
-    }
-    // else: intermediate multi-select vote (no confirm yet) — ignore
-
-    if (textMessage) {
-      handleMessage(phone, textMessage).catch((err) =>
-        console.error(`[webhook] poll handleMessage error for ${phone}:`, err.message)
-      );
-    }
-    return;
-  }
-
   if (body.typeWebhook !== 'incomingMessageReceived') return;
 
   const messageData = body.messageData;
@@ -148,66 +66,76 @@ app.post('/webhook', (req, res) => {
   const instanceId = body.instanceData?.idInstance?.toString();
   if (instanceId && instanceId === process.env.GREEN_API_BUSINESS_INSTANCE_ID) return;
 
+  const phone = formatPhone(rawSender);
   let textMessage = null;
 
   if (messageData.typeMessage === 'textMessage') {
     textMessage = messageData.textMessageData?.textMessage;
+
   } else if (messageData.typeMessage === 'listResponseMessage') {
     textMessage = messageData.listResponseMessage?.title || messageData.listResponseMessage?.sticker;
+
   } else if (messageData.typeMessage === 'buttonsResponseMessage') {
     textMessage = messageData.buttonsResponseMessage?.selectedDisplayText
                || messageData.buttonsResponseMessage?.selectedButtonId;
+
   } else if (messageData.typeMessage === 'pollUpdateMessage') {
-    console.log('[poll] raw:', JSON.stringify(messageData).slice(0, 600));
+    // ── Poll vote handler ─────────────────────────────────────────────────────
+    // Green API sends a webhook on EVERY vote change (add/remove).
+    // Confirmed format: messageData.pollMessageData.votes[].optionVoters = [jid]
 
-    const senderJid = body.senderData?.sender;
+    const allOptions = messageData.pollMessageData?.votes || [];
+    const voted = allOptions
+      .filter((o) => Array.isArray(o.optionVoters) ? o.optionVoters.length > 0 : o.optionVoters > 0)
+      .map((o) => o.optionName);
 
-    // Extract all options that currently have votes — try every known payload shape
-    const allOptions = (
-      messageData.pollMessageData?.stateMessage?.pollOptions ||
-      messageData.pollMessageData?.pollOptions ||
-      messageData.pollUpdateMessage?.stateMessage?.pollOptions ||
-      messageData.pollUpdateMessage?.pollOptions ||
-      messageData.stateMessage?.pollOptions ||
-      []
-    );
+    console.log('[poll] voted:', voted);
 
-    const voted = allOptions.filter((o) => {
-      const v = o.optionVoters;
-      if (Array.isArray(v)) return v.length > 0; // any voter (incl. by JID match)
-      if (typeof v === 'number') return v > 0;
-      return false;
-    }).map((o) => o.optionName);
+    if (!voted.length) return;
 
-    console.log('[poll] voted options:', voted);
+    const hasBack    = voted.some((v) => v.startsWith('🔙'));
+    // Match any ✅ confirm option that is NOT "ללא תוספות"
+    const hasConfirm = voted.some((v) => v.startsWith('✅') && !v.includes('ללא') && !v.includes('No topping'));
+    const hasNoTop   = voted.some((v) => v.includes('ללא תוספות') || v.includes('No topping'));
+    // Item/topping polls always have " — " (price separator); category polls never do
+    const hasItemVotes = voted.some((v) => v.includes(' — '));
 
-    if (!voted.length) return; // no votes yet / intermediate state
-
-    const hasConfirm = voted.some((v) => v.includes('✅ אישור') || v.includes('✅ Confirm'));
-    const hasBack    = voted.some((v) => v.includes('🔙'));
-    const hasNoTop   = voted.some((v) => v.includes('ללא תוספות') || v.includes('No toppings'));
-
-    if (hasBack) {
-      textMessage = CTRL_BACK; // Claude will trigger SHOW_MENU
-    } else if (hasConfirm) {
-      // Confirmed — pass actual selections (excluding control options) as text
-      const selections = voted.filter((v) => !isControlOption(v));
-      if (hasNoTop) {
-        textMessage = selections.length
-          ? `בחרתי: ${selections.join(', ')} | ללא תוספות`
-          : 'ללא תוספות';
+    if (hasConfirm) {
+      // User confirmed multi-select → build selection text for Claude
+      const selections = voted.filter((v) => !v.startsWith('✅') && !v.startsWith('🔙'));
+      if (selections.length) {
+        textMessage = `בחרתי: ${selections.join(', ')}${hasNoTop ? ' | ללא תוספות' : ''}`;
       } else {
-        textMessage = selections.length
-          ? `בחרתי: ${selections.join(', ')}`
-          : CTRL_CONFIRM;
+        textMessage = 'ללא תוספות';
       }
+
+    } else if (hasBack) {
+      // Back button → resend category poll directly (no Claude)
+      sendMenuList(phone).catch(() => {});
+      return;
+
+    } else if (!hasItemVotes) {
+      // Single-answer category poll (no " — " in voted options, no control buttons)
+      // → resolve label to UUID and send item poll directly
+      const selection = voted.find((v) => !v.startsWith('✅') && !v.startsWith('🔙'));
+      if (selection) {
+        resolveCategoryVote(selection).then((categoryId) => {
+          if (categoryId) {
+            sendCategoryPoll(phone, categoryId).catch(() => {});
+          } else {
+            handleMessage(phone, selection).catch(() => {});
+          }
+        }).catch(() => {});
+      }
+      return;
+
+    } else {
+      // hasItemVotes=true but no confirm yet → intermediate multi-select vote → ignore
+      return;
     }
-    // If only intermediate votes (no confirm/back) → ignore until user confirms
   }
 
   if (!textMessage) return;
-
-  const phone = formatPhone(rawSender);
 
   handleMessage(phone, textMessage).catch((err) =>
     console.error(`[webhook] handleMessage error for ${phone}:`, err.message)
