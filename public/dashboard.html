@@ -322,29 +322,62 @@ input[type=time] { direction: ltr; }
 
   <!-- ORDERS -->
   <div id="page-orders" style="display:none">
-    <div id="statsSection" class="admin-only" style="display:none; margin-bottom:24px">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-        <div class="page-title">סטטיסטיקות</div>
-        <input type="date" id="statsDate" style="padding:7px 12px;border-radius:10px;border:2px solid var(--border);font-family:inherit;font-size:.82rem">
-      </div>
-      <div id="statsCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px"></div>
+    <div class="page-header"><div class="page-title">הזמנות</div>
+      <button onclick="loadOrders()" class="btn btn-ghost btn-sm">↻ רענן</button>
     </div>
 
-    <div class="page-header">
-      <div class="page-title">הזמנות</div>
-      <div style="display:flex;gap:10px;align-items:center">
-        <select id="orderStatusFilter" class="filter-select">
-          <option value="all">כל הסטטוסים</option>
-          <option value="new" selected>חדשות</option>
-          <option value="preparing">בהכנה</option>
-          <option value="out_for_delivery">בדרך</option>
-          <option value="delivered">נמסרו</option>
-          <option value="done">הסתיימו</option>
-          <option value="cancelled">בוטלו</option>
-        </select>
-        <button onclick="loadOrders()" class="btn btn-primary btn-sm">רענן</button>
+    <!-- Status summary cards -->
+    <div id="orderStatusCards" style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:22px"></div>
+
+    <!-- Stats section (admin) -->
+    <div id="statsSection" class="admin-only" style="display:none;margin-bottom:22px">
+      <div class="card" style="padding:22px 26px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+          <span style="font-weight:800;font-size:.95rem">📊 סטטיסטיקות</span>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="period-btn btn btn-sm" data-period="today" onclick="setPeriod('today')">היום</button>
+            <button class="period-btn btn btn-sm" data-period="week"  onclick="setPeriod('week')">שבוע</button>
+            <button class="period-btn btn btn-sm" data-period="month" onclick="setPeriod('month')">חודש</button>
+            <button class="period-btn btn btn-sm" data-period="year"  onclick="setPeriod('year')">שנה</button>
+            <button class="period-btn btn btn-sm" data-period="all"   onclick="setPeriod('all')">הכל</button>
+            <input type="date" id="statsCustomDate" class="filter-select" style="padding:6px 12px;font-size:.8rem"
+              onchange="setPeriod('today',this.value)">
+          </div>
+        </div>
+        <div id="statsCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:18px"></div>
+        <div id="ordersChart" style="display:none"></div>
       </div>
     </div>
+
+    <!-- Filters -->
+    <div class="card" style="padding:14px 20px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <input type="text" id="orderSearch" placeholder="🔍 חיפוש שם, טלפון, כתובת..."
+        oninput="filterOrders()"
+        style="flex:1;min-width:180px;border-radius:50px;padding:8px 18px;font-size:.84rem">
+      <select id="statusFilter" class="filter-select" style="font-size:.84rem" onchange="filterOrders()">
+        <option value="all">כל הסטטוסים</option>
+        <option value="new">חדשות</option>
+        <option value="preparing">בהכנה</option>
+        <option value="out_for_delivery">בדרך</option>
+        <option value="delivered">נמסרו</option>
+        <option value="done">הסתיימו</option>
+        <option value="cancelled">בוטלו</option>
+      </select>
+      <select id="typeFilter" class="filter-select" style="font-size:.84rem" onchange="filterOrders()">
+        <option value="all">כל הסוגים</option>
+        <option value="delivery">משלוח</option>
+        <option value="pickup">איסוף</option>
+      </select>
+      <select id="paymentFilter" class="filter-select" style="font-size:.84rem" onchange="filterOrders()">
+        <option value="all">כל התשלומים</option>
+        <option value="cash">מזומן</option>
+        <option value="credit">אשראי</option>
+      </select>
+      <input type="date" id="dateFromFilter" class="filter-select" style="font-size:.82rem" onchange="filterOrders()">
+      <input type="date" id="dateToFilter"   class="filter-select" style="font-size:.82rem" onchange="filterOrders()">
+      <button onclick="clearOrderFilters()" class="btn btn-ghost btn-sm">נקה</button>
+    </div>
+
     <div id="ordersTable" class="card"></div>
   </div>
 
@@ -400,6 +433,76 @@ input[type=time] { direction: ltr; }
       <button onclick="closeModal('orderModal')" class="modal-close">&times;</button>
     </div>
     <div class="modal-body" id="orderModalContent"></div>
+  </div>
+</div>
+
+<!-- ── Order Edit Modal ── -->
+<div id="orderEditModal" class="modal-overlay">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-header">
+      <div class="modal-title" id="orderEditTitle">עריכת הזמנה</div>
+      <button onclick="closeModal('orderEditModal')" class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+
+      <!-- Address -->
+      <div style="margin-bottom:20px">
+        <div style="font-weight:700;font-size:.88rem;color:var(--primary);margin-bottom:12px;text-transform:uppercase;letter-spacing:.04em">📍 כתובת למשלוח</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 80px;gap:10px;margin-bottom:10px">
+          <div><label>עיר</label><input type="text" id="editCity" style="width:100%;margin-top:4px"></div>
+          <div><label>רחוב</label><input type="text" id="editStreet" style="width:100%;margin-top:4px"></div>
+          <div><label>מספר</label><input type="text" id="editStreetNum" style="width:100%;margin-top:4px"></div>
+        </div>
+        <div style="margin-bottom:10px">
+          <label>סוג יעד</label>
+          <select id="editDestType" style="width:100%;margin-top:4px">
+            <option value="">— בחר —</option>
+            <option value="דירה">דירה</option>
+            <option value="בית פרטי">בית פרטי</option>
+            <option value="משרד">משרד</option>
+            <option value="מלון">מלון</option>
+            <option value="אחר">אחר</option>
+          </select>
+        </div>
+        <div>
+          <label>הערות לשליח</label>
+          <textarea id="editCourierNotes" rows="2" style="width:100%;margin-top:4px;resize:vertical" placeholder="קומה, צד, הוראות כניסה..."></textarea>
+        </div>
+      </div>
+
+      <!-- Items -->
+      <div style="margin-bottom:20px">
+        <div style="font-weight:700;font-size:.88rem;color:var(--primary);margin-bottom:12px;text-transform:uppercase;letter-spacing:.04em">🍕 פריטי ההזמנה</div>
+        <div id="editItemsList"></div>
+        <button onclick="openAddProductToOrder()" class="btn btn-outline btn-sm" style="margin-top:10px">+ הוסף מוצר</button>
+      </div>
+
+      <!-- Financial summary -->
+      <div style="background:var(--primary-soft);border-radius:14px;padding:16px 18px">
+        <div style="font-weight:700;font-size:.88rem;color:var(--primary);margin-bottom:12px">💰 סיכום כספי</div>
+        <div style="display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:6px">
+          <span style="color:var(--text-muted)">סכום ביניים</span>
+          <span id="editSubtotal" style="font-weight:700">₪0</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:6px">
+          <span style="color:var(--text-muted)">משלוח</span>
+          <span id="editDeliveryFee" style="font-weight:700">₪0</span>
+        </div>
+        <div style="border-top:1px solid var(--border);margin:8px 0"></div>
+        <div style="display:flex;justify-content:space-between;font-size:.95rem">
+          <span style="font-weight:800">סה"כ</span>
+          <span id="editTotal" style="font-weight:800;color:var(--primary)">₪0</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:.75rem;color:var(--text-muted);margin-top:4px">
+          <span>כולל מע"מ 17%</span>
+          <span id="editVat">₪0</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeModal('orderEditModal')" class="btn btn-ghost">ביטול</button>
+      <button onclick="saveOrderEdit()" class="btn btn-primary">שמור שינויים</button>
+    </div>
   </div>
 </div>
 

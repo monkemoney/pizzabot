@@ -105,73 +105,120 @@ function statusBadge(status) {
 // ─── ORDERS ───────────────────────────────────────────────────────────────────
 
 let currentOrders = [];
+let currentPeriod = 'today';
 
 async function loadOrders() {
-  if (role === 'admin') loadStats();
-
-  const filter = document.getElementById('orderStatusFilter').value;
   const container = document.getElementById('ordersTable');
-  container.innerHTML = '<div class="p-8 text-center text-gray-400">טוען...</div>';
-
+  container.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-muted)">טוען...</div>';
   try {
-    const data = await api('GET', `/orders?status=${filter}`);
-    currentOrders = data.orders;
-    renderOrdersTable(currentOrders);
+    const data = await api('GET', '/orders');
+    currentOrders = data.orders || [];
+    renderStatusSummaryCards(currentOrders);
+    filterOrders();
+    if (role === 'admin') loadStats(currentPeriod);
   } catch (err) {
-    container.innerHTML = `<div class="p-8 text-center text-red-500">${err.message}</div>`;
+    container.innerHTML = `<div style="padding:20px;color:red">${err.message}</div>`;
   }
+}
+
+function renderStatusSummaryCards(orders) {
+  const el = document.getElementById('orderStatusCards');
+  if (!el) return;
+  const counts = {
+    total:    orders.length,
+    new:      orders.filter(o => o.status === 'new').length,
+    preparing:orders.filter(o => o.status === 'preparing').length,
+    out:      orders.filter(o => o.status === 'out_for_delivery').length,
+    delivered:orders.filter(o => o.status === 'delivered').length,
+    pending:  orders.filter(o => o.payment_status === 'pending').length,
+  };
+  const card = (label, val, color='var(--primary)') =>
+    `<div class="stat-card" style="padding:16px 18px;cursor:pointer">
+      <div style="font-size:1.6rem;font-weight:800;color:${color}">${val}</div>
+      <div class="stat-label">${label}</div>
+    </div>`;
+  el.innerHTML =
+    card('סה"כ הזמנות',      counts.total,     'var(--text)')     +
+    card('חדשות',             counts.new,        'var(--primary)')  +
+    card('בהכנה',             counts.preparing,  '#c07000')         +
+    card('בדרך ללקוח',       counts.out,        '#005faa')         +
+    card('נמסרו',             counts.delivered,  '#008043')         +
+    card('ממתינות לתשלום',   counts.pending,    'var(--accent)');
+}
+
+function filterOrders() {
+  const q       = (document.getElementById('orderSearch')?.value || '').trim().toLowerCase();
+  const status  = document.getElementById('statusFilter')?.value  || 'all';
+  const type    = document.getElementById('typeFilter')?.value    || 'all';
+  const payment = document.getElementById('paymentFilter')?.value || 'all';
+  const from    = document.getElementById('dateFromFilter')?.value;
+  const to      = document.getElementById('dateToFilter')?.value;
+
+  let list = currentOrders;
+  if (status  !== 'all') list = list.filter(o => o.status === status);
+  if (type    !== 'all') list = list.filter(o => o.delivery_method === type);
+  if (payment !== 'all') list = list.filter(o => o.payment_method === payment);
+  if (from) list = list.filter(o => o.created_at >= new Date(from).toISOString());
+  if (to)   list = list.filter(o => o.created_at <= new Date(to + 'T23:59:59').toISOString());
+  if (q) list = list.filter(o =>
+    (o.customer_name    || '').toLowerCase().includes(q) ||
+    (o.customer_phone   || o.phone || '').includes(q)    ||
+    (o.address          || '').toLowerCase().includes(q)
+  );
+  renderOrdersTable(list);
+}
+
+function clearOrderFilters() {
+  ['orderSearch','dateFromFilter','dateToFilter'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  ['statusFilter','typeFilter','paymentFilter'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = 'all';
+  });
+  filterOrders();
 }
 
 function renderOrdersTable(orders) {
   const container = document.getElementById('ordersTable');
   if (!orders.length) {
-    container.innerHTML = '<div class="p-12 text-center text-gray-400 text-lg">אין הזמנות</div>';
+    container.innerHTML = '<div class="empty-state">אין הזמנות תואמות</div>';
     return;
   }
-
   container.innerHTML = `
     <div style="overflow-x:auto">
     <table>
       <thead>
         <tr>
           <th>#</th><th>תאריך</th><th>לקוח</th><th>סוג</th>
-          <th>תשלום</th><th>שולם</th><th>סכום</th><th>סטטוס</th><th>פעולות</th>
+          <th>תשלום</th><th>שולם</th><th>סכום</th><th>סטטוס</th><th></th>
         </tr>
       </thead>
       <tbody>
         ${orders.map((o) => `
         <tr>
-          <td style="font-weight:800;color:var(--primary)">${o.order_number || '—'}</td>
+          <td style="font-weight:800;color:var(--primary)">${o.order_number||'—'}</td>
           <td style="color:var(--text-muted);font-size:.78rem">${formatDate(o.created_at)}</td>
           <td>
-            <div style="font-weight:700">${o.customer_name || '—'}</div>
-            <div style="font-size:.75rem;color:var(--text-muted)">${o.address ? o.address.slice(0,28) : ''}</div>
+            <div style="font-weight:700">${o.customer_name||'—'}</div>
+            <div style="font-size:.72rem;color:var(--text-muted)">${(o.address||'').slice(0,26)}</div>
           </td>
-          <td>
-            <span class="badge ${o.delivery_method === 'delivery' ? 'badge-delivery' : 'badge-done'}">
-              ${o.delivery_method === 'delivery' ? '🛵 משלוח' : '🏍️ איסוף'}
-            </span>
-          </td>
-          <td style="font-size:.82rem;color:var(--text-muted)">${o.payment_method === 'cash' ? '💵 מזומן' : '💳 אשראי'}</td>
-          <td>
-            <span class="badge ${o.payment_status === 'paid' ? 'badge-paid' : 'badge-pending-pay'}">
-              ${o.payment_status === 'paid' ? '✓ שולם' : '⏳ ממתין'}
-            </span>
-          </td>
-          <td style="font-weight:800">₪${(parseFloat(o.total_price)||0).toFixed(2)}</td>
+          <td><span class="badge ${o.delivery_method==='delivery'?'badge-delivery':'badge-done'}">
+            ${o.delivery_method==='delivery'?'🛵 משלוח':'🏍️ איסוף'}</span></td>
+          <td style="font-size:.82rem;color:var(--text-muted)">${o.payment_method==='cash'?'💵 מזומן':'💳 אשראי'}</td>
+          <td><span class="badge ${o.payment_status==='paid'?'badge-paid':'badge-pending-pay'}">
+            ${o.payment_status==='paid'?'✓ שולם':'⏳ ממתין'}</span></td>
+          <td style="font-weight:800">₪${(parseFloat(o.total_price)||0).toFixed(0)}</td>
           <td>
             <select onchange="updateOrderStatus('${o.id}',this.value,${o.order_number})"
-              style="padding:5px 10px;border-radius:8px;border:2px solid var(--border);font-family:inherit;font-size:.8rem;cursor:pointer">
-              ${Object.entries(STATUS_LABELS).map(([val, label]) =>
+              style="padding:5px 8px;border-radius:8px;border:2px solid var(--border);font-family:inherit;font-size:.78rem;cursor:pointer">
+              ${Object.entries(STATUS_LABELS).map(([val,label])=>
                 `<option value="${val}" ${val===o.status?'selected':''}>${label}</option>`
               ).join('')}
             </select>
           </td>
           <td>
-            <button onclick="showOrderDetail('${o.id}')"
-              style="font-size:.78rem;font-weight:700;color:var(--primary);background:var(--primary-soft);border:none;padding:5px 10px;border-radius:8px;cursor:pointer">
-              פרטים
-            </button>
+            <button onclick="openOrderEdit('${o.id}')" title="עריכה"
+              style="background:var(--primary-soft);border:none;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:1rem">✏️</button>
           </td>
         </tr>`).join('')}
       </tbody>
@@ -182,95 +229,194 @@ function renderOrdersTable(orders) {
 async function updateOrderStatus(orderId, status, orderNumber) {
   try {
     await api('PATCH', `/orders/${orderId}/status`, { status });
-    loadOrders();
+    const o = currentOrders.find(x => x.id === orderId);
+    if (o) o.status = status;
+    renderStatusSummaryCards(currentOrders);
+    filterOrders();
   } catch (err) {
-    alert('שגיאה בעדכון סטטוס: ' + err.message);
-    loadOrders(); // refresh to restore correct value
+    alert('שגיאה: ' + err.message);
+    loadOrders();
   }
-}
-
-async function showOrderDetail(orderId) {
-  const order = currentOrders.find((o) => o.id === orderId);
-  if (!order) return;
-
-  document.getElementById('orderModalTitle').textContent = `הזמנה #${order.order_number}`;
-  document.getElementById('orderModalContent').innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:.88rem;margin-bottom:16px">
-      <div><span style="color:var(--text-muted)">לקוח:</span> <strong>${order.customer_name||'—'}</strong></div>
-      <div><span style="color:var(--text-muted)">טלפון:</span> <strong>${order.customer_phone||order.phone||'—'}</strong></div>
-      <div><span style="color:var(--text-muted)">אספקה:</span> <strong>${order.delivery_method==='delivery'?'🛵 משלוח':'🏍️ איסוף'}</strong></div>
-      <div><span style="color:var(--text-muted)">תשלום:</span> <strong>${order.payment_method==='cash'?'💵 מזומן':'💳 אשראי'}</strong></div>
-      ${order.address?`<div style="grid-column:span 2"><span style="color:var(--text-muted)">כתובת:</span> <strong>${order.address}</strong></div>`:''}
-      ${order.notes?`<div style="grid-column:span 2"><span style="color:var(--text-muted)">הערות:</span> <strong>${order.notes}</strong></div>`:''}
-    </div>
-    <div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:14px">
-      <div style="font-weight:700;font-size:.82rem;color:var(--text-muted);margin-bottom:8px">פריטים</div>
-      ${(order.items||[]).map(item=>`
-        <div style="display:flex;justify-content:space-between;font-size:.88rem;padding:5px 0;border-bottom:1px solid var(--border)">
-          <span>${item.name||item.name_he||'פריט'}
-            ${(item.toppings||[]).length?`<span style="color:var(--text-muted);font-size:.78rem"> + ${item.toppings.map(t=>t.name||t.name_he).join(', ')}</span>`:''}
-          </span>
-          <span style="font-weight:700">₪${item.price||0}</span>
-        </div>`).join('')}
-    </div>
-    <div style="display:flex;justify-content:space-between;font-weight:800;font-size:1rem;padding:10px 0;border-top:2px solid var(--border)">
-      <span>סה"כ</span>
-      <span style="color:var(--primary)">₪${(parseFloat(order.total_price)||0).toFixed(2)}</span>
-    </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:.8rem;color:var(--text-muted)">
-      <span>סטטוס: ${statusBadge(order.status)}</span>
-      <span>${formatDate(order.created_at)}</span>
-    </div>`;
-  openModal('orderModal');
 }
 
 // ─── STATS ────────────────────────────────────────────────────────────────────
 
-async function loadStats() {
-  const dateInput = document.getElementById('statsDate');
-  if (!dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
+function setPeriod(period, date) {
+  currentPeriod = period;
+  document.querySelectorAll('.period-btn').forEach(b => {
+    const isActive = b.dataset.period === period;
+    b.className = 'period-btn btn btn-sm ' + (isActive ? 'btn-primary' : 'btn-ghost');
+  });
+  loadStats(period, date);
+}
 
+async function loadStats(period = 'today', date) {
   try {
-    const s = await api('GET', `/stats?date=${dateInput.value}`);
+    const params = date ? `period=${period}&date=${date}` : `period=${period}`;
+    const s = await api('GET', `/stats?${params}`);
+
+    const periodLabel = {today:'היום',week:'השבוע',month:'החודש',year:'השנה',all:'הכל'}[period]||period;
+
     document.getElementById('statsCards').innerHTML = `
       <div class="stat-card violet">
         <div class="stat-value">${s.order_count}</div>
-        <div class="stat-label">הזמנות היום</div>
+        <div class="stat-label">הזמנות — ${periodLabel}</div>
       </div>
       <div class="stat-card green">
-        <div class="stat-value">₪${s.revenue.toFixed(0)}</div>
+        <div class="stat-value">₪${(s.revenue||0).toFixed(0)}</div>
         <div class="stat-label">הכנסות</div>
       </div>
       <div class="stat-card violet">
-        <div class="stat-value">${s.avg_delivery_minutes != null ? s.avg_delivery_minutes + '′' : '—'}</div>
+        <div class="stat-value">${s.avg_delivery_minutes != null ? s.avg_delivery_minutes+'′' : '—'}</div>
         <div class="stat-label">זמן מסירה ממוצע</div>
       </div>
       <div class="stat-card">
-        <div style="display:flex;gap:16px">
-          <div><div class="stat-value" style="font-size:1.4rem;color:#16a34a">${s.paid_count}</div><div class="stat-label">שולם</div></div>
-          <div style="width:1px;background:var(--border)"></div>
-          <div><div class="stat-value" style="font-size:1.4rem;color:#c07000">${s.pending_payment_count}</div><div class="stat-label">ממתין</div></div>
-        </div>
+        <div class="stat-value" style="color:#e0004d">${s.cancelled_count||0}</div>
+        <div class="stat-label">ביטולים</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="color:var(--accent)">${s.conversion_rate != null ? s.conversion_rate+'%' : '—'}</div>
+        <div class="stat-label">יחס המרה</div>
       </div>
       <div class="stat-card" style="grid-column:span 2">
         <div style="font-size:.75rem;font-weight:700;color:var(--primary);margin-bottom:8px">🏆 נמכרים ביותר</div>
-        ${s.top_products.map((p, i) => `
-          <div style="display:flex;justify-content:space-between;font-size:.8rem;padding:3px 0;color:var(--text)">
+        ${(s.top_products||[]).map((p,i)=>`
+          <div style="display:flex;justify-content:space-between;font-size:.8rem;padding:3px 0">
             <span>${i+1}. ${p.name}</span><span style="font-weight:700;color:var(--primary)">${p.count}x</span>
-          </div>`).join('') || '<div style="font-size:.8rem;color:var(--text-muted)">אין נתונים</div>'}
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" style="color:var(--accent)">${s.conversations_started}</div>
-        <div class="stat-label">שיחות התחילו</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" style="color:#9b93b0">${s.not_converted}</div>
-        <div class="stat-label">לא הזמינו</div>
+          </div>`).join('')||'<div style="font-size:.8rem;color:var(--text-muted)">אין נתונים</div>'}
       </div>`;
-  } catch { /* stats are non-critical */ }
+
+    // Mini chart
+    const byDay = s.orders_by_day || {};
+    const days  = Object.keys(byDay).sort();
+    if (days.length > 1) {
+      const maxCount = Math.max(...days.map(d => byDay[d].count), 1);
+      document.getElementById('ordersChart').style.display = 'block';
+      document.getElementById('ordersChart').innerHTML = `
+        <div style="font-size:.75rem;font-weight:700;color:var(--primary);margin-bottom:10px">הזמנות לפי יום</div>
+        <div style="display:flex;align-items:flex-end;gap:6px;height:60px">
+          ${days.map(d => {
+            const pct = Math.round((byDay[d].count / maxCount) * 100);
+            return `<div title="${d}: ${byDay[d].count} הזמנות"
+              style="flex:1;background:var(--primary);border-radius:4px 4px 0 0;height:${pct}%;min-height:4px;opacity:.8;transition:opacity .2s"
+              onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.8"></div>`;
+          }).join('')}
+        </div>
+        <div style="display:flex;gap:6px;margin-top:4px">
+          ${days.map(d => `<div style="flex:1;text-align:center;font-size:.6rem;color:var(--text-muted)">${d.slice(5)}</div>`).join('')}
+        </div>`;
+    }
+  } catch { /* non-critical */ }
 }
 
-document.getElementById('statsDate')?.addEventListener('change', loadStats);
+// ─── ORDER EDIT ───────────────────────────────────────────────────────────────
+
+let _editOrder = null;
+let _editItems = [];
+
+async function openOrderEdit(orderId) {
+  const order = currentOrders.find(o => o.id === orderId);
+  if (!order) return;
+  _editOrder = order;
+  _editItems = JSON.parse(JSON.stringify(order.items || []));
+
+  document.getElementById('orderEditTitle').textContent = `עריכת הזמנה #${order.order_number}`;
+
+  // Parse address
+  const addr = order.address || '';
+  document.getElementById('editCity').value       = order.address_city   || '';
+  document.getElementById('editStreet').value     = order.address_street || '';
+  document.getElementById('editStreetNum').value  = order.address_num    || '';
+  document.getElementById('editDestType').value   = order.destination_type || '';
+  document.getElementById('editCourierNotes').value = order.courier_notes || '';
+
+  renderEditItems();
+  updateEditSummary(order);
+  openModal('orderEditModal');
+}
+
+function renderEditItems() {
+  const el = document.getElementById('editItemsList');
+  if (!el) return;
+  if (!_editItems.length) {
+    el.innerHTML = '<div style="color:var(--text-muted);font-size:.85rem;padding:8px 0">אין פריטים</div>';
+    return;
+  }
+  el.innerHTML = _editItems.map((item, i) => {
+    const qty = item.quantity || 1;
+    const toppings = (item.toppings || []).map(t => t.name || t.name_he || '').filter(Boolean).join(', ');
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#faf8ff;border-radius:12px;margin-bottom:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:.88rem">${item.name||item.name_he||'פריט'}</div>
+          ${toppings ? `<div style="font-size:.75rem;color:var(--text-muted)">+ ${toppings}</div>` : ''}
+        </div>
+        <div style="font-weight:700;color:var(--primary);min-width:50px;text-align:center">₪${((item.price||0)*qty).toFixed(0)}</div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <button onclick="changeQty(${i},-1)" style="width:26px;height:26px;border-radius:50%;border:2px solid var(--border);background:#fff;cursor:pointer;font-weight:700;font-size:1rem;display:flex;align-items:center;justify-content:center">−</button>
+          <span style="font-weight:800;min-width:20px;text-align:center">${qty}</span>
+          <button onclick="changeQty(${i},+1)" style="width:26px;height:26px;border-radius:50%;border:2px solid var(--primary);background:var(--primary-soft);color:var(--primary);cursor:pointer;font-weight:700;font-size:1rem;display:flex;align-items:center;justify-content:center">+</button>
+        </div>
+        <button onclick="removeEditItem(${i})" style="background:none;border:none;cursor:pointer;font-size:1.1rem;color:#e0004d;padding:0 4px">✕</button>
+      </div>`;
+  }).join('');
+  updateEditSummary(_editOrder);
+}
+
+function changeQty(i, delta) {
+  _editItems[i].quantity = Math.max(1, (_editItems[i].quantity || 1) + delta);
+  renderEditItems();
+}
+
+function removeEditItem(i) {
+  _editItems.splice(i, 1);
+  renderEditItems();
+}
+
+function updateEditSummary(order) {
+  const deliveryFee = order?.delivery_method === 'delivery' ? (parseFloat(order?.delivery_fee) || 30) : 0;
+  const subtotal = _editItems.reduce((s, item) => s + (parseFloat(item.price)||0) * (item.quantity||1), 0);
+  const total = subtotal + deliveryFee;
+  const vat   = total * 17 / 117;
+
+  document.getElementById('editSubtotal').textContent    = `₪${subtotal.toFixed(2)}`;
+  document.getElementById('editDeliveryFee').textContent  = `₪${deliveryFee.toFixed(0)}`;
+  document.getElementById('editTotal').textContent        = `₪${total.toFixed(2)}`;
+  document.getElementById('editVat').textContent          = `₪${vat.toFixed(2)}`;
+}
+
+function openAddProductToOrder() {
+  // Simple prompt for now — future: product picker modal
+  const name = prompt('שם המוצר:');
+  if (!name) return;
+  const price = parseFloat(prompt('מחיר:') || '0');
+  _editItems.push({ name, price, quantity: 1, toppings: [] });
+  renderEditItems();
+}
+
+async function saveOrderEdit() {
+  if (!_editOrder) return;
+  const city   = document.getElementById('editCity').value.trim();
+  const street = document.getElementById('editStreet').value.trim();
+  const num    = document.getElementById('editStreetNum').value.trim();
+  const addr   = [street, num, city].filter(Boolean).join(', ');
+
+  const deliveryFee = _editOrder.delivery_method === 'delivery' ? 30 : 0;
+  const subtotal    = _editItems.reduce((s,i) => s+(parseFloat(i.price)||0)*(i.quantity||1), 0);
+
+  try {
+    await api('PUT', `/orders/${_editOrder.id}`, {
+      items:            _editItems,
+      address:          addr || _editOrder.address,
+      destination_type: document.getElementById('editDestType').value,
+      courier_notes:    document.getElementById('editCourierNotes').value.trim(),
+      total_price:      (subtotal + deliveryFee).toFixed(2),
+    });
+    closeModal('orderEditModal');
+    await loadOrders();
+    showToast('הזמנה עודכנה ✅');
+  } catch (err) { alert(err.message); }
+}
 
 // ─── PRODUCTS ─────────────────────────────────────────────────────────────────
 

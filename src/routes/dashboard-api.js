@@ -42,17 +42,21 @@ router.post('/auth/login', async (req, res) => {
 router.get('/orders', requireAuth, async (req, res) => {
   try {
     await autoCompleteDeliveredOrders();
-    const { status = 'all', date } = req.query;
-    let orders = await getOrders(status === 'all' ? null : status);
 
-    if (date) {
-      const d = new Date(date);
-      const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
-      const end   = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).toISOString();
-      orders = orders.filter((o) => o.created_at >= start && o.created_at < end);
+    let query = supabase.from('orders').select('*').order('created_at', { ascending: false });
+
+    const { status, date_from, date_to } = req.query;
+    if (status && status !== 'all') query = query.eq('status', status);
+    if (date_from) query = query.gte('created_at', new Date(date_from).toISOString());
+    if (date_to) {
+      const end = new Date(date_to);
+      end.setDate(end.getDate() + 1);
+      query = query.lt('created_at', end.toISOString());
     }
 
-    res.json({ orders, count: orders.length });
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    res.json({ orders: data, count: data.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -71,34 +75,76 @@ router.patch('/orders/:id/status', requireAuth, async (req, res) => {
   if (!STATUS_ORDER.includes(status)) {
     return res.status(400).json({ error: `Invalid status. Valid: ${STATUS_ORDER.join(', ')}` });
   }
-
   try {
     const order = await updateOrderStatus(req.params.id, status);
-    // Notify customer via WhatsApp
     await notifyStatusChange(order.phone, status, 'he', order.order_number);
     res.json({ success: true, order });
   } catch (err) {
-    res.status(err.message.includes('not found') ? 404 : 500).json({ error: err.message });
+    res.status(500).json({ error: err.message });
   }
+});
+
+// Full order edit (items, address, notes, destination_type, courier_notes)
+router.put('/orders/:id', requireAdmin, async (req, res) => {
+  const allowed = ['items','address','notes','destination_type','courier_notes',
+                   'delivery_method','total_price'];
+  const updates = {};
+  for (const key of allowed) {
+    if (req.body[key] !== undefined) updates[key] = req.body[key];
+  }
+  updates.updated_at = new Date().toISOString();
+
+  const { data, error } = await supabase.from('orders')
+    .update(updates).eq('id', req.params.id).select().single();
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
 });
 
 // ─── Stats (admin only) ───────────────────────────────────────────────────────
 
+function periodRange(period, date) {
+  const now = date ? new Date(date) : new Date();
+  let start, end;
+  switch (period) {
+    case 'week': {
+      const day = now.getDay();
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day);
+      end   = new Date(start.getTime() + 7 * 86400000);
+      break;
+    }
+    case 'month':
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      end   = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      break;
+    case 'year':
+      start = new Date(now.getFullYear(), 0, 1);
+      end   = new Date(now.getFullYear() + 1, 0, 1);
+      break;
+    case 'all':
+      start = new Date(2020, 0, 1);
+      end   = new Date(2100, 0, 1);
+      break;
+    default: // 'today' or specific date
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      end   = new Date(start.getTime() + 86400000);
+  }
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
 router.get('/stats', requireAdmin, async (req, res) => {
   try {
-    const { date = new Date().toISOString().slice(0, 10) } = req.query;
-    const d     = new Date(date);
-    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
-    const end   = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).toISOString();
+    const { period = 'today', date } = req.query;
+    const { start, end } = periodRange(period, date);
 
     const { data: dayOrders } = await supabase
       .from('orders')
       .select('total_price, items, status, created_at, updated_at, delivery_method, payment_status')
       .gte('created_at', start)
-      .lt('created_at', end)
-      .neq('status', 'cancelled');
+      .lt('created_at', end);
 
-    const completed = (dayOrders || []).filter((o) => o.status !== 'cancelled');
+    const all       = dayOrders || [];
+    const cancelled = all.filter((o) => o.status === 'cancelled');
+    const completed = all.filter((o) => o.status !== 'cancelled');
     const revenue   = completed.reduce((s, o) => s + (parseFloat(o.total_price) || 0), 0);
 
     // Top 3 products
@@ -136,18 +182,32 @@ router.get('/stats', requireAdmin, async (req, res) => {
       .gte('updated_at', start)
       .lt('updated_at', end);
 
-    const convNotConverted = (conversationsStarted || 0) - completed.length;
+    const convNotConverted = Math.max(0, (conversationsStarted || 0) - completed.length);
+
+    // Orders per day (for chart)
+    const ordersByDay = {};
+    for (const o of completed) {
+      const day = o.created_at.slice(0, 10);
+      if (!ordersByDay[day]) ordersByDay[day] = { count: 0, revenue: 0 };
+      ordersByDay[day].count++;
+      ordersByDay[day].revenue += parseFloat(o.total_price) || 0;
+    }
 
     res.json({
-      date,
+      period, start, end,
       order_count:           completed.length,
+      cancelled_count:       cancelled.length,
       revenue:               Math.round(revenue * 100) / 100,
       top_products:          topProducts,
       avg_delivery_minutes:  avgDeliveryMin,
       paid_count:            paid,
       pending_payment_count: pending,
       conversations_started: conversationsStarted || 0,
-      not_converted:         Math.max(0, convNotConverted),
+      not_converted:         convNotConverted,
+      conversion_rate:       conversationsStarted
+        ? Math.round((completed.length / conversationsStarted) * 100)
+        : null,
+      orders_by_day:         ordersByDay,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
