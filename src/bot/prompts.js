@@ -16,6 +16,7 @@ async function buildSystemPrompt(customerProfile = null) {
 
   const paymentMethods  = [cashEnabled && 'מזומן', creditEnabled && 'אשראי (קישור תשלום ישלח)'].filter(Boolean).join(' / ');
   const deliveryOptions = [deliveryEnabled && 'משלוח', pickupEnabled && 'איסוף עצמי'].filter(Boolean).join(' / ');
+  const pickupAddress   = allSettings.pickup_address || 'רוטשילד 19, תל אביב';
 
   let returningBlock = '';
   if (customerProfile && (customerProfile.name || customerProfile.last_address)) {
@@ -90,6 +91,7 @@ ${menuText}
 א) שם מלא של הלקוח.
 ב) ${deliveryEnabled ? 'משלוח 🛵 / איסוף עצמי 🏍️' : 'איסוף עצמי בלבד 🏍️'}.
    אם משלוח: עיר, רחוב, מספר בית, קומה/דירה.
+   אם איסוף עצמי: ציין ללקוח שהכתובת לאיסוף היא *${pickupAddress}*.
 ג) אמצעי תשלום: ${paymentMethods}.
 
 שלב 6 — הצג סיכום ובקש אישור:

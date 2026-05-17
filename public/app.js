@@ -714,6 +714,12 @@ function renderSettingsForm(s) {
         <input type="text" id="deliveryCities" value="${(s.delivery_cities||[]).join(', ')}" style="width:100%">
       </div>
     `)}
+    ${card('📍 כתובת איסוף עצמי', `
+      <div>
+        <label style="display:block;font-size:.82rem;font-weight:700;color:#3d3352;margin-bottom:6px">כתובת מלאה (תוצג ללקוחות שבוחרים איסוף)</label>
+        <input type="text" id="pickupAddress" value="${s.pickup_address || ''}" style="width:100%" placeholder="רוטשילד 19, תל אביב">
+      </div>
+    `)}
     <div class="card" style="padding:22px 24px">
       <div style="font-size:1rem;font-weight:800;color:var(--text);margin-bottom:16px">🕐 שעות פתיחה</div>
       <div class="hours-grid">${hoursRows}</div>
@@ -730,6 +736,7 @@ async function saveSettings() {
   document.querySelectorAll('.setting-toggle').forEach((el) => {
     updates[el.dataset.key] = el.checked;
   });
+  updates.pickup_address      = document.getElementById('pickupAddress').value.trim() || null;
   updates.delivery_price      = parseFloat(document.getElementById('deliveryPrice').value) || 30;
   updates.min_order_delivery  = parseFloat(document.getElementById('minOrderDelivery').value) || 0;
   updates.delivery_cities     = document.getElementById('deliveryCities').value
