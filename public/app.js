@@ -253,63 +253,172 @@ document.getElementById('statsDate')?.addEventListener('change', loadStats);
 // ─── PRODUCTS ─────────────────────────────────────────────────────────────────
 
 let allProducts = [];
+const expandedProducts = new Set();
 
 async function loadProducts() {
   const container = document.getElementById('productsTable');
   container.innerHTML = '<div class="p-8 text-center text-gray-400">טוען...</div>';
   try {
     allProducts = await api('GET', '/products');
-    renderProductsTable(allProducts);
+    renderProductsTable();
   } catch (err) {
     container.innerHTML = `<div class="p-8 text-center text-red-500">${err.message}</div>`;
   }
 }
 
-function renderProductsTable(products) {
+function imgThumb(url) {
+  if (!url) return '<span class="text-gray-300 text-lg">🖼️</span>';
+  return `<img src="${url}" class="w-10 h-10 object-cover rounded-lg border border-gray-100" onerror="this.replaceWith(document.createTextNode('🖼️'))">`;
+}
+
+function toggleSwitch(isOn, onClickFn) {
+  return `<button onclick="${onClickFn}"
+    class="w-10 h-6 rounded-full transition-colors flex-shrink-0 relative ${isOn ? 'bg-green-500' : 'bg-gray-300'}">
+    <span class="block w-4 h-4 rounded-full bg-white shadow absolute top-1 transition-all ${isOn ? 'right-1' : 'left-1'}"></span>
+  </button>`;
+}
+
+function renderProductsTable() {
   const container = document.getElementById('productsTable');
-  const main     = products.filter((p) => p.category === 'main');
-  const toppings = products.filter((p) => p.category === 'topping');
+  if (!allProducts.length) {
+    container.innerHTML = '<div class="p-12 text-center text-gray-400">אין מוצרים — לחץ "+ הוסף מוצר"</div>';
+    return;
+  }
 
-  const renderSection = (title, items) => `
-    <div class="px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">${title}</div>
-    ${items.map((p) => `
-      <div class="flex items-center justify-between px-5 py-4 border-b border-gray-50 hover:bg-gray-50">
-        <div class="flex items-center gap-3">
-          <button onclick="toggleProduct('${p.id}', ${!p.is_available})"
-            class="w-10 h-6 rounded-full transition-colors ${p.is_available ? 'bg-green-500' : 'bg-gray-300'} relative flex-shrink-0">
-            <span class="block w-4 h-4 rounded-full bg-white shadow absolute top-1 transition-all ${p.is_available ? 'right-1' : 'left-1'}"></span>
-          </button>
-          <div>
-            <div class="font-medium text-gray-900">${p.name_he}</div>
-            <div class="text-xs text-gray-400" dir="ltr">${p.name_en}</div>
+  const rows = allProducts.map((p) => {
+    const isExpanded = expandedProducts.has(p.id);
+    const pData = encodeProduct(p);
+
+    const additionsRows = isExpanded ? `
+      <tr id="additions-${p.id}" class="bg-orange-50/40">
+        <td colspan="7" class="px-0 py-0">
+          <div class="mx-6 my-3 rounded-xl border border-orange-100 overflow-hidden">
+            <table class="w-full text-xs">
+              <thead class="bg-orange-50 border-b border-orange-100">
+                <tr class="text-gray-500 font-medium">
+                  <th class="px-4 py-2 text-right">תוספת</th>
+                  <th class="px-4 py-2 text-right">מחיר</th>
+                  <th class="px-4 py-2 text-right">תמונה</th>
+                  <th class="px-4 py-2 text-right">זמין</th>
+                  <th class="px-4 py-2 text-right">פעולות</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-orange-50">
+                ${(p.additions || []).map((a) => {
+                  const aData = encodeAddition(a);
+                  return `<tr class="hover:bg-orange-50/60">
+                    <td class="px-4 py-2.5">
+                      <div class="font-medium text-gray-800">${a.name_he}</div>
+                      <div class="text-gray-400" dir="ltr">${a.name_en}</div>
+                    </td>
+                    <td class="px-4 py-2.5 font-semibold text-gray-700">₪${parseFloat(a.price).toFixed(2)}</td>
+                    <td class="px-4 py-2.5">${imgThumb(a.image_url)}</td>
+                    <td class="px-4 py-2.5">${toggleSwitch(a.is_available, `toggleAddition('${p.id}','${a.id}',${!a.is_available})`)}</td>
+                    <td class="px-4 py-2.5">
+                      <div class="flex gap-3">
+                        <button onclick="openAdditionModal('${p.id}',${aData})" class="text-orange-500 hover:text-orange-700 font-medium">עריכה</button>
+                        <button onclick="deleteAddition('${p.id}','${a.id}','${a.name_he}')" class="text-red-400 hover:text-red-600 font-medium">מחיקה</button>
+                      </div>
+                    </td>
+                  </tr>`;
+                }).join('')}
+                ${!(p.additions || []).length ? '<tr><td colspan="5" class="px-4 py-3 text-gray-400 text-center">אין תוספות</td></tr>' : ''}
+              </tbody>
+            </table>
+            <div class="px-4 py-2 border-t border-orange-100">
+              <button onclick="openAdditionModal('${p.id}', null)"
+                class="text-xs text-orange-600 hover:text-orange-800 font-medium">+ הוסף תוספת</button>
+            </div>
           </div>
-        </div>
-        <div class="flex items-center gap-4">
-          <span class="font-semibold text-gray-900">₪${parseFloat(p.price).toFixed(2)}</span>
-          <button onclick="openProductModal(${JSON.stringify(p).replace(/"/g, '&quot;')})"
-            class="text-xs text-orange-500 hover:text-orange-700 font-medium">עריכה</button>
-          <button onclick="deleteProduct('${p.id}', '${p.name_he}')"
-            class="text-xs text-red-400 hover:text-red-600 font-medium">מחיקה</button>
-        </div>
-      </div>`).join('')}`;
+        </td>
+      </tr>` : '';
 
-  container.innerHTML = renderSection('מנות עיקריות', main) + renderSection('תוספות', toppings);
+    return `
+      <tr class="hover:bg-gray-50 border-b border-gray-50 cursor-pointer" onclick="toggleExpand('${p.id}', event)">
+        <td class="px-4 py-3 w-8 text-gray-400 text-sm select-none">${isExpanded ? '▾' : '▸'}</td>
+        <td class="px-4 py-3">
+          <div class="font-medium text-gray-900">${p.name_he}</div>
+          <div class="text-xs text-gray-400" dir="ltr">${p.name_en}</div>
+        </td>
+        <td class="px-4 py-3 font-semibold text-gray-800">₪${parseFloat(p.price).toFixed(2)}</td>
+        <td class="px-4 py-3">${imgThumb(p.image_url)}</td>
+        <td class="px-4 py-3 text-xs text-gray-500">${(p.additions||[]).length} תוספות</td>
+        <td class="px-4 py-3" onclick="event.stopPropagation()">
+          ${toggleSwitch(p.is_available, `toggleProduct('${p.id}',${!p.is_available})`)}
+        </td>
+        <td class="px-4 py-3" onclick="event.stopPropagation()">
+          <div class="flex gap-3 items-center">
+            <button onclick="openProductModal(${pData})" class="text-xs text-orange-500 hover:text-orange-700 font-medium">עריכה</button>
+            <button onclick="deleteProduct('${p.id}','${p.name_he}')" class="text-xs text-red-400 hover:text-red-600 font-medium">מחיקה</button>
+          </div>
+        </td>
+      </tr>
+      ${additionsRows}`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 border-b border-gray-100">
+        <tr class="text-gray-500 text-xs font-medium">
+          <th class="px-4 py-3 w-8"></th>
+          <th class="px-4 py-3 text-right">שם מוצר</th>
+          <th class="px-4 py-3 text-right">מחיר</th>
+          <th class="px-4 py-3 text-right">תמונה</th>
+          <th class="px-4 py-3 text-right">תוספות</th>
+          <th class="px-4 py-3 text-right">זמין</th>
+          <th class="px-4 py-3 text-right">פעולות</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    </div>`;
+}
+
+function encodeProduct(p) {
+  return `'${btoa(unescape(encodeURIComponent(JSON.stringify(p))))}'`;
+}
+function encodeAddition(a) {
+  return `'${btoa(unescape(encodeURIComponent(JSON.stringify(a))))}'`;
+}
+function decodeData(b64) {
+  return JSON.parse(decodeURIComponent(escape(atob(b64))));
+}
+
+function toggleExpand(id, e) {
+  if (expandedProducts.has(id)) expandedProducts.delete(id);
+  else expandedProducts.add(id);
+  renderProductsTable();
 }
 
 async function toggleProduct(id, available) {
   try {
     await api('PATCH', `/products/${id}`, { is_available: available });
-    loadProducts();
+    const p = allProducts.find((x) => x.id === id);
+    if (p) p.is_available = available;
+    renderProductsTable();
   } catch (err) { alert(err.message); }
 }
 
-function openProductModal(product) {
-  document.getElementById('productModalTitle').textContent = product?.id ? 'עריכת מוצר' : 'מוצר חדש';
-  document.getElementById('productId').value        = product?.id        || '';
-  document.getElementById('productNameHe').value    = product?.name_he   || '';
-  document.getElementById('productNameEn').value    = product?.name_en   || '';
-  document.getElementById('productPrice').value     = product?.price      || '';
-  document.getElementById('productCategory').value  = product?.category   || 'main';
+async function toggleAddition(productId, addId, available) {
+  try {
+    await api('PATCH', `/products/${productId}/additions/${addId}`, { is_available: available });
+    const p = allProducts.find((x) => x.id === productId);
+    if (p) { const a = (p.additions||[]).find((x) => x.id === addId); if (a) a.is_available = available; }
+    renderProductsTable();
+  } catch (err) { alert(err.message); }
+}
+
+// ── Product modal ──
+
+function openProductModal(b64OrNull) {
+  const p = b64OrNull ? decodeData(b64OrNull) : null;
+  document.getElementById('productModalTitle').textContent = p?.id ? 'עריכת מוצר' : 'מוצר חדש';
+  document.getElementById('productId').value       = p?.id        || '';
+  document.getElementById('productNameHe').value   = p?.name_he   || '';
+  document.getElementById('productNameEn').value   = p?.name_en   || '';
+  document.getElementById('productPrice').value    = p?.price      || '';
+  document.getElementById('productImageUrl').value = p?.image_url  || '';
   document.getElementById('productModal').classList.remove('hidden');
 }
 
@@ -317,16 +426,23 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = document.getElementById('productId').value;
   const body = {
-    name_he:  document.getElementById('productNameHe').value.trim(),
-    name_en:  document.getElementById('productNameEn').value.trim(),
-    price:    parseFloat(document.getElementById('productPrice').value),
-    category: document.getElementById('productCategory').value,
+    name_he:   document.getElementById('productNameHe').value.trim(),
+    name_en:   document.getElementById('productNameEn').value.trim(),
+    price:     parseFloat(document.getElementById('productPrice').value),
+    image_url: document.getElementById('productImageUrl').value.trim() || null,
+    category:  'main',
   };
   try {
-    if (id) await api('PATCH', `/products/${id}`, body);
-    else    await api('POST',  '/products', body);
+    if (id) {
+      const updated = await api('PATCH', `/products/${id}`, body);
+      const idx = allProducts.findIndex((x) => x.id === id);
+      if (idx >= 0) allProducts[idx] = { ...allProducts[idx], ...updated };
+    } else {
+      const created = await api('POST', '/products', body);
+      allProducts.push(created);
+    }
     closeModal('productModal');
-    loadProducts();
+    renderProductsTable();
   } catch (err) { alert(err.message); }
 });
 
@@ -334,7 +450,60 @@ async function deleteProduct(id, name) {
   if (!confirm(`למחוק את "${name}"?`)) return;
   try {
     await api('DELETE', `/products/${id}`);
-    loadProducts();
+    allProducts = allProducts.filter((x) => x.id !== id);
+    expandedProducts.delete(id);
+    renderProductsTable();
+  } catch (err) { alert(err.message); }
+}
+
+// ── Addition modal ──
+
+let _additionProductId = null;
+
+function openAdditionModal(productId, b64OrNull) {
+  _additionProductId = productId;
+  const a = b64OrNull ? decodeData(b64OrNull) : null;
+  document.getElementById('additionModalTitle').textContent = a?.id ? 'עריכת תוספת' : 'תוספת חדשה';
+  document.getElementById('additionId').value       = a?.id        || '';
+  document.getElementById('additionNameHe').value   = a?.name_he   || '';
+  document.getElementById('additionNameEn').value   = a?.name_en   || '';
+  document.getElementById('additionPrice').value    = a?.price      || '';
+  document.getElementById('additionImageUrl').value = a?.image_url  || '';
+  document.getElementById('additionModal').classList.remove('hidden');
+}
+
+document.getElementById('additionForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id  = document.getElementById('additionId').value;
+  const pid = _additionProductId;
+  const body = {
+    name_he:   document.getElementById('additionNameHe').value.trim(),
+    name_en:   document.getElementById('additionNameEn').value.trim(),
+    price:     parseFloat(document.getElementById('additionPrice').value),
+    image_url: document.getElementById('additionImageUrl').value.trim() || null,
+  };
+  try {
+    const p = allProducts.find((x) => x.id === pid);
+    if (id) {
+      const updated = await api('PATCH', `/products/${pid}/additions/${id}`, body);
+      if (p) { const idx = p.additions.findIndex((x) => x.id === id); if (idx >= 0) p.additions[idx] = updated; }
+    } else {
+      const created = await api('POST', `/products/${pid}/additions`, body);
+      if (p) p.additions = [...(p.additions || []), created];
+    }
+    expandedProducts.add(pid);
+    closeModal('additionModal');
+    renderProductsTable();
+  } catch (err) { alert(err.message); }
+});
+
+async function deleteAddition(productId, addId, name) {
+  if (!confirm(`למחוק את "${name}"?`)) return;
+  try {
+    await api('DELETE', `/products/${productId}/additions/${addId}`);
+    const p = allProducts.find((x) => x.id === productId);
+    if (p) p.additions = p.additions.filter((x) => x.id !== addId);
+    renderProductsTable();
   } catch (err) { alert(err.message); }
 }
 

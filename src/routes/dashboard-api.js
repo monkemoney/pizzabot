@@ -138,14 +138,28 @@ router.get('/stats', requireAdmin, async (req, res) => {
 
 // ─── Products ─────────────────────────────────────────────────────────────────
 
+// GET /products — returns each product with its additions array nested
 router.get('/products', requireAuth, async (req, res) => {
-  const { data, error } = await supabase
+  const { data: products, error: pErr } = await supabase
     .from('products')
     .select('*')
-    .order('category')
     .order('sort_order');
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  if (pErr) return res.status(500).json({ error: pErr.message });
+
+  const { data: additions, error: aErr } = await supabase
+    .from('product_additions')
+    .select('*')
+    .order('sort_order');
+  if (aErr) return res.status(500).json({ error: aErr.message });
+
+  // Nest additions into each product
+  const addMap = {};
+  for (const a of additions) {
+    if (!addMap[a.product_id]) addMap[a.product_id] = [];
+    addMap[a.product_id].push(a);
+  }
+  const result = products.map((p) => ({ ...p, additions: addMap[p.id] || [] }));
+  res.json(result);
 });
 
 router.post('/products', requireAdmin, async (req, res) => {
@@ -155,12 +169,12 @@ router.post('/products', requireAdmin, async (req, res) => {
     .select().single();
   if (error) return res.status(400).json({ error: error.message });
   invalidateCache();
-  res.status(201).json(data);
+  res.status(201).json({ ...data, additions: [] });
 });
 
 router.patch('/products/:id', requireAdmin, async (req, res) => {
   const updates = { ...req.body, updated_at: new Date().toISOString() };
-  delete updates.id; delete updates.created_at;
+  delete updates.id; delete updates.created_at; delete updates.additions;
   const { data, error } = await supabase.from('products')
     .update(updates).eq('id', req.params.id).select().single();
   if (error) return res.status(400).json({ error: error.message });
@@ -170,6 +184,41 @@ router.patch('/products/:id', requireAdmin, async (req, res) => {
 
 router.delete('/products/:id', requireAdmin, async (req, res) => {
   const { error } = await supabase.from('products').delete().eq('id', req.params.id);
+  if (error) return res.status(400).json({ error: error.message });
+  invalidateCache();
+  res.json({ success: true });
+});
+
+// ─── Product Additions ────────────────────────────────────────────────────────
+
+router.post('/products/:id/additions', requireAdmin, async (req, res) => {
+  const { name_he, name_en, price, image_url, sort_order } = req.body;
+  const { data, error } = await supabase.from('product_additions')
+    .insert({ product_id: req.params.id, name_he, name_en, price, image_url, sort_order: sort_order || 0 })
+    .select().single();
+  if (error) return res.status(400).json({ error: error.message });
+  invalidateCache();
+  res.status(201).json(data);
+});
+
+router.patch('/products/:id/additions/:addId', requireAdmin, async (req, res) => {
+  const updates = { ...req.body, updated_at: new Date().toISOString() };
+  delete updates.id; delete updates.product_id; delete updates.created_at;
+  const { data, error } = await supabase.from('product_additions')
+    .update(updates)
+    .eq('id', req.params.addId)
+    .eq('product_id', req.params.id)
+    .select().single();
+  if (error) return res.status(400).json({ error: error.message });
+  invalidateCache();
+  res.json(data);
+});
+
+router.delete('/products/:id/additions/:addId', requireAdmin, async (req, res) => {
+  const { error } = await supabase.from('product_additions')
+    .delete()
+    .eq('id', req.params.addId)
+    .eq('product_id', req.params.id);
   if (error) return res.status(400).json({ error: error.message });
   invalidateCache();
   res.json({ success: true });
