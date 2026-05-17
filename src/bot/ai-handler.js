@@ -2,14 +2,14 @@
 
 const { callClaude }              = require('../services/claude');
 const { buildSystemPrompt }       = require('./prompts');
-const { sendMessage, sendMenuList } = require('../services/greenapi');
+const { sendMessage, sendMenuList, sendCategoryPoll, resolveCategoryVote } = require('../services/greenapi');
 const { getSession, updateSession, savePendingPayment, saveOrder, getLastOrderByPhone } = require('../services/supabase');
 const { createPaymentPage }       = require('../services/cardcom');
 const settings                    = require('../services/settings');
 const crypto                      = require('crypto');
 
 // <!--ACTION:TYPE:{json}--> or <!--ACTION:RESET/SHOW_MENU-->
-const ACTION_RE = /<!--ACTION:(CREATE_PAYMENT|SAVE_ORDER|RESET|SHOW_MENU)(?::(\{[\s\S]*?\}))?-->/;
+const ACTION_RE = /<!--ACTION:(CREATE_PAYMENT|SAVE_ORDER|RESET|SHOW_MENU|SHOW_CATEGORY)(?::([^-]+))?-->/;
 
 function stripAction(text) {
   return text.replace(ACTION_RE, '').trim();
@@ -130,10 +130,19 @@ async function handleMessage(phone, userMessage) {
   const actionType = match[1];
   const payload    = match[2] ? parsePayload(match[2]) : null;
 
-  // ── SHOW_MENU — send interactive list ──
+  // ── SHOW_MENU — category poll (step 1) ──
   if (actionType === 'SHOW_MENU') {
     const lang = detectLang(userMessage, history);
     await sendMenuList(phone, lang).catch(() => {});
+    await updateSession(phone, { conversation_history: updatedHistory });
+    return;
+  }
+
+  // ── SHOW_CATEGORY — item poll for a specific category (step 2) ──
+  if (actionType === 'SHOW_CATEGORY') {
+    const lang        = detectLang(userMessage, history);
+    const categoryKey = (match[2] || '').trim();
+    await sendCategoryPoll(phone, categoryKey, lang).catch(() => {});
     await updateSession(phone, { conversation_history: updatedHistory });
     return;
   }

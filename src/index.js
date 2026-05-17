@@ -69,12 +69,27 @@ app.post('/webhook', (req, res) => {
   if (messageData.typeMessage === 'textMessage') {
     textMessage = messageData.textMessageData?.textMessage;
   } else if (messageData.typeMessage === 'listResponseMessage') {
-    // Customer tapped an item in the interactive list menu
     textMessage = messageData.listResponseMessage?.title || messageData.listResponseMessage?.sticker;
   } else if (messageData.typeMessage === 'buttonsResponseMessage') {
-    // Customer tapped a button
     textMessage = messageData.buttonsResponseMessage?.selectedDisplayText
                || messageData.buttonsResponseMessage?.selectedButtonId;
+  } else if (messageData.typeMessage === 'pollUpdateMessage') {
+    // Customer voted in a poll — extract the chosen option(s)
+    const pollData = messageData.pollMessageData || messageData.pollUpdateMessage || {};
+    const state    = pollData.stateMessage || pollData;
+    const options  = state.pollOptions || state.votes || [];
+    // Find options where this sender voted (optionVoters is an array of JIDs)
+    const senderJid = body.senderData?.sender;
+    let voted = options
+      .filter((o) => Array.isArray(o.optionVoters) && o.optionVoters.some((v) => v === senderJid))
+      .map((o) => o.optionName);
+    // Fallback: if voter list format differs, just pick options with voters > 0
+    if (!voted.length) {
+      voted = options
+        .filter((o) => (o.optionVoters && (Array.isArray(o.optionVoters) ? o.optionVoters.length : o.optionVoters) > 0))
+        .map((o) => o.optionName);
+    }
+    if (voted.length) textMessage = voted[0]; // single-answer poll
   }
 
   if (!textMessage) return;

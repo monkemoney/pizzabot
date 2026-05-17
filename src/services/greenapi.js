@@ -58,30 +58,108 @@ async function sendListMessage(phone, title, description, buttonText, sections) 
   }
 }
 
+// ─── Poll helpers ─────────────────────────────────────────────────────────────
+
 /**
- * Send a numbered text menu — works on all WhatsApp accounts.
- * (Interactive list/button messages require WhatsApp Business API and are not
- *  supported on regular WhatsApp numbers connected via Green API.)
+ * Send a WhatsApp poll (native — works on all WhatsApp accounts).
+ * @param {string}   phone
+ * @param {string}   question   poll title/question
+ * @param {string[]} options    up to 12 option strings
+ */
+async function sendPoll(phone, question, options) {
+  const chatId = toChatId(phone);
+  try {
+    const r = await axios.post(apiUrl('sendPoll'), {
+      chatId,
+      message:         question,
+      options:         options.map((o) => ({ optionName: o })),
+      multipleAnswers: false,
+    });
+    return r.data;
+  } catch (err) {
+    const detail = err.response ? JSON.stringify(err.response.data) : err.message;
+    console.error(`[greenapi] sendPoll failed for ${chatId}:`, detail);
+    throw err;
+  }
+}
+
+// Product categories — derived from product name keywords
+function getCategory(nameHe) {
+  if (nameHe.includes('פיצה'))  return 'pizzas';
+  if (nameHe.includes('פסטה'))  return 'pastas';
+  return 'other';
+}
+
+const CATEGORY_LABELS = {
+  pizzas: '🍕 פיצות',
+  pastas: '🍝 פסטות',
+  other:  '🥗 מנות נוספות',
+};
+
+const CATEGORY_LABELS_EN = {
+  pizzas: '🍕 Pizzas',
+  pastas: '🍝 Pastas',
+  other:  '🥗 More Items',
+};
+
+/**
+ * Step 1 — Send category selection poll.
+ * Groups live products into categories; only shows categories that have items.
  */
 async function sendMenuList(phone, lang = 'he') {
   const { getProducts } = require('./menu-service');
   const { main } = await getProducts();
 
   const isHe = lang !== 'en';
+  const labels = isHe ? CATEGORY_LABELS : CATEGORY_LABELS_EN;
 
-  const lines = main.map((p, i) => {
-    const name = isHe ? p.name_he : (p.name_en || p.name_he);
-    return `*${i + 1}.* ${name} — *${p.price}₪*`;
-  });
+  // Find which categories have products
+  const usedCategories = [...new Set(main.map((p) => getCategory(p.name_he)))]
+    .filter((c) => labels[c]);
 
-  const divider = '━━━━━━━━━━━━━━━━━━';
-  const header  = isHe ? '🍕 *תפריט פיצה דליבריס*' : '🍕 *Pizza Deliveries Menu*';
-  const footer  = isHe
-    ? `${divider}\nשלח את *מספר* הבחירה שלך 👆`
-    : `${divider}\nReply with the *number* of your choice 👆`;
+  const options  = usedCategories.map((c) => labels[c]);
+  const question = isHe ? 'מה תרצה להזמין? 👇' : "What would you like? 👇";
 
-  const message = [header, divider, ...lines, footer].join('\n');
-  await sendMessage(phone, message);
+  await sendPoll(phone, question, options);
+}
+
+/**
+ * Step 2 — Send item selection poll for a specific category.
+ * @param {string} phone
+ * @param {string} categoryKey  'pizzas' | 'pastas' | 'other'
+ * @param {string} lang
+ */
+async function sendCategoryPoll(phone, categoryKey, lang = 'he') {
+  const { getProducts } = require('./menu-service');
+  const { main } = await getProducts();
+
+  const isHe  = lang !== 'en';
+  const items  = main.filter((p) => getCategory(p.name_he) === categoryKey);
+
+  if (!items.length) {
+    await sendMessage(phone, isHe ? 'אין פריטים בקטגוריה זו כרגע.' : 'No items in this category right now.');
+    return;
+  }
+
+  const options  = items.map((p) => `${p.name_he} — ${p.price}₪`);
+  const label    = (isHe ? CATEGORY_LABELS : CATEGORY_LABELS_EN)[categoryKey] || '';
+  const question = isHe ? `בחר מנה מ${label}:` : `Choose from ${label}:`;
+
+  await sendPoll(phone, question, options);
+}
+
+/**
+ * Resolve a category poll vote (localized label) → category key.
+ * Returns null if not recognized.
+ */
+function resolveCategoryVote(vote) {
+  for (const [key, label] of Object.entries(CATEGORY_LABELS)) {
+    if (vote.includes(label) || label.includes(vote.trim())) return key;
+  }
+  for (const [key, label] of Object.entries(CATEGORY_LABELS_EN)) {
+    if (vote.includes(label) || label.includes(vote.trim())) return key;
+  }
+  return null;
 }
 
 /**
@@ -107,4 +185,7 @@ async function sendButtons(phone, message, buttons) {
   }
 }
 
-module.exports = { sendMessage, sendListMessage, sendMenuList, sendButtons, formatPhone, toChatId };
+module.exports = {
+  sendMessage, sendListMessage, sendMenuList, sendCategoryPoll,
+  sendPoll, resolveCategoryVote, sendButtons, formatPhone, toChatId,
+};
