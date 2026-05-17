@@ -122,12 +122,13 @@ No JWT library — uses HMAC-SHA256 tokens built in `src/middleware/auth.js`. Tw
 - Connected phone: +1 (470) 746-4602
 
 ### Render
-- **BEFORE deleting/recreating the service**, dump current env vars:
+- **BEFORE deleting/recreating the service**, always back up env vars first:
   ```bash
-  curl -H "Authorization: Bearer {RENDER_API_KEY}" \
-    https://api.render.com/v1/services/{SERVICE_ID}/env-vars
+  node scripts/backup-render-env.js    # saves to .env.production (gitignored)
+  node scripts/sync-render-env.js      # restores all 15 vars in one shot
   ```
-- All 15 env vars must be restored after recreation — especially `ANTHROPIC_API_KEY` which is easy to miss.
+- Health check is configured on `/health` — Render auto-restarts if it fails.
+- All 15 env vars must be present — especially `ANTHROPIC_API_KEY` which is easy to miss after recreation.
 
 ### Supabase
 - Project ref: `umoftdmutxhrbknowbyh`
