@@ -2,79 +2,77 @@
 
 const axios = require('axios');
 
-const BASE_URL  = process.env.CARDCOM_API_URL  || 'https://secure.cardcom.solutions';
-const TERMINAL  = process.env.CARDCOM_TERMINAL;
-const USERNAME  = process.env.CARDCOM_USERNAME;
+const BASE_URL = process.env.CARDCOM_API_URL || 'https://secure.cardcom.solutions';
+const TERMINAL = process.env.CARDCOM_TERMINAL;   // 1000 for test
+const API_NAME = process.env.CARDCOM_USERNAME;    // CardTest1994
 
 /**
- * Create a Cardcom Low-Profile payment page.
+ * Create a Cardcom Low-Profile payment page via the JSON API (v11).
  * Returns { lowProfileCode, paymentUrl }.
  */
-async function createPaymentPage({ amount, returnValue, productName, phone }) {
-  if (!TERMINAL || !USERNAME) {
-    throw new Error('CARDCOM_TERMINAL and CARDCOM_USERNAME must be set in environment');
+async function createPaymentPage({ amount, returnValue, productName }) {
+  if (!TERMINAL || !API_NAME) {
+    throw new Error('CARDCOM_TERMINAL and CARDCOM_USERNAME must be set');
   }
 
   const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:3000';
 
-  const params = new URLSearchParams({
-    TerminalNumber:    TERMINAL,
-    UserName:          USERNAME,
-    SumToBill:         amount.toFixed(2),
-    CoinID:            '1',            // 1 = ILS
+  const body = {
+    TerminalNumber:    parseInt(TERMINAL, 10),
+    ApiName:           API_NAME,
+    Amount:            parseFloat(amount.toFixed(2)),
+    CoinID:            1,           // ILS
     Language:          'he',
-    APILevel:          '10',
     ReturnValue:       returnValue,
-    IndicatorUrl:      `${PUBLIC_URL}/webhook/payment`,
     SuccessRedirectUrl:`${PUBLIC_URL}/payment/success`,
     FailedRedirectUrl: `${PUBLIC_URL}/payment/failed`,
-    MaxPayments:       '1',
-    ProductName:       productName,
-  });
+    IndicatorUrl:      `${PUBLIC_URL}/webhook/payment`,
+    ProductName:       productName || 'פיצה דליבריס',
+  };
 
   const response = await axios.post(
-    `${BASE_URL}/Interface/LowProfile.aspx`,
-    params.toString(),
-    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
+    `${BASE_URL}/api/v11/LowProfile/Create`,
+    body,
+    { headers: { 'Content-Type': 'application/json' }, timeout: 15000 }
   );
 
-  const result = Object.fromEntries(new URLSearchParams(response.data));
-
-  if (result.ResponseCode !== '0') {
-    throw new Error(`Cardcom error [${result.ResponseCode}]: ${result.Description || 'Unknown error'}`);
+  const data = response.data;
+  if (data.ResponseCode !== 0) {
+    throw new Error(`Cardcom error [${data.ResponseCode}]: ${data.Description || 'Unknown'}`);
   }
 
   return {
-    lowProfileCode: result.LowProfileCode,
-    paymentUrl:     result.url,
+    lowProfileCode: data.LowProfileId,
+    paymentUrl:     data.Url,
   };
 }
 
 /**
- * Verify a payment after Cardcom posts to IndicatorUrl.
+ * Verify a completed payment via the JSON API.
  * Returns { success, responseCode, returnValue, amount }.
  */
 async function verifyPayment(lowProfileCode) {
-  if (!TERMINAL || !USERNAME) {
-    throw new Error('CARDCOM_TERMINAL and CARDCOM_USERNAME must be set in environment');
+  if (!TERMINAL || !API_NAME) {
+    throw new Error('CARDCOM_TERMINAL and CARDCOM_USERNAME must be set');
   }
 
-  const response = await axios.get(
-    `${BASE_URL}/Interface/BillGoldGetLowProfileIndicatorData.aspx`,
+  const response = await axios.post(
+    `${BASE_URL}/api/v11/LowProfile/GetLowProfileIndicatorData`,
     {
-      params: { LowProfileCode: lowProfileCode, TerminalNumber: TERMINAL, UserName: USERNAME },
-      timeout: 15000,
-    }
+      TerminalNumber: parseInt(TERMINAL, 10),
+      ApiName:        API_NAME,
+      LowProfileId:   lowProfileCode,
+    },
+    { headers: { 'Content-Type': 'application/json' }, timeout: 15000 }
   );
 
-  const result = Object.fromEntries(new URLSearchParams(response.data));
-
+  const data = response.data;
   return {
-    success:      result.ResponseCode === '0',
-    responseCode: result.ResponseCode,
-    returnValue:  result.ReturnValue,
-    amount:       parseFloat(result.Amount || '0'),
-    description:  result.Description || '',
+    success:      data.ResponseCode === 0,
+    responseCode: data.ResponseCode,
+    returnValue:  data.ReturnValue,
+    amount:       parseFloat(data.Amount || '0'),
+    description:  data.Description || '',
   };
 }
 
