@@ -150,34 +150,57 @@ async function sendCategoryPoll(phone, categoryId, lang = 'he') {
 
 /**
  * Step 3 — Toppings poll for pizza orders.
- * Loads from the standalone is_topping_addon category in products.
- * Only triggered when the customer selected a pizza.
+ * Sends a toppings multi-select poll.
+ * 1. If productName is given → look for product_additions for that product first.
+ * 2. Fallback: use the global is_topping_addon category products.
  */
-async function sendToppingsPoll(phone, lang = 'he') {
+async function sendToppingsPoll(phone, lang = 'he', productName = null) {
+  const { createClient } = require('@supabase/supabase-js');
+  const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
   const { getProducts } = require('./menu-service');
-  const { categories, byCategory } = await getProducts();
+  const { categories, byCategory, main } = await getProducts();
 
   const isHe = lang !== 'en';
+  let toppingOptions = [];
 
-  // Find the dedicated topping-addon category
-  const toppingCat = categories.find((c) => c.is_topping_addon);
-  const toppings   = toppingCat ? (byCategory[toppingCat.id]?.items || []) : [];
+  // 1. Try per-product additions if productName given
+  if (productName) {
+    const product = main.find((p) =>
+      p.name_he && p.name_he.includes(productName.trim().slice(0, 6))
+    );
+    if (product) {
+      const { data: additions } = await supabase
+        .from('product_additions')
+        .select('*')
+        .eq('product_id', product.id)
+        .eq('is_available', true)
+        .order('sort_order');
+      if (additions && additions.length) {
+        toppingOptions = additions.map((a) => `${a.name_he} — +${a.price}₪`);
+      }
+    }
+  }
 
-  if (!toppings.length) {
+  // 2. Fallback: global is_topping_addon category
+  if (!toppingOptions.length) {
+    const toppingCat = categories.find((c) => c.is_topping_addon);
+    const toppings   = toppingCat ? (byCategory[toppingCat.id]?.items || []) : [];
+    toppingOptions   = toppings.map((t) => `${t.name_he} — +${t.price}₪`);
+  }
+
+  if (!toppingOptions.length) {
     await sendMessage(phone, isHe ? 'אין תוספות זמינות כרגע.' : 'No toppings available right now.');
     return;
   }
 
-  const toppingOptions = toppings.map((t) => `${t.name_he} — +${t.price}₪`);
-
-  const noTop  = isHe ? CTRL_NO_TOP    : CTRL_NO_TOP_EN;
-  const confirm= isHe ? CTRL_CONFIRM   : CTRL_CONFIRM_EN;
-  const back   = isHe ? CTRL_BACK      : CTRL_BACK_EN;
+  const noTop   = isHe ? CTRL_NO_TOP  : CTRL_NO_TOP_EN;
+  const confirm = isHe ? CTRL_CONFIRM : CTRL_CONFIRM_EN;
+  const back    = isHe ? CTRL_BACK    : CTRL_BACK_EN;
 
   const options  = [...toppingOptions, noTop, confirm, back];
   const question = isHe
-    ? '🧀 אילו תוספות תרצה לפיצה? (ניתן לבחור כמה):'
-    : '🧀 Which toppings for your pizza? (pick multiple):';
+    ? '🧀 אילו תוספות תרצה? (ניתן לבחור כמה):'
+    : '🧀 Which toppings? (pick multiple):';
 
   await sendPoll(phone, question, options, true);
 }

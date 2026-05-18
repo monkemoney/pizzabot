@@ -159,7 +159,9 @@ async function handleMessage(phone, userMessage) {
   // ── SHOW_TOPPINGS — toppings poll ──
   if (actionType === 'SHOW_TOPPINGS') {
     const lang = detectLang(userMessage, history);
-    await sendToppingsPoll(phone, lang).catch(() => {});
+    // Try to extract the product name from the current user message for per-product toppings
+    const productName = userMessage.length < 80 ? userMessage : null;
+    await sendToppingsPoll(phone, lang, productName).catch(() => {});
     await updateSession(phone, { conversation_history: updatedHistory });
     return;
   }
