@@ -509,6 +509,10 @@ input[type=time] { direction: ltr; }
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       לקוחות
     </button>
+    <button onclick="showTab('stats')"      id="tab-stats"      class="nav-btn admin-only" style="display:none">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
+      סטטיסטיקות
+    </button>
     <button onclick="showTab('settings')"  id="tab-settings"  class="nav-btn admin-only" style="display:none">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       הגדרות
@@ -541,26 +545,6 @@ input[type=time] { direction: ltr; }
 
     <!-- Status summary cards -->
     <div id="orderStatusCards" style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:22px"></div>
-
-    <!-- Stats section (admin) -->
-    <div id="statsSection" class="admin-only" style="display:none;margin-bottom:22px">
-      <div class="card" style="padding:22px 26px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
-          <span style="font-weight:800;font-size:.95rem;display:inline-flex;align-items:center;gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg> סטטיסטיקות</span>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="period-btn btn btn-sm" data-period="today" onclick="setPeriod('today')">היום</button>
-            <button class="period-btn btn btn-sm" data-period="week"  onclick="setPeriod('week')">שבוע</button>
-            <button class="period-btn btn btn-sm" data-period="month" onclick="setPeriod('month')">חודש</button>
-            <button class="period-btn btn btn-sm" data-period="year"  onclick="setPeriod('year')">שנה</button>
-            <button class="period-btn btn btn-sm" data-period="all"   onclick="setPeriod('all')">הכל</button>
-            <input type="date" id="statsCustomDate" class="filter-select" style="padding:6px 12px;font-size:.8rem"
-              onchange="setPeriod('today',this.value)">
-          </div>
-        </div>
-        <div id="statsCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:18px"></div>
-        <div id="ordersChart" style="display:none"></div>
-      </div>
-    </div>
 
     <!-- Filters -->
     <div class="card filters-bar" style="padding:14px 20px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -650,6 +634,43 @@ input[type=time] { direction: ltr; }
       <button onclick="closeModal('orderModal')" class="modal-close">&times;</button>
     </div>
     <div class="modal-body" id="orderModalContent"></div>
+  </div>
+</div>
+
+<!-- ── Stats Page ── -->
+<div id="page-stats" style="display:none">
+  <div class="page-header">
+    <div class="page-title">סטטיסטיקות</div>
+    <button onclick="loadStats(currentPeriod)" class="btn btn-ghost btn-sm">↻ רענן</button>
+  </div>
+
+  <!-- Period picker -->
+  <div class="card" style="padding:16px 22px;margin-bottom:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span style="font-weight:700;font-size:.85rem;color:var(--text-muted)">תקופה:</span>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="period-btn btn btn-sm" data-period="today" onclick="setPeriod('today')">היום</button>
+      <button class="period-btn btn btn-sm" data-period="week"  onclick="setPeriod('week')">שבוע</button>
+      <button class="period-btn btn btn-sm" data-period="month" onclick="setPeriod('month')">חודש</button>
+      <button class="period-btn btn btn-sm" data-period="year"  onclick="setPeriod('year')">שנה</button>
+      <button class="period-btn btn btn-sm" data-period="all"   onclick="setPeriod('all')">הכל</button>
+    </div>
+    <input type="date" id="statsCustomDate" class="filter-select" style="padding:6px 12px;font-size:.8rem"
+      onchange="setPeriod('custom',this.value)">
+  </div>
+
+  <!-- KPI cards -->
+  <div id="statsCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:20px"></div>
+
+  <!-- Bar chart -->
+  <div class="card" style="padding:22px 26px;margin-bottom:20px">
+    <div style="font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:16px">הזמנות לפי יום</div>
+    <div id="ordersChart"></div>
+  </div>
+
+  <!-- Top products table -->
+  <div class="card" style="padding:22px 26px">
+    <div style="font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:16px">מוצרים מובילים</div>
+    <div id="statsTopProducts"></div>
   </div>
 </div>
 

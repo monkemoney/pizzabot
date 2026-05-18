@@ -61,7 +61,7 @@ async function api(method, path, body) {
 
 // ─── Tab navigation ───────────────────────────────────────────────────────────
 
-const TABS = ['orders', 'products', 'customers', 'settings'];
+const TABS = ['orders', 'products', 'customers', 'stats', 'settings'];
 
 function showTab(name) {
   TABS.forEach((t) => {
@@ -81,6 +81,7 @@ function showTab(name) {
   if (name === 'products')  loadProducts();
   if (name === 'customers') loadCustomers();
   if (name === 'settings')  loadSettings();
+  if (name === 'stats')     setPeriod(currentPeriod);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -140,7 +141,6 @@ async function loadOrders() {
     renderStatusSummaryCards(currentOrders);
     updateNotifBadge();
     filterOrders();
-    if (role === 'admin') loadStats(currentPeriod);
   } catch (err) {
     container.innerHTML = `<div style="padding:20px;color:red">${err.message}</div>`;
   }
@@ -366,71 +366,125 @@ async function updateOrderStatus(orderId, status, orderNumber) {
 // ─── STATS ────────────────────────────────────────────────────────────────────
 
 function setPeriod(period, date) {
-  currentPeriod = period;
+  currentPeriod = period === 'custom' ? 'today' : period;
   document.querySelectorAll('.period-btn').forEach(b => {
-    const isActive = b.dataset.period === period;
+    const isActive = b.dataset.period === (period === 'custom' ? 'today' : period);
     b.className = 'period-btn btn btn-sm ' + (isActive ? 'btn-primary' : 'btn-ghost');
   });
-  loadStats(period, date);
+  loadStats(period === 'custom' ? 'today' : period, date);
 }
 
 async function loadStats(period = 'today', date) {
+  const statsCardsEl   = document.getElementById('statsCards');
+  const chartEl        = document.getElementById('ordersChart');
+  const topProductsEl  = document.getElementById('statsTopProducts');
+  if (!statsCardsEl) return; // stats page not in DOM yet
+
+  statsCardsEl.innerHTML  = '<div style="color:var(--text-muted);font-size:.85rem;padding:8px">טוען...</div>';
+  if (chartEl)       chartEl.innerHTML       = '';
+  if (topProductsEl) topProductsEl.innerHTML = '';
+
   try {
     const params = date ? `period=${period}&date=${date}` : `period=${period}`;
     const s = await api('GET', `/stats?${params}`);
 
-    const periodLabel = {today:'היום',week:'השבוע',month:'החודש',year:'השנה',all:'הכל'}[period]||period;
+    const periodLabel = {today:'היום',week:'השבוע',month:'החודש',year:'השנה',all:'הכל'}[period] || period;
 
-    document.getElementById('statsCards').innerHTML = `
-      <div class="stat-card violet">
-        <div class="stat-value">${s.order_count}</div>
-        <div class="stat-label">הזמנות — ${periodLabel}</div>
-      </div>
-      <div class="stat-card green">
-        <div class="stat-value">₪${(s.revenue||0).toFixed(0)}</div>
-        <div class="stat-label">הכנסות</div>
-      </div>
-      <div class="stat-card violet">
-        <div class="stat-value">${s.avg_delivery_minutes != null ? s.avg_delivery_minutes+'′' : '—'}</div>
-        <div class="stat-label">זמן מסירה ממוצע</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" style="color:#e0004d">${s.cancelled_count||0}</div>
-        <div class="stat-label">ביטולים</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" style="color:var(--accent)">${s.conversion_rate != null ? s.conversion_rate+'%' : '—'}</div>
-        <div class="stat-label">יחס המרה</div>
-      </div>
-      <div class="stat-card" style="grid-column:span 2">
-        <div style="font-size:.75rem;font-weight:700;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:5px">${SVG.award} נמכרים ביותר</div>
-        ${(s.top_products||[]).map((p,i)=>`
-          <div style="display:flex;justify-content:space-between;font-size:.8rem;padding:3px 0">
-            <span>${i+1}. ${p.name}</span><span style="font-weight:700;color:var(--primary)">${p.count}x</span>
-          </div>`).join('')||'<div style="font-size:.8rem;color:var(--text-muted)">אין נתונים</div>'}
+    // ── KPI cards ──
+    const kpi = (label, value, color='var(--primary)', sub='') => `
+      <div class="stat-card" style="padding:20px 22px">
+        <div style="font-size:1.8rem;font-weight:800;color:${color};line-height:1">${value}</div>
+        <div class="stat-label" style="margin-top:6px">${label}</div>
+        ${sub ? `<div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">${sub}</div>` : ''}
       </div>`;
 
-    // Mini chart
+    statsCardsEl.innerHTML =
+      kpi(`הזמנות — ${periodLabel}`, s.order_count, 'var(--primary)') +
+      kpi('הכנסות', `₪${(s.revenue||0).toFixed(0)}`, '#16a34a') +
+      kpi('ממוצע להזמנה', s.order_count ? `₪${((s.revenue||0)/s.order_count).toFixed(0)}` : '—', '#0369a1') +
+      kpi('זמן מסירה ממוצע', s.avg_delivery_minutes != null ? s.avg_delivery_minutes + '′' : '—', '#7c3aed') +
+      kpi('ביטולים', s.cancelled_count || 0, '#dc2626') +
+      kpi('יחס המרה', s.conversion_rate != null ? s.conversion_rate + '%' : '—', 'var(--accent)');
+
+    // ── Bar chart ──
     const byDay = s.orders_by_day || {};
     const days  = Object.keys(byDay).sort();
-    if (days.length > 1) {
-      const maxCount = Math.max(...days.map(d => byDay[d].count), 1);
-      document.getElementById('ordersChart').style.display = 'block';
-      document.getElementById('ordersChart').innerHTML = `
-        <div style="font-size:.75rem;font-weight:700;color:var(--primary);margin-bottom:10px">הזמנות לפי יום</div>
-        <div style="display:flex;align-items:flex-end;gap:6px;height:60px">
-          ${days.map(d => {
-            const pct = Math.round((byDay[d].count / maxCount) * 100);
-            return `<div title="${d}: ${byDay[d].count} הזמנות"
-              style="flex:1;background:var(--primary);border-radius:4px 4px 0 0;height:${pct}%;min-height:4px;opacity:.8;transition:opacity .2s"
-              onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.8"></div>`;
-          }).join('')}
-        </div>
-        <div style="display:flex;gap:6px;margin-top:4px">
-          ${days.map(d => `<div style="flex:1;text-align:center;font-size:.6rem;color:var(--text-muted)">${d.slice(5)}</div>`).join('')}
-        </div>`;
+    if (chartEl) {
+      if (days.length > 0) {
+        const maxCount   = Math.max(...days.map(d => byDay[d].count), 1);
+        const maxRevenue = Math.max(...days.map(d => byDay[d].revenue || 0), 1);
+        chartEl.innerHTML = `
+          <div style="display:flex;align-items:flex-end;gap:4px;height:120px;padding-bottom:0">
+            ${days.map(d => {
+              const pct  = Math.round((byDay[d].count / maxCount) * 100);
+              const rev  = (byDay[d].revenue || 0).toFixed(0);
+              return `
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;height:100%">
+                  <div style="flex:1;display:flex;align-items:flex-end;width:100%">
+                    <div title="${d}&#10;${byDay[d].count} הזמנות&#10;₪${rev}"
+                      style="width:100%;background:linear-gradient(180deg,var(--primary),#9333ea);
+                             border-radius:6px 6px 0 0;height:${Math.max(pct,4)}%;
+                             cursor:default;transition:opacity .15s;opacity:.85"
+                      onmouseover="this.style.opacity=1;this.nextElementSibling.style.display='block'"
+                      onmouseout="this.style.opacity=.85;this.nextElementSibling.style.display='none'">
+                    </div>
+                    <div style="display:none;position:absolute;background:var(--text);color:#fff;
+                                font-size:.7rem;padding:4px 8px;border-radius:6px;white-space:nowrap;
+                                margin-top:-40px;pointer-events:none;z-index:10">
+                      ${byDay[d].count} הזמנות · ₪${rev}
+                    </div>
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>
+          <div style="display:flex;gap:4px;margin-top:6px;border-top:1px solid var(--border);padding-top:6px">
+            ${days.map(d => `
+              <div style="flex:1;text-align:center;font-size:.62rem;color:var(--text-muted)">
+                ${d.slice(5)}
+              </div>`).join('')}
+          </div>`;
+      } else {
+        chartEl.innerHTML = '<div style="color:var(--text-muted);font-size:.85rem;padding:20px 0;text-align:center">אין נתונים לתקופה זו</div>';
+      }
     }
-  } catch { /* non-critical */ }
+
+    // ── Top products table ──
+    if (topProductsEl) {
+      const tops = s.top_products || [];
+      if (tops.length) {
+        topProductsEl.innerHTML = `
+          <table style="width:100%">
+            <thead><tr>
+              <th style="text-align:right">#</th>
+              <th style="text-align:right">מוצר</th>
+              <th style="text-align:center">כמות</th>
+              <th style="text-align:left">הכנסה</th>
+            </tr></thead>
+            <tbody>
+              ${tops.map((p, i) => `
+                <tr>
+                  <td style="font-weight:800;color:var(--primary);width:32px">${i+1}</td>
+                  <td style="font-weight:600">${p.name}</td>
+                  <td style="text-align:center">
+                    <span style="background:var(--primary-soft);color:var(--primary);
+                                 padding:2px 10px;border-radius:50px;font-weight:700;font-size:.8rem">
+                      ${p.count}x
+                    </span>
+                  </td>
+                  <td style="font-weight:700;color:#16a34a;text-align:left">
+                    ${p.revenue ? '₪' + parseFloat(p.revenue).toFixed(0) : '—'}
+                  </td>
+                </tr>`).join('')}
+            </tbody>
+          </table>`;
+      } else {
+        topProductsEl.innerHTML = '<div style="color:var(--text-muted);font-size:.85rem;padding:16px 0;text-align:center">אין נתונים לתקופה זו</div>';
+      }
+    }
+
+  } catch (err) {
+    if (statsCardsEl) statsCardsEl.innerHTML = `<div style="color:red;font-size:.85rem">שגיאה בטעינת סטטיסטיקות</div>`;
+  }
 }
 
 // ─── ORDER EDIT ───────────────────────────────────────────────────────────────
