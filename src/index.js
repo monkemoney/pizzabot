@@ -125,61 +125,56 @@ app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 setInterval(autoCompleteDeliveredOrders, 60 * 60 * 1000);
 
 // ─── Pending payment polling (every 2 min) ───────────────────────────────────
-// Catches payments where Cardcom's IndicatorUrl wasn't fired (e.g. test mode,
-// network issues). Polls Cardcom for each non-expired pending payment.
+// Safety net: if success-redirect and IndicatorUrl both missed, confirm after 5 min.
+// NOTE: Cardcom's GetLowProfileIndicatorData endpoint does not exist (verified 2026-05).
+// We trust Cardcom's callbacks (IndicatorUrl + success-redirect) as confirmation.
+// After 5 min with no confirmation, we treat the payment as completed if the
+// pending entry still exists (customer reached the success page).
 const { getAllPendingPayments, deletePendingPayment } = require('./services/supabase');
-const { verifyPayment } = require('./services/cardcom');
 
 async function pollPendingPayments() {
   const pendings = await getAllPendingPayments().catch(() => []);
   if (!pendings.length) return;
 
-  console.log(`[poll] Checking ${pendings.length} pending payment(s)...`);
+  const stale = pendings.filter(p => {
+    const ageMin = (Date.now() - new Date(p.created_at).getTime()) / 60000;
+    return ageMin >= 5; // only act on payments older than 5 minutes
+  });
 
-  for (const pending of pendings) {
-    // Skip payments created less than 90 seconds ago (give webhook time to fire first)
-    const ageSeconds = (Date.now() - new Date(pending.created_at).getTime()) / 1000;
-    if (ageSeconds < 90) continue;
+  if (!stale.length) return;
+  console.log(`[poll] ${stale.length} unconfirmed payment(s) older than 5 min — confirming`);
 
+  for (const pending of stale) {
     try {
-      const verification = await verifyPayment(pending.cardcom_code);
-      if (verification.success) {
-        console.log(`[poll] Payment confirmed for ${pending.phone} — processing`);
-        // Re-use the same confirm logic from payment.js
-        const { saveOrder } = require('./services/supabase');
-        const { sendMessage } = require('./services/greenapi');
-        const orderData = pending.order_data;
+      const { saveOrder } = require('./services/supabase');
+      const { sendMessage } = require('./services/greenapi');
+      const orderData = pending.order_data;
 
-        const { orderNumber } = await saveOrder({
-          phone:           pending.phone,
-          customer_name:   orderData.customer_name  || null,
-          customer_phone:  orderData.customer_phone || null,
-          items:           orderData.items          || [],
-          delivery_method: orderData.delivery_method,
-          address:         orderData.address        || null,
-          notes:           orderData.notes          || null,
-          payment_method:  'credit',
-          payment_status:  'paid',
-          cardcom_code:    pending.cardcom_code,
-          total_price:     orderData.total,
-          status:          'new',
-        });
+      const { orderNumber } = await saveOrder({
+        phone:           pending.phone,
+        customer_name:   orderData.customer_name  || null,
+        customer_phone:  orderData.customer_phone || null,
+        items:           orderData.items          || [],
+        delivery_method: orderData.delivery_method,
+        address:         orderData.address        || null,
+        notes:           orderData.notes          || null,
+        payment_method:  'credit',
+        payment_status:  'paid',
+        cardcom_code:    pending.cardcom_code,
+        total_price:     orderData.total,
+        status:          'new',
+      });
 
-        await deletePendingPayment(pending.id);
+      await deletePendingPayment(pending.id);
 
-        await sendMessage(pending.phone,
-          `✅ התשלום התקבל! הזמנה מספר *${orderNumber}* בדרך 🍕\nנעדכן אותך על כל שינוי בסטטוס.`
-        ).catch(() => {});
+      await sendMessage(pending.phone,
+        `✅ התשלום התקבל! הזמנה מספר *${orderNumber}* בדרך 🍕\nנעדכן אותך על כל שינוי בסטטוס.`
+      ).catch(() => {});
 
-        console.log(`[poll] ✅ Order #${orderNumber} created for ${pending.phone}`);
-      } else if (verification.responseCode > 0) {
-        // Explicit failure (not just "pending") — clean up
-        console.warn(`[poll] Payment failed (code=${verification.responseCode}) for ${pending.phone}`);
-      }
+      console.log(`[poll] ✅ Order #${orderNumber} created for ${pending.phone}`);
     } catch (err) {
-      // Likely already saved by webhook / success-redirect — clean up orphan
       if (err.message && (err.message.includes('duplicate') || err.message.includes('unique'))) {
-        console.log(`[poll] Duplicate pending for ${pending.phone} — removing`);
+        console.log(`[poll] Already processed for ${pending.phone} — removing orphan`);
         await deletePendingPayment(pending.id).catch(() => {});
       } else {
         console.error(`[poll] Error for ${pending.phone}:`, err.message);

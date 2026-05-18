@@ -125,10 +125,10 @@ router.get('/payment', async (req, res) => {
 
 // ─── Success redirect ─────────────────────────────────────────────────────────
 // Cardcom redirects the customer here after successful payment.
-// We use this as a second confirmation channel (in case IndicatorUrl wasn't fired).
+// ReturnValue is embedded in the URL by us (?rv=...) since Cardcom test mode
+// doesn't append params to the success URL automatically.
 
 router.get('/success', async (req, res) => {
-  // Respond immediately with the success page
   res.send(`<!doctype html><html dir="rtl" lang="he">
 <head><meta charset="utf-8"><title>תשלום הצליח</title>
 <style>body{font-family:sans-serif;text-align:center;padding:60px;background:#f0fdf4}
@@ -142,17 +142,20 @@ border-top-color:#16a34a;border-radius:50%;animation:s .7s linear infinite;verti
 <script>setTimeout(()=>{document.getElementById('st').textContent='✅ ניתן לסגור חלון זה.'},4000)</script>
 </body></html>`);
 
-  // Try to confirm via ReturnValue in query string (Cardcom passes it back)
-  const ReturnValue    = req.query.ReturnValue || req.query.returnValue;
+  // rv = ReturnValue embedded by us in SuccessRedirectUrl at creation time
+  // Also check Cardcom-appended params (ReturnValue, LowProfileCode) in case prod adds them
+  const rv             = req.query.rv;
+  const ReturnValue    = req.query.ReturnValue || req.query.returnValue || rv;
   const LowProfileCode = req.query.LowProfileCode || req.query.LowProfileId;
 
-  console.log('[payment] Success redirect:', { LowProfileCode, ReturnValue });
+  console.log('[payment] Success redirect — query:', JSON.stringify(req.query));
 
   let pending = null;
   if (LowProfileCode) pending = await getPendingByCardcomCode(LowProfileCode).catch(() => null);
   if (!pending && ReturnValue) pending = await getPendingByReturnValue(ReturnValue).catch(() => null);
 
   if (pending) {
+    console.log(`[payment] Success redirect — confirming pending for ${pending.phone}`);
     await confirmPending(pending, 'success-redirect');
   } else {
     console.log('[payment] Success redirect — no pending found (may already be confirmed by webhook)');
