@@ -6,23 +6,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**פיצה דליבריס** — a WhatsApp pizza ordering bot with a web management dashboard.
+**פיצה דליבריס (Jasell)** — a WhatsApp pizza ordering bot with a web management dashboard.
 
-- **Customer bot:** AI-powered WhatsApp conversation (Claude) → takes orders → Cardcom payment → confirms order
-- **Dashboard:** Web UI for the business owner to manage orders, products, settings, customers
-- **Business bot:** Separate WhatsApp number for the owner to update prices/availability/hours by chat
+- **Customer bot:** AI-powered WhatsApp conversation (Claude) acts as a waiter → deal-breakers first (delivery/payment) → takes order → Cardcom payment → confirms
+- **Public menu page:** `/menu.html` — mobile-first customer-facing menu with photos, toppings, WhatsApp CTA
+- **Dashboard:** Web SPA for the business owner — orders, products, customers, settings, stats
+- **Business bot:** Separate WhatsApp number for owner commands (not yet active)
 
 **Stack:** Node.js + Express · Supabase (PostgreSQL) · Render (hosting) · Green API (WhatsApp) · Anthropic Claude `claude-opus-4-7` · Cardcom (Israeli payment processor)
 
 **Live:**
 - Dashboard + bot: `https://pizzabot-jasell.onrender.com`
+- Public menu: `https://pizzabot-jasell.onrender.com/menu.html`
 - Webhook: `https://pizzabot-jasell.onrender.com/webhook`
 - GitHub: `git@github.com:monkemoney/pizzabot.git`
 - Render service ID: `srv-d831jc8js32c73ef8mng`
+- Render owner ID: `tea-cuppja5umphs73ea2qe0`
+- Render API key: `rnd_aymW3XEYR53CgqhIR5PgqDvP7Q97`
 
 ---
 
-## Environment Variables (All 15 — production values)
+## Environment Variables
 
 ```env
 PORT=3000
@@ -37,12 +41,12 @@ GREEN_API_BASE_URL=https://api.green-api.com
 SUPABASE_URL=https://umoftdmutxhrbknowbyh.supabase.co
 SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVtb2Z0ZG11dHhocmJrbm93YnloIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODc1NDUyMSwiZXhwIjoyMDk0MzMwNTIxfQ.N0hk2fdeRJQC0yGWehAuSRqFv4Oluu-N19zzcorm_wk
 
-# Anthropic  (real value in .env.production — never commit the key)
+# Anthropic  (real value in .env.production — never commit the actual key)
 ANTHROPIC_API_KEY=sk-ant-api03-...  # get from .env.production or Render dashboard
 
 # Cardcom payments — TEST account
 CARDCOM_API_URL=https://secure.cardcom.solutions
-CARDCOM_TERMINAL=1000          # ← TERMINAL NUMBER (NOT CompanyId 040617649 — those are different)
+CARDCOM_TERMINAL=1000          # ← TERMINAL NUMBER (NOT CompanyId 040617649)
 CARDCOM_USERNAME=CardTest1994  # ApiName for JSON API v11
 
 # Dashboard auth
@@ -52,19 +56,19 @@ DASHBOARD_MANAGER_PASSWORD=manager2026
 JWT_SECRET=pizzabot-jwt-secret-2026-change-in-prod
 ```
 
-**Supabase DB credentials (for psql — different from service key):**
+**Supabase DB credentials (psql only — different from service key):**
 ```
-Host: db.umoftdmutxhrbknowbyh.supabase.co:5432
-User: postgres
+Host:     db.umoftdmutxhrbknowbyh.supabase.co:5432
+User:     postgres
 Password: mUprot-tefno8-zikgak
 Database: postgres
 ```
 
 **Cardcom test login:** `https://secure.cardcom.solutions/LogInNew.aspx`
 - Username: `CardTest1994` / Password: `Terminaltest2026`
-- Terminal `1000` = test terminal · CompanyId `040617649` = unrelated identifier
+- Terminal `1000` = test terminal · CompanyId `040617649` = unrelated
 
-**Green API:** Connected to WhatsApp +1 (470) 746-4602
+**Green API:** Connected to WhatsApp +1 (470) 746-4602 · Instance `7105619659`
 
 ---
 
@@ -74,7 +78,7 @@ Database: postgres
 npm start        # production
 npm run dev      # nodemon watch
 
-# psql schema migration
+# psql schema migration (safe to re-run in full)
 export PATH="/usr/local/opt/libpq/bin:$PATH"
 PGPASSWORD="mUprot-tefno8-zikgak" psql \
   "postgresql://postgres@db.umoftdmutxhrbknowbyh.supabase.co:5432/postgres" \
@@ -83,6 +87,14 @@ PGPASSWORD="mUprot-tefno8-zikgak" psql \
 # Env var backup/restore (ALWAYS before infra changes)
 node scripts/backup-render-env.js   # pulls from Render → .env.production
 node scripts/sync-render-env.js     # pushes .env.production → Render
+
+# Fetch Render runtime logs
+curl -s "https://api.render.com/v1/logs?resource=srv-d831jc8js32c73ef8mng&ownerId=tea-cuppja5umphs73ea2qe0&limit=200" \
+  -H "Authorization: Bearer rnd_aymW3XEYR53CgqhIR5PgqDvP7Q97" | python3 -c "
+import sys,json; data=json.load(sys.stdin)
+logs=data if isinstance(data,list) else data.get('logs',data.get('data',[]))
+[print(l.get('timestamp','')[-12:], l.get('message','')) for l in logs]
+" | tail -100
 
 # Deploy (auto on push)
 git push origin main
@@ -95,39 +107,40 @@ git push origin main
 ```
 pizza-bot/
 ├── src/
-│   ├── index.js                  # Express server, webhook entry point
+│   ├── index.js                  # Express server, webhook entry point, toppings-poll handler
 │   ├── bot/
 │   │   ├── handler.js            # Thin re-export of ai-handler
-│   │   ├── ai-handler.js         # Core loop: Claude call, ACTION dispatch, 15-min edit window
-│   │   ├── prompts.js            # System prompt builder (reads live menu + settings from DB)
-│   │   └── menu.js               # Static menu text helpers (legacy, mostly unused)
+│   │   ├── ai-handler.js         # Core loop: stale-session guard, Claude call, ACTION dispatch
+│   │   ├── prompts.js            # System prompt builder — waiter flow, deal-breakers first
+│   │   └── menu.js               # Legacy static menu helpers (mostly unused)
 │   ├── services/
 │   │   ├── claude.js             # Anthropic SDK wrapper, prompt caching
-│   │   ├── greenapi.js           # sendMessage, sendListMessage, sendMenuList, sendButtons
+│   │   ├── greenapi.js           # sendMessage, sendToppingsPoll (interactive poll)
 │   │   ├── supabase.js           # All DB functions (sessions, orders, pending_payments)
 │   │   ├── cardcom.js            # Cardcom JSON API v11 (createPaymentPage, verifyPayment)
-│   │   ├── settings.js           # Live settings from DB with 60s in-memory cache
+│   │   ├── settings.js           # Live settings from DB with 60s cache; isOpen() uses Asia/Jerusalem TZ
 │   │   ├── menu-service.js       # Live products from DB with 60s cache
 │   │   └── status-notifier.js    # WhatsApp notification on order status change
 │   ├── routes/
-│   │   ├── dashboard-api.js      # All /api/* REST endpoints for the dashboard
+│   │   ├── dashboard-api.js      # All /api/* endpoints incl. GET /api/public-menu (no auth)
 │   │   ├── payment.js            # POST /webhook/payment (Cardcom) + success/failed pages
-│   │   ├── admin.js              # Legacy /admin/orders (kept for backwards compat)
-│   │   └── business-bot.js       # POST /webhook/business (owner WhatsApp bot)
+│   │   ├── admin.js              # Legacy /admin/orders (backwards compat)
+│   │   └── business-bot.js       # POST /webhook/business (owner bot — not yet active)
 │   └── middleware/
 │       └── auth.js               # HMAC-SHA256 token sign/verify, requireAuth, requireAdmin
 ├── public/
 │   ├── index.html                # Dashboard login page
-│   ├── dashboard.html            # Dashboard SPA shell (Tailwind CDN, no build step)
-│   └── app.js                    # All dashboard JS: orders, products, customers, settings
+│   ├── dashboard.html            # Dashboard SPA (Heebo+Poppins, brand colors, dark mode)
+│   ├── app.js                    # All dashboard JS: orders, products, customers, settings
+│   └── menu.html                 # Public customer menu — photos, toppings, WhatsApp CTA
 ├── supabase/
-│   └── schema.sql                # Full DB schema, safe to re-run
+│   └── schema.sql                # Full DB schema, safe to re-run (IF NOT EXISTS everywhere)
 ├── scripts/
 │   ├── backup-render-env.js      # Pull env vars from Render → .env.production
-│   ├── sync-render-env.js        # Push .env.production → Render (restore after service recreation)
-│   └── render-guard.sh           # PreToolUse hook — blocks destructive Render API calls without backup
+│   ├── sync-render-env.js        # Push .env.production → Render
+│   └── render-guard.sh           # PreToolUse hook — blocks destructive Render calls
 ├── .claude/
-│   └── settings.json             # Claude Code hook: render-guard on all Bash PreToolUse
+│   └── settings.json             # Claude Code hook: render-guard on Bash PreToolUse
 ├── .env.production               # Gitignored — real credentials backup
 └── CLAUDE.md                     # This file
 ```
@@ -141,192 +154,231 @@ pizza-bot/
 ```
 Customer sends WhatsApp message
   → Green API webhook POST /webhook
-  → index.js extracts text from:
-      textMessage | listResponseMessage | buttonsResponseMessage
+  → index.js extracts text:
+      textMessage | listResponseMessage | buttonsResponseMessage | pollUpdateMessage
+  → pollUpdateMessage: toppings-only poll (✅ confirm → "בחרתי: X, Y" text → handleMessage)
   → ai-handler.js handleMessage(phone, text)
-      1. Check is_open (settings, 60s cache) → reply closed if needed
-      2. Check 15-min edit window (last order 'new' status within 15min)
-      3. buildSystemPrompt() — loads live menu + settings from Supabase
-      4. callClaude(systemPrompt, conversation_history, userMessage)
+      1. Check isOpen() — uses Asia/Jerusalem TZ, not UTC
+      2. Stale-session guard — reset if age > 3h or has old-flow markers
+      3. Check 15-min edit window (last order 'new' within 15 min)
+      4. buildSystemPrompt() — loads live menu + settings from Supabase
+      5. callClaude(systemPrompt, history, userMessage)
          Model: claude-opus-4-7 · History capped at 40 messages
          System prompt cached (cache_control: ephemeral)
-      5. Parse ACTION block from Claude response (regex)
-      6. Strip ACTION, send clean text to customer via Green API
-      7. Dispatch action:
-         SHOW_MENU       → sendMenuList() — WhatsApp interactive list
+      6. Parse ACTION block from Claude response (regex)
+      7. Strip ACTION, send clean text to customer via Green API
+      8. Dispatch action:
+         SHOW_TOPPINGS   → sendToppingsPoll() — WhatsApp multi-select poll
          SAVE_ORDER      → saveOrder() → confirm with order number (cash)
          CREATE_PAYMENT  → createPaymentPage() → send Cardcom URL (credit)
          RESET           → clear conversation_history
 ```
 
+### Bot Conversation Flow (Waiter Mode)
+
+The bot behaves like a restaurant waiter — deal-breakers asked **before** taking the order:
+
+```
+1. Greeting + deal-breakers in one shot:
+   "משלוח 🛵 (30₪) או איסוף עצמי 🏍️? מזומן 💵 או אשראי 💳?"
+
+2. Confirm logistics, get address if delivery (Tel Aviv only)
+   → Pickup: tell customer address (pickup_address setting)
+
+3. Take the order in free text
+   → If customer asks for menu → send /menu.html URL (no interactive list)
+
+4. Toppings (pizza only):
+   IRON RULE: if current message contains any topping word/name → skip SHOW_TOPPINGS
+   Only send SHOW_TOPPINGS poll if zero topping context exists anywhere in conversation
+
+5. Collect name (if not known from returning-customer profile)
+
+6. Show summary + ask for confirmation (1 = yes / 2 = cancel)
+
+7. Process: SAVE_ORDER (cash) or CREATE_PAYMENT (credit)
+```
+
 ### ACTION Protocol
 
-Claude embeds invisible commands in HTML comments (stripped before sending to customer):
+Claude embeds invisible commands (stripped before sending to customer):
 
-| Action | When Claude uses it | Result |
-|--------|-------------------|--------|
-| `<!--ACTION:SHOW_MENU-->` | On first greeting, or when customer asks for menu | Green API interactive list with all products |
-| `<!--ACTION:SAVE_ORDER:{json}-->` | Customer confirms cash order | Order saved to DB, customer gets order number |
-| `<!--ACTION:CREATE_PAYMENT:{json}-->` | Customer confirms credit order | Cardcom payment link created and sent |
-| `<!--ACTION:RESET-->` | Customer cancels | conversation_history cleared |
+| Action | Trigger | Result |
+|--------|---------|--------|
+| `<!--ACTION:SHOW_TOPPINGS-->` | Pizza ordered, no toppings mentioned | WhatsApp multi-select poll |
+| `<!--ACTION:SAVE_ORDER:{json}-->` | Customer confirms, cash payment | Order saved, customer gets order number |
+| `<!--ACTION:CREATE_PAYMENT:{json}-->` | Customer confirms, credit payment | Cardcom link created and sent |
+| `<!--ACTION:RESET-->` | Customer cancels ("בטל") | conversation_history cleared |
+
+> `SHOW_MENU` was removed. Menu requests now receive the `/menu.html` URL as plain text.
 
 ### Cardcom Payment Flow
 
 ```
-1. Customer confirms credit order
-2. ai-handler.js → cardcom.js POST /api/v11/LowProfile/Create
+1. Claude emits CREATE_PAYMENT with order JSON
+2. ai-handler → cardcom.js POST /api/v11/LowProfile/Create
    { TerminalNumber: 1000, ApiName: "CardTest1994", Amount: X, ... }
 3. Cardcom returns { LowProfileId, Url }
-4. pending_payments row saved (30min expiry)
-5. Payment URL sent to customer
-6. Customer pays on Cardcom page
-7. Cardcom POSTs to /webhook/payment (IndicatorUrl)
-8. payment.js → verifyPayment(LowProfileId) → Cardcom confirms
-9. saveOrder() called → order_number assigned
-10. Customer notified with order number
-11. pending_payment deleted
+4. pending_payments row saved (30min expiry), payment URL sent to customer
+5. Customer pays → Cardcom POSTs to /webhook/payment (IndicatorUrl)
+6. payment.js → verifyPayment(LowProfileId) → saveOrder() → notify customer
+7. pending_payment deleted
 ```
 
-### Dashboard Auth
+### Public Menu Page (`/menu.html`)
 
-Custom HMAC-SHA256 tokens in `src/middleware/auth.js` — no JWT library needed. Roles:
-- `admin` → full access (orders, products, customers, settings, stats)
-- `manager` → orders tab only
+- No auth required — served as static HTML
+- Data from `GET /api/public-menu` (no auth endpoint in dashboard-api.js)
+- Returns: categories (excl. `is_topping_addon`), products with `additions`, business info
+- Features: sticky category tabs, product cards with image/description/price,
+  toppings accordion, "הזמן" button pre-fills WhatsApp message, sticky CTA
+- `products.description` column added — editable from dashboard product modal
 
-Dashboard login: `https://pizzabot-jasell.onrender.com/` · `admin`/`admin2026` · `manager`/`manager2026`
+### Dashboard
+
+Brand: `#5e17eb` violet · `#ff66c4` pink · `#eeede9` bg · Heebo + Poppins fonts
+
+- **Settings page:** 6 sections with SVG line icons (no emojis), iOS-style toggle switches
+- **Dark mode:** `[data-theme=dark]` on `<html>`, toggled by sun/moon SVG button
+- **Notification bell:** badge count of `status==='new'` orders
+- **Orders:** stats cards, period picker, filters (status/payment/date range/search), edit modal
+  - Edit modal: change items, qty, address, destination_type, courier_notes
+  - VAT shown as 18% (`total * 18 / 118`)
+- **Products:** expandable rows with additions, image thumbnails, description field
+- **Customers:** stats, returning-only filter, broadcast (max 50)
+- **Auth:** admin (full) · manager (orders only) · HMAC-SHA256 tokens, 24h expiry
 
 ### Settings & Menu — Always Live
 
-Both load from Supabase with a 60-second in-memory cache:
-- `settings.js` — key/value JSONB (`is_open`, `delivery_price`, `business_hours`, etc.)
-- `menu-service.js` — `products` + `product_additions` tables
+Both load from Supabase with 60s in-memory cache. `invalidateCache()` called after updates.
 
-`invalidateCache()` must be called after any product/setting update (done automatically in dashboard API routes).
+Settings keys: `is_open`, `delivery_enabled`, `pickup_enabled`, `payment_cash`, `payment_credit`,
+`payment_bit`, `payment_paybox`, `payment_other`, `delivery_price`, `delivery_cities`,
+`min_order_delivery`, `business_hours`, `business_name`, `business_address`, `bot_url`,
+`pickup_address`, `allow_order_edits`, `edit_time_limit`, `edit_from_confirmation`
 
 ---
 
 ## Database Schema
 
 ```sql
-products           -- menu items (category='main' only)
-product_additions  -- per-product toppings, FK → products CASCADE
+categories         -- menu categories: emoji, name_he, name_en, is_topping_addon, has_toppings, sort_order
+products           -- menu items: name_he, name_en, price, description, image_url, category_id FK, is_available, sort_order
+product_additions  -- per-product toppings/additions, FK → products CASCADE
 settings           -- key/value JSONB config
-sessions           -- per-phone state: conversation_history (40 msg cap), pending_order
+sessions           -- per-phone: conversation_history (40 msg cap), pending_order, updated_at
 pending_payments   -- holds order JSON while customer is on Cardcom (30min expiry)
-orders             -- final orders, order_number from sequence starting at 1000
-customers          -- VIEW over orders (not a real table)
+orders             -- final orders, order_number sequence from 1000, destination_type, courier_notes
+customers          -- VIEW over orders (name, phone, last_address, order_count, total_spent)
 ```
 
 **Order status flow:** `new → preparing → out_for_delivery → delivered → done` (auto after 1h) | `cancelled`
-
-Settings keys: `is_open`, `delivery_enabled`, `pickup_enabled`, `payment_cash`, `payment_credit`, `delivery_price`, `delivery_cities`, `min_order_delivery`, `business_hours`
-
----
-
-## Product Spec
-
-### 1. Customer Bot (WhatsApp)
-- Natural Hebrew/English AI conversation
-- Order flow: greeting → interactive menu → item selection → toppings → delivery/pickup → address → name → payment method → summary → confirm → payment link (credit) or direct confirmation (cash)
-- 15-minute edit window: customer can cancel by sending "בטל" within 15 min of placing
-- Status updates pushed to customer when order status changes: preparing / out_for_delivery / delivered / cancelled
-
-### 2. Business Owner Bot (WhatsApp — separate number)
-- Commands: update price, mark item unavailable/available, open/close orders, set payment methods, set delivery options
-- Mounted at `/webhook/business` — only active when `GREEN_API_BUSINESS_INSTANCE_ID` env var is set
-- Requires a second Green API instance (not yet configured)
-
-### 3. Dashboard
-**Login:** admin (full) / manager (orders only)
-
-**Orders page (default):**
-- Stats (admin): date picker, order count, revenue, avg delivery time, paid/pending, top 3 products, conversations started, not converted
-- Orders table: order number, date/time, customer name, phone, address, delivery type, payment method, paid/pending badge, total, status dropdown, detail modal
-- Status dropdown triggers WhatsApp notification to customer on change
-- Auto-refresh every 30s
-
-**Products page:**
-- Expandable rows (click to expand additions/toppings)
-- Columns: name (he/en), price, image thumbnail, additions count, available toggle, edit/delete
-- Additions sub-table: name, price, image, available toggle, edit/delete, + add button
-- Add/edit modals with image URL field
-
-**Customers page:**
-- Table: name, phone, last address, order count, total spent, last order date
-- Filter: returning customers only (2+ orders)
-- Checkbox select → broadcast WhatsApp message (max 50, with warning)
-
-**Settings page:**
-- Toggles: is_open, delivery_enabled, pickup_enabled, payment_cash, payment_credit
-- Delivery price + min order amount
-- Delivery cities (comma-separated)
-- Business hours: per-day time pickers (sun–sat)
 
 ---
 
 ## What's Built vs. Missing
 
 ### ✅ Built and working
-- Customer bot: full order flow, Claude AI, Hebrew/English, interactive menu list
+- Customer bot: waiter-mode flow, deal-breakers first, Claude AI, Hebrew/English
+- Public menu page `/menu.html` with photos, descriptions, toppings, WhatsApp order buttons
 - Cardcom credit payment (JSON API v11, terminal 1000)
 - Cash payment (direct save)
 - Cardcom webhook → order confirmation
 - 15-minute edit/cancel window
-- Status notifications via WhatsApp
-- Dashboard: login, orders, products, customers, settings, stats
-- Products with expandable toppings/additions
-- Business hours in settings UI
+- Status notifications via WhatsApp on order status change
+- Dashboard: login, orders (edit modal, stats, filters), products (descriptions), customers, settings, dark mode
+- iOS-style toggle switches, SVG line icons throughout settings
+- Business hours per day (open/close time + enabled toggle)
+- Delivery zones settings
 - Auto-complete delivered → done after 1 hour
-- Health check on Render (/health)
-- Env var backup/restore scripts + render-guard hook
+- Stale-session guard (resets old-flow sessions on new deploy)
+- isOpen() uses Israel timezone (Asia/Jerusalem) — not UTC
+- Health check `/health`, env var backup/restore scripts, render-guard hook
 
 ### ❌ Still missing / needs work
 | Item | Notes |
 |------|-------|
-| Business owner bot | Code written, but no second Green API instance configured (`GREEN_API_BUSINESS_INSTANCE_ID` not set) |
-| Cardcom production | Currently using test terminal 1000. Real terminal needed for live payments |
-| jasell.com DNS | Domain not yet pointed to Render (CNAME `www` → `pizzabot-jasell.onrender.com`, ALIAS `@` → same) |
+| Business owner bot | Code written, needs `GREEN_API_BUSINESS_INSTANCE_ID` env var + second Green API instance |
+| Cardcom production | Using test terminal 1000. Need real terminal for live payments |
+| jasell.com DNS | CNAME `www` → `pizzabot-jasell.onrender.com`, ALIAS `@` → same |
 | No test suite | Zero automated tests |
-| `JWT_SECRET` | Should be changed to a strong random string in production |
+| `JWT_SECRET` | Should be a strong random string in production |
+| Bit / Paybox payment | Settings toggles exist but no actual integration |
 
 ---
 
 ## Operational Rules
 
-1. **Backup before any infra change.** Before touching the Render service (delete, recreate, major env var changes):
+1. **Backup before any infra change:**
    ```bash
    node scripts/backup-render-env.js
    ```
-   The `render-guard.sh` PreToolUse hook enforces this automatically — it will block Bash commands targeting the Render DELETE API if `.env.production` is missing or older than 24h.
+   The `render-guard.sh` PreToolUse hook blocks destructive Render API calls automatically.
 
-2. **One task at a time.** Finish and push before starting the next thing.
+2. **Schema changes:** Edit `supabase/schema.sql` first (use `ADD COLUMN IF NOT EXISTS`), then run via psql.
 
-3. **Always push `CLAUDE.md` updates.** When anything critical changes (new env var, architecture change, bug discovered), update this file and push.
+3. **Cache invalidation:** Call `invalidateCache()` (menu-service) and `settings.set()` auto-invalidates settings cache after any product/setting update via the dashboard API.
 
-4. **Schema changes:** Edit `supabase/schema.sql` first, then run via psql. The file uses `IF NOT EXISTS` and `ADD COLUMN IF NOT EXISTS` so it's always safe to re-run in full.
+4. **Always update CLAUDE.md** when architecture, env vars, or hard-won lessons change.
 
 ---
 
 ## Known Issues & Lessons Learned
 
+### isOpen() used UTC instead of Israel time — bot said "closed" when open
+`new Date().getHours()` returns UTC on Render servers. Israel is UTC+3 (IDT) / UTC+2 (IST).
+Fixed by converting to `Asia/Jerusalem` timezone before comparing against business_hours:
+```js
+const nowIL = new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' });
+const now   = new Date(nowIL);
+```
+Also added a console log line per check to make debugging easy in Render logs.
+
+### Toppings poll fired when toppings were already in the order message
+Claude interpreted "ציין תוספות בשיחה" as "in previous history only" — not the current message.
+Example: `"פיצה עם חצי זיתים חצי בצל"` triggered SHOW_TOPPINGS.
+Fixed with an explicit iron rule in prompts.js: any topping keyword/name in the **current message** → skip SHOW_TOPPINGS unconditionally.
+Detection words: `"עם", "בלי", "ללא", "חצי", "על הכל", "זיתים", "בצל", "תירס", "פטריות", "בולגרית", "קלמטה"...`
+
+### Stale sessions surviving a deploy caused mixed old/new flow
+A session with 28 messages from the old poll-flow (SHOW_MENU, "בחרתי: X — Y₪") survived a deploy. The new waiter-mode system prompt + old history created contradictions.
+Fixed with a stale-session guard in `ai-handler.js`:
+- Reset if session age > 3 hours
+- Reset if history contains old-flow markers (`SHOW_MENU`, `בחרתי: X — Y₪`)
+
+### SHOW_MENU (interactive WhatsApp list) was removed entirely
+The new waiter flow sends `/menu.html` URL as plain text when menu is requested.
+`SHOW_MENU` action and `sendMenuList()` import were removed from ai-handler + index.js.
+Category-poll flow (sendCategoryPoll, resolveCategoryVote) was also removed.
+Only `SHOW_TOPPINGS` poll remains.
+
 ### CARDCOM_TERMINAL ≠ CompanyId
-`040617649` is the Cardcom **CompanyId** (visible in the account dashboard URL). The actual **TerminalNumber** for the test account is `1000`. These are completely different fields. The old Low Profile `.aspx` API also doesn't work — must use the JSON API v11 (`/api/v11/LowProfile/Create` with `ApiName` not `UserName`).
+`040617649` is the Cardcom **CompanyId**. The **TerminalNumber** for the test account is `1000`.
+Must use JSON API v11 (`/api/v11/LowProfile/Create`) with `ApiName`, not the old `.aspx` endpoint with `UserName`.
 
-### ANTHROPIC_API_KEY was lost after service recreation
-When the Render service was deleted and recreated (to fix Rust vs. Node.js environment mismatch), the `ANTHROPIC_API_KEY` was not included in the env var restore. The bot ran but returned "שגיאה זמנית" to every customer. Always use `scripts/backup-render-env.js` before any service-level changes.
+### ANTHROPIC_API_KEY lost after Render service recreation
+When service was deleted and recreated (Rust→Node.js fix), the API key wasn't restored.
+Bot ran silently returning "שגיאה זמנית" to every customer.
+Prevention: always run `backup-render-env.js` before infra changes. The render-guard hook enforces this.
 
-### Render service was created as Rust, not Node.js
-The original service was configured as a Rust service. `render.yaml` in the repo specifies `env: node` but this doesn't retroactively change an existing service's runtime. The fix was to delete and recreate the service. The `render-guard` hook prevents future blind deletions.
+### Render service was created as Rust type
+`render.yaml` specifies `env: node` but doesn't fix an already-created Rust service.
+Fix was delete + recreate. render-guard prevents future blind deletions.
 
-### Green API webhook was pointed at jasell.com (unconnected domain)
-The webhook was configured to `https://www.jasell.com/webhook/whatsapp` with `incomingWebhook: no`. This silently dropped all incoming messages. Fix:
+### Green API webhook was wrong URL + incomingWebhook disabled
+Was pointing to `https://www.jasell.com/webhook/whatsapp` with `incomingWebhook: no`.
+All messages silently dropped. Fix:
 ```bash
-curl -X POST "https://api.green-api.com/waInstance7105619659/setSettings/{TOKEN}" \
-  -d '{"webhookUrl":"https://pizzabot-jasell.onrender.com/webhook","incomingWebhook":"yes"}'
+curl -X POST "https://api.green-api.com/waInstance7105619659/setSettings/TOKEN" \
+  -d '{"webhookUrl":"https://pizzabot-jasell.onrender.com/webhook","incomingWebhook":"yes","pollMessageWebhook":"yes"}'
 ```
 
-### Service role JWT ≠ database password
-Supabase's service role key is a JWT for the REST/PostgREST API. It cannot be used as a PostgreSQL password. The DB password (`mUprot-tefno8-zikgak`) is separate and found in Supabase Dashboard → Settings → Database.
+### Supabase service role JWT ≠ database password
+Service role key is a JWT for REST API. DB password (`mUprot-tefno8-zikgak`) is separate — found in Supabase Dashboard → Settings → Database.
 
 ### Cardcom webhook path
-The `IndicatorUrl` (webhook Cardcom calls after payment) must be `PUBLIC_URL/webhook/payment` — not `/payment/webhook`. The payment route is mounted at both `/webhook` and `/payment` in `index.js`.
+`IndicatorUrl` must be `PUBLIC_URL/webhook/payment`. Route is mounted at both `/webhook` and `/payment` in index.js.
+
+### Poll webhook fires on every vote change
+Green API sends `pollUpdateMessage` on every selection change, not just on submit.
+Filter: only process when `✅ confirm` button is voted. Intermediate votes (items selected but no confirm yet) are ignored silently.
