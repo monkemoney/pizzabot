@@ -1,6 +1,8 @@
 'use strict';
 
 const express  = require('express');
+const multer   = require('multer');
+const path     = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { sign, requireAuth, requireAdmin } = require('../middleware/auth');
 const { getOrders, getOrderById, updateOrderStatus,
@@ -12,6 +14,16 @@ const { sendMessage }                     = require('../services/greenapi');
 
 const router   = express.Router();
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+// multer — memory storage, 5 MB limit, images only
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = /^image\/(jpeg|png|webp|gif)$/.test(file.mimetype);
+    cb(ok ? null : new Error('סוג קובץ לא נתמך'), ok);
+  },
+});
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -252,6 +264,30 @@ router.delete('/categories/:id', requireAdmin, async (req, res) => {
   if (error) return res.status(400).json({ error: error.message });
   invalidateCache();
   res.json({ success: true });
+});
+
+// ─── Image upload → Supabase Storage ─────────────────────────────────────────
+
+router.post('/upload-image', requireAdmin, upload.single('image'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'לא התקבל קובץ' });
+
+  const ext      = path.extname(req.file.originalname).toLowerCase() || '.jpg';
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
+
+  const { error } = await supabase.storage
+    .from('menu-images')
+    .upload(filename, req.file.buffer, {
+      contentType: req.file.mimetype,
+      upsert:      false,
+    });
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  const { data: { publicUrl } } = supabase.storage
+    .from('menu-images')
+    .getPublicUrl(filename);
+
+  res.json({ url: publicUrl });
 });
 
 // ─── Products ─────────────────────────────────────────────────────────────────

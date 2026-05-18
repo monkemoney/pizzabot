@@ -653,9 +653,25 @@ input[type=time] { direction: ltr; }
           <label>מחיר (₪)</label>
           <input type="number" id="productPrice" step="0.1" min="0" required>
         </div>
+        <!-- Image upload -->
         <div class="form-group">
-          <label>קישור תמונה (URL)</label>
-          <input type="url" id="productImageUrl" dir="ltr" placeholder="https://...">
+          <label>תמונה</label>
+          <div style="display:flex;gap:10px;align-items:flex-start">
+            <div id="productImgPreview" style="width:80px;height:80px;border-radius:12px;border:2px dashed var(--border);background:var(--bg);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:1.6rem;color:var(--text-muted)">📷</div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+              <input type="url" id="productImageUrl" dir="ltr" placeholder="https://..."
+                oninput="previewProductImg(this.value)">
+              <div style="display:flex;align-items:center;gap:8px">
+                <button type="button" onclick="document.getElementById('productImgFile').click()"
+                  class="btn btn-outline btn-sm" id="productUploadBtn">
+                  העלאת קובץ
+                </button>
+                <span style="font-size:.75rem;color:var(--text-muted)">JPG / PNG / WebP עד 5MB</span>
+                <input type="file" id="productImgFile" accept="image/*" style="display:none"
+                  onchange="uploadProductImage(this)">
+              </div>
+            </div>
+          </div>
         </div>
         <div class="form-group">
           <label>תיאור קצר (יוצג בתפריט הלקוחות)</label>
@@ -664,7 +680,7 @@ input[type=time] { direction: ltr; }
       </div>
       <div class="modal-footer">
         <button type="button" onclick="closeModal('productModal')" class="btn btn-ghost">ביטול</button>
-        <button type="submit" class="btn btn-primary">שמור</button>
+        <button type="submit" class="btn btn-primary" id="productSubmitBtn">שמור</button>
       </div>
     </form>
   </div>
@@ -695,8 +711,21 @@ input[type=time] { direction: ltr; }
           <input type="number" id="additionPrice" step="0.1" min="0" required>
         </div>
         <div class="form-group">
-          <label>קישור תמונה (URL)</label>
-          <input type="url" id="additionImageUrl" dir="ltr" placeholder="https://...">
+          <label>תמונה</label>
+          <div style="display:flex;gap:10px;align-items:flex-start">
+            <div id="additionImgPreview" style="width:64px;height:64px;border-radius:12px;border:2px dashed var(--border);background:var(--bg);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:var(--text-muted)">📷</div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+              <input type="url" id="additionImageUrl" dir="ltr" placeholder="https://..."
+                oninput="previewAdditionImg(this.value)">
+              <div style="display:flex;align-items:center;gap:8px">
+                <button type="button" onclick="document.getElementById('additionImgFile').click()"
+                  class="btn btn-outline btn-sm" id="additionUploadBtn">העלאת קובץ</button>
+                <span style="font-size:.75rem;color:var(--text-muted)">עד 5MB</span>
+                <input type="file" id="additionImgFile" accept="image/*" style="display:none"
+                  onchange="uploadAdditionImage(this)">
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">

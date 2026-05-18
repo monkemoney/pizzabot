@@ -441,8 +441,8 @@ async function loadProducts() {
 }
 
 function imgThumb(url) {
-  if (!url) return '<span class="text-gray-300 text-lg">🖼️</span>';
-  return `<img src="${url}" class="w-10 h-10 object-cover rounded-lg border border-gray-100" onerror="this.replaceWith(document.createTextNode('🖼️'))">`;
+  if (!url) return `<div style="width:52px;height:52px;border-radius:10px;border:1.5px dashed var(--border);background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;color:var(--text-muted)">🖼️</div>`;
+  return `<img src="${url}" style="width:52px;height:52px;object-fit:cover;border-radius:10px;border:1.5px solid var(--border);flex-shrink:0;display:block" onerror="this.outerHTML='<div style=\\'width:52px;height:52px;border-radius:10px;border:1.5px dashed var(--border);background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0\\'>🖼️</div>'">`;
 }
 
 function toggleSwitch(isOn, onClickFn) {
@@ -530,6 +530,7 @@ function renderProductRow(p, cat) {
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:.92rem">${p.name_he}</div>
         ${p.name_en ? `<div style="font-size:.75rem;color:var(--text-muted)" dir="ltr">${p.name_en}</div>` : ''}
+        ${p.description ? `<div style="font-size:.73rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;margin-top:2px">${p.description}</div>` : ''}
       </div>
       <div style="font-weight:800;font-size:.95rem;color:var(--primary);min-width:70px">₪${parseFloat(p.price).toFixed(2)}</div>
       ${showAdditions ? `<div style="font-size:.75rem;color:var(--text-muted);min-width:60px;text-align:center">${(p.additions||[]).length} תוספות</div>` : `<div style="min-width:60px"></div>`}
@@ -635,13 +636,52 @@ function openProductModal(b64OrNull, categoryId) {
   const p = b64OrNull ? decodeData(b64OrNull) : null;
   _productCategoryId = categoryId || p?.category_id || null;
   document.getElementById('productModalTitle').textContent = p?.id ? 'עריכת מוצר' : 'מוצר חדש';
-  document.getElementById('productId').value       = p?.id        || '';
-  document.getElementById('productNameHe').value   = p?.name_he   || '';
-  document.getElementById('productNameEn').value   = p?.name_en   || '';
-  document.getElementById('productPrice').value    = p?.price      || '';
+  document.getElementById('productId').value          = p?.id          || '';
+  document.getElementById('productNameHe').value      = p?.name_he     || '';
+  document.getElementById('productNameEn').value      = p?.name_en     || '';
+  document.getElementById('productPrice').value       = p?.price       || '';
   document.getElementById('productImageUrl').value    = p?.image_url   || '';
   document.getElementById('productDescription').value = p?.description || '';
-  document.getElementById('productModal').classList.remove('hidden');
+  document.getElementById('productImgFile').value     = '';
+  previewProductImg(p?.image_url || '');
+  openModal('productModal');
+}
+
+function previewProductImg(url) {
+  const box = document.getElementById('productImgPreview');
+  if (!box) return;
+  if (url && url.startsWith('http')) {
+    box.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='📷'">`;
+  } else {
+    box.innerHTML = '📷';
+  }
+}
+
+async function uploadProductImage(input) {
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  const btn  = document.getElementById('productUploadBtn');
+  btn.textContent = 'מעלה...';
+  btn.disabled = true;
+  try {
+    const formData = new FormData();
+    formData.append('image', file);
+    const res = await fetch('/api/upload-image', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'שגיאה');
+    document.getElementById('productImageUrl').value = data.url;
+    previewProductImg(data.url);
+    showToast('תמונה הועלתה ✅');
+  } catch (err) {
+    alert('שגיאה בהעלאה: ' + err.message);
+  } finally {
+    btn.textContent = 'העלאת קובץ';
+    btn.disabled = false;
+  }
 }
 
 document.getElementById('productForm').addEventListener('submit', async (e) => {
@@ -685,7 +725,46 @@ function openAdditionModal(productId, b64OrNull) {
   document.getElementById('additionNameEn').value   = a?.name_en   || '';
   document.getElementById('additionPrice').value    = a?.price      || '';
   document.getElementById('additionImageUrl').value = a?.image_url  || '';
-  document.getElementById('additionModal').classList.remove('hidden');
+  document.getElementById('additionImgFile').value  = '';
+  previewAdditionImg(a?.image_url || '');
+  openModal('additionModal');
+}
+
+function previewAdditionImg(url) {
+  const box = document.getElementById('additionImgPreview');
+  if (!box) return;
+  if (url && url.startsWith('http')) {
+    box.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='📷'">`;
+  } else {
+    box.innerHTML = '📷';
+  }
+}
+
+async function uploadAdditionImage(input) {
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  const btn  = document.getElementById('additionUploadBtn');
+  btn.textContent = 'מעלה...';
+  btn.disabled = true;
+  try {
+    const formData = new FormData();
+    formData.append('image', file);
+    const res = await fetch('/api/upload-image', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'שגיאה');
+    document.getElementById('additionImageUrl').value = data.url;
+    previewAdditionImg(data.url);
+    showToast('תמונה הועלתה ✅');
+  } catch (err) {
+    alert('שגיאה בהעלאה: ' + err.message);
+  } finally {
+    btn.textContent = 'העלאת קובץ';
+    btn.disabled = false;
+  }
 }
 
 document.getElementById('additionForm').addEventListener('submit', async (e) => {
