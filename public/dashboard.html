@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Jasell — ניהול</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Poppins', sans-serif; }
 :root {
@@ -646,18 +647,49 @@ input[type=time] { direction: ltr; }
     </div>
 
     <!-- KPI cards -->
-    <div id="statsCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:20px"></div>
+    <div id="statsCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:24px"></div>
 
-    <!-- Bar chart -->
-    <div class="card" style="padding:22px 26px;margin-bottom:20px">
-      <div style="font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:16px">הזמנות לפי יום</div>
-      <div id="ordersChart"></div>
+    <!-- Row 1: Orders over time + Hourly heatmap -->
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:18px;margin-bottom:18px">
+      <div class="card" style="padding:22px 26px">
+        <div style="font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:16px">הזמנות לפי יום</div>
+        <div style="position:relative;height:200px"><canvas id="chartOrdersLine"></canvas></div>
+      </div>
+      <div class="card" style="padding:22px 26px">
+        <div style="font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:16px">שעות עומס</div>
+        <div style="position:relative;height:200px"><canvas id="chartHourly"></canvas></div>
+      </div>
     </div>
 
-    <!-- Top products table -->
-    <div class="card" style="padding:22px 26px">
+    <!-- Row 2: Delivery pie + Payment pie + Status donut -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-bottom:18px">
+      <div class="card" style="padding:22px 26px;display:flex;flex-direction:column;align-items:center">
+        <div style="font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:14px;align-self:flex-start">שיטת אספקה</div>
+        <div style="position:relative;width:160px;height:160px"><canvas id="chartDelivery"></canvas></div>
+        <div id="chartDeliveryLegend" style="margin-top:12px;font-size:.78rem;display:flex;flex-direction:column;gap:5px;align-self:flex-start"></div>
+      </div>
+      <div class="card" style="padding:22px 26px;display:flex;flex-direction:column;align-items:center">
+        <div style="font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:14px;align-self:flex-start">אמצעי תשלום</div>
+        <div style="position:relative;width:160px;height:160px"><canvas id="chartPayment"></canvas></div>
+        <div id="chartPaymentLegend" style="margin-top:12px;font-size:.78rem;display:flex;flex-direction:column;gap:5px;align-self:flex-start"></div>
+      </div>
+      <div class="card" style="padding:22px 26px;display:flex;flex-direction:column;align-items:center">
+        <div style="font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:14px;align-self:flex-start">סטטוס הזמנות</div>
+        <div style="position:relative;width:160px;height:160px"><canvas id="chartStatus"></canvas></div>
+        <div id="chartStatusLegend" style="margin-top:12px;font-size:.78rem;display:flex;flex-direction:column;gap:5px;align-self:flex-start"></div>
+      </div>
+    </div>
+
+    <!-- Row 3: Top products bar -->
+    <div class="card" style="padding:22px 26px;margin-bottom:18px">
       <div style="font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:16px">מוצרים מובילים</div>
-      <div id="statsTopProducts"></div>
+      <div style="position:relative;height:220px"><canvas id="chartTopProducts"></canvas></div>
+    </div>
+
+    <!-- Row 4: Revenue vs Orders dual axis -->
+    <div class="card" style="padding:22px 26px">
+      <div style="font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:16px">הכנסות לפי יום</div>
+      <div style="position:relative;height:200px"><canvas id="chartRevenue"></canvas></div>
     </div>
   </div>
 

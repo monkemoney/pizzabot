@@ -160,18 +160,41 @@ router.get('/stats', requireAdmin, async (req, res) => {
     const completed = all.filter((o) => o.status !== 'cancelled');
     const revenue   = completed.reduce((s, o) => s + (parseFloat(o.total_price) || 0), 0);
 
-    // Top 3 products
-    const productCounts = {};
+    // Top products (with revenue)
+    const productMap = {};
     for (const order of completed) {
       for (const item of order.items || []) {
         const name = item.name || item.name_he || 'Unknown';
-        productCounts[name] = (productCounts[name] || 0) + 1;
+        const qty  = item.quantity || item.qty || 1;
+        if (!productMap[name]) productMap[name] = { count: 0, revenue: 0 };
+        productMap[name].count   += qty;
+        productMap[name].revenue += (parseFloat(item.price) || 0) * qty;
       }
     }
-    const topProducts = Object.entries(productCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([name, count]) => ({ name, count }));
+    const topProducts = Object.entries(productMap)
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 8)
+      .map(([name, d]) => ({ name, count: d.count, revenue: Math.round(d.revenue) }));
+
+    // Delivery split
+    const deliverySplit = {
+      delivery: all.filter(o => o.delivery_method === 'delivery').length,
+      pickup:   all.filter(o => o.delivery_method === 'pickup').length,
+    };
+
+    // Payment method split
+    const paymentSplit = {
+      cash:   all.filter(o => o.payment_method === 'cash').length,
+      credit: all.filter(o => o.payment_method === 'credit').length,
+    };
+
+    // Status breakdown
+    const statusBreakdown = {};
+    for (const o of all) statusBreakdown[o.status] = (statusBreakdown[o.status] || 0) + 1;
+
+    // Hourly distribution
+    const hourlyOrders = Array(24).fill(0);
+    for (const o of completed) hourlyOrders[new Date(o.created_at).getHours()]++;
 
     // Average delivery time (created_at → delivered updated_at)
     const deliveredOrders = completed.filter((o) => o.status === 'delivered' || o.status === 'done');
@@ -221,6 +244,10 @@ router.get('/stats', requireAdmin, async (req, res) => {
         ? Math.round((completed.length / conversationsStarted) * 100)
         : null,
       orders_by_day:         ordersByDay,
+      delivery_split:        deliverySplit,
+      payment_split:         paymentSplit,
+      status_breakdown:      statusBreakdown,
+      hourly_orders:         hourlyOrders,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

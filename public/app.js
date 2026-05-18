@@ -365,125 +365,243 @@ async function updateOrderStatus(orderId, status, orderNumber) {
 
 // ─── STATS ────────────────────────────────────────────────────────────────────
 
+// Destroy and re-create a Chart.js instance
+const _charts = {};
+function mkChart(id, config) {
+  if (_charts[id]) { _charts[id].destroy(); delete _charts[id]; }
+  const canvas = document.getElementById(id);
+  if (!canvas) return;
+  _charts[id] = new Chart(canvas, config);
+}
+
+// Shared Chart.js defaults
+const C_FONT = "'Poppins', sans-serif";
+const C_GRID = 'rgba(0,0,0,.06)';
+const C_VIOLET = '#5e17eb';
+const C_PINK   = '#ff66c4';
+const C_GREEN  = '#22c55e';
+const C_BLUE   = '#3b82f6';
+const C_AMBER  = '#f59e0b';
+const C_RED    = '#ef4444';
+const C_PURPLE = '#a855f7';
+
+function chartDefaults(theme) {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  return {
+    textColor:  isDark ? '#ede8ff' : '#1a1028',
+    mutedColor: isDark ? '#7a6f8a' : '#9ca3af',
+    gridColor:  isDark ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.06)',
+  };
+}
+
+function makeLegend(containerId, labels, colors) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = labels.map((l, i) => `
+    <div style="display:flex;align-items:center;gap:7px">
+      <span style="width:10px;height:10px;border-radius:50%;background:${colors[i]};flex-shrink:0"></span>
+      <span style="color:var(--text)">${l}</span>
+    </div>`).join('');
+}
+
 function setPeriod(period, date) {
   currentPeriod = period === 'custom' ? 'today' : period;
   document.querySelectorAll('.period-btn').forEach(b => {
-    const isActive = b.dataset.period === (period === 'custom' ? 'today' : period);
+    const isActive = b.dataset.period === currentPeriod;
     b.className = 'period-btn btn btn-sm ' + (isActive ? 'btn-primary' : 'btn-ghost');
   });
-  loadStats(period === 'custom' ? 'today' : period, date);
+  loadStats(currentPeriod, date);
 }
 
 async function loadStats(period = 'today', date) {
-  const statsCardsEl   = document.getElementById('statsCards');
-  const chartEl        = document.getElementById('ordersChart');
-  const topProductsEl  = document.getElementById('statsTopProducts');
-  if (!statsCardsEl) return; // stats page not in DOM yet
+  const cardsEl = document.getElementById('statsCards');
+  if (!cardsEl) return;
 
-  statsCardsEl.innerHTML  = '<div style="color:var(--text-muted);font-size:.85rem;padding:8px">טוען...</div>';
-  if (chartEl)       chartEl.innerHTML       = '';
-  if (topProductsEl) topProductsEl.innerHTML = '';
+  cardsEl.innerHTML = '<div style="color:var(--text-muted);font-size:.85rem;padding:8px">טוען...</div>';
 
   try {
     const params = date ? `period=${period}&date=${date}` : `period=${period}`;
     const s = await api('GET', `/stats?${params}`);
-
+    const { textColor, mutedColor, gridColor } = chartDefaults();
     const periodLabel = {today:'היום',week:'השבוע',month:'החודש',year:'השנה',all:'הכל'}[period] || period;
 
     // ── KPI cards ──
-    const kpi = (label, value, color='var(--primary)', sub='') => `
+    const kpi = (label, value, color) => `
       <div class="stat-card" style="padding:20px 22px">
         <div style="font-size:1.8rem;font-weight:800;color:${color};line-height:1">${value}</div>
         <div class="stat-label" style="margin-top:6px">${label}</div>
-        ${sub ? `<div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">${sub}</div>` : ''}
       </div>`;
+    cardsEl.innerHTML =
+      kpi(`הזמנות — ${periodLabel}`,  s.order_count,                                           C_VIOLET) +
+      kpi('הכנסות',                   `₪${(s.revenue||0).toFixed(0)}`,                         C_GREEN)  +
+      kpi('ממוצע להזמנה',             s.order_count ? `₪${((s.revenue||0)/s.order_count).toFixed(0)}` : '—', C_BLUE) +
+      kpi('זמן מסירה ממוצע',          s.avg_delivery_minutes != null ? s.avg_delivery_minutes+'′' : '—', C_PURPLE) +
+      kpi('ביטולים',                  s.cancelled_count || 0,                                   C_RED)    +
+      kpi('יחס המרה',                 s.conversion_rate != null ? s.conversion_rate+'%' : '—', C_PINK);
 
-    statsCardsEl.innerHTML =
-      kpi(`הזמנות — ${periodLabel}`, s.order_count, 'var(--primary)') +
-      kpi('הכנסות', `₪${(s.revenue||0).toFixed(0)}`, '#16a34a') +
-      kpi('ממוצע להזמנה', s.order_count ? `₪${((s.revenue||0)/s.order_count).toFixed(0)}` : '—', '#0369a1') +
-      kpi('זמן מסירה ממוצע', s.avg_delivery_minutes != null ? s.avg_delivery_minutes + '′' : '—', '#7c3aed') +
-      kpi('ביטולים', s.cancelled_count || 0, '#dc2626') +
-      kpi('יחס המרה', s.conversion_rate != null ? s.conversion_rate + '%' : '—', 'var(--accent)');
-
-    // ── Bar chart ──
+    // ── 1. Orders per day — line chart ──
     const byDay = s.orders_by_day || {};
     const days  = Object.keys(byDay).sort();
-    if (chartEl) {
-      if (days.length > 0) {
-        const maxCount   = Math.max(...days.map(d => byDay[d].count), 1);
-        const maxRevenue = Math.max(...days.map(d => byDay[d].revenue || 0), 1);
-        chartEl.innerHTML = `
-          <div style="display:flex;align-items:flex-end;gap:4px;height:120px;padding-bottom:0">
-            ${days.map(d => {
-              const pct  = Math.round((byDay[d].count / maxCount) * 100);
-              const rev  = (byDay[d].revenue || 0).toFixed(0);
-              return `
-                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;height:100%">
-                  <div style="flex:1;display:flex;align-items:flex-end;width:100%">
-                    <div title="${d}&#10;${byDay[d].count} הזמנות&#10;₪${rev}"
-                      style="width:100%;background:linear-gradient(180deg,var(--primary),#9333ea);
-                             border-radius:6px 6px 0 0;height:${Math.max(pct,4)}%;
-                             cursor:default;transition:opacity .15s;opacity:.85"
-                      onmouseover="this.style.opacity=1;this.nextElementSibling.style.display='block'"
-                      onmouseout="this.style.opacity=.85;this.nextElementSibling.style.display='none'">
-                    </div>
-                    <div style="display:none;position:absolute;background:var(--text);color:#fff;
-                                font-size:.7rem;padding:4px 8px;border-radius:6px;white-space:nowrap;
-                                margin-top:-40px;pointer-events:none;z-index:10">
-                      ${byDay[d].count} הזמנות · ₪${rev}
-                    </div>
-                  </div>
-                </div>`;
-            }).join('')}
-          </div>
-          <div style="display:flex;gap:4px;margin-top:6px;border-top:1px solid var(--border);padding-top:6px">
-            ${days.map(d => `
-              <div style="flex:1;text-align:center;font-size:.62rem;color:var(--text-muted)">
-                ${d.slice(5)}
-              </div>`).join('')}
-          </div>`;
-      } else {
-        chartEl.innerHTML = '<div style="color:var(--text-muted);font-size:.85rem;padding:20px 0;text-align:center">אין נתונים לתקופה זו</div>';
-      }
-    }
+    mkChart('chartOrdersLine', {
+      type: 'bar',
+      data: {
+        labels:   days.map(d => d.slice(5)),
+        datasets: [{
+          label: 'הזמנות',
+          data:  days.map(d => byDay[d].count),
+          backgroundColor: 'rgba(94,23,235,.75)',
+          borderRadius: 6,
+          borderSkipped: false,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { rtl: true, callbacks: {
+          label: ctx => ` ${ctx.parsed.y} הזמנות`
+        }}},
+        scales: {
+          x: { ticks: { color: mutedColor, font: { family: C_FONT, size: 11 } }, grid: { display: false } },
+          y: { ticks: { color: mutedColor, font: { family: C_FONT, size: 11 }, stepSize: 1 }, grid: { color: gridColor }, beginAtZero: true },
+        },
+      },
+    });
 
-    // ── Top products table ──
-    if (topProductsEl) {
-      const tops = s.top_products || [];
-      if (tops.length) {
-        topProductsEl.innerHTML = `
-          <table style="width:100%">
-            <thead><tr>
-              <th style="text-align:right">#</th>
-              <th style="text-align:right">מוצר</th>
-              <th style="text-align:center">כמות</th>
-              <th style="text-align:left">הכנסה</th>
-            </tr></thead>
-            <tbody>
-              ${tops.map((p, i) => `
-                <tr>
-                  <td style="font-weight:800;color:var(--primary);width:32px">${i+1}</td>
-                  <td style="font-weight:600">${p.name}</td>
-                  <td style="text-align:center">
-                    <span style="background:var(--primary-soft);color:var(--primary);
-                                 padding:2px 10px;border-radius:50px;font-weight:700;font-size:.8rem">
-                      ${p.count}x
-                    </span>
-                  </td>
-                  <td style="font-weight:700;color:#16a34a;text-align:left">
-                    ${p.revenue ? '₪' + parseFloat(p.revenue).toFixed(0) : '—'}
-                  </td>
-                </tr>`).join('')}
-            </tbody>
-          </table>`;
-      } else {
-        topProductsEl.innerHTML = '<div style="color:var(--text-muted);font-size:.85rem;padding:16px 0;text-align:center">אין נתונים לתקופה זו</div>';
-      }
-    }
+    // ── 2. Revenue per day — line chart ──
+    mkChart('chartRevenue', {
+      type: 'line',
+      data: {
+        labels:   days.map(d => d.slice(5)),
+        datasets: [{
+          label: 'הכנסות ₪',
+          data:  days.map(d => byDay[d].revenue || 0),
+          borderColor: C_GREEN,
+          backgroundColor: 'rgba(34,197,94,.12)',
+          borderWidth: 3,
+          tension: 0.4,
+          fill: true,
+          pointBackgroundColor: C_GREEN,
+          pointRadius: days.length > 14 ? 2 : 4,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { rtl: true, callbacks: {
+          label: ctx => ` ₪${ctx.parsed.y.toFixed(0)}`
+        }}},
+        scales: {
+          x: { ticks: { color: mutedColor, font: { family: C_FONT, size: 11 } }, grid: { display: false } },
+          y: { ticks: { color: mutedColor, font: { family: C_FONT, size: 11 }, callback: v => '₪'+v }, grid: { color: gridColor }, beginAtZero: true },
+        },
+      },
+    });
+
+    // ── 3. Hourly heatmap — bar ──
+    const hourly = s.hourly_orders || Array(24).fill(0);
+    mkChart('chartHourly', {
+      type: 'bar',
+      data: {
+        labels: hourly.map((_, i) => i + ':00'),
+        datasets: [{
+          label: 'הזמנות',
+          data: hourly,
+          backgroundColor: hourly.map(v => {
+            const mx = Math.max(...hourly, 1);
+            const op = 0.2 + 0.8 * (v / mx);
+            return `rgba(255,102,196,${op.toFixed(2)})`;
+          }),
+          borderRadius: 4,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { rtl: true, callbacks: {
+          label: ctx => ` ${ctx.parsed.y} הזמנות`
+        }}},
+        scales: {
+          x: { ticks: { color: mutedColor, font: { family: C_FONT, size: 9 }, maxRotation: 0 }, grid: { display: false } },
+          y: { ticks: { color: mutedColor, font: { family: C_FONT, size: 10 }, stepSize: 1 }, grid: { color: gridColor }, beginAtZero: true },
+        },
+      },
+    });
+
+    // ── 4. Delivery pie ──
+    const ds = s.delivery_split || {};
+    const delivLabels  = ['משלוח', 'איסוף'];
+    const delivColors  = [C_VIOLET, C_BLUE];
+    const delivData    = [ds.delivery || 0, ds.pickup || 0];
+    mkChart('chartDelivery', {
+      type: 'doughnut',
+      data: { labels: delivLabels, datasets: [{ data: delivData, backgroundColor: delivColors, borderWidth: 2, borderColor: '#fff' }] },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '60%',
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed}` }}},
+      },
+    });
+    makeLegend('chartDeliveryLegend', delivLabels.map((l, i) => `${l}: ${delivData[i]}`), delivColors);
+
+    // ── 5. Payment pie ──
+    const ps = s.payment_split || {};
+    const payLabels = ['מזומן', 'אשראי'];
+    const payColors = [C_AMBER, C_GREEN];
+    const payData   = [ps.cash || 0, ps.credit || 0];
+    mkChart('chartPayment', {
+      type: 'doughnut',
+      data: { labels: payLabels, datasets: [{ data: payData, backgroundColor: payColors, borderWidth: 2, borderColor: '#fff' }] },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '60%',
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed}` }}},
+      },
+    });
+    makeLegend('chartPaymentLegend', payLabels.map((l, i) => `${l}: ${payData[i]}`), payColors);
+
+    // ── 6. Status donut ──
+    const sb = s.status_breakdown || {};
+    const statusMeta = [
+      ['new','חדשה', C_VIOLET], ['preparing','בהכנה', C_AMBER],
+      ['out_for_delivery','בדרך', C_BLUE], ['delivered','נמסרה', C_GREEN],
+      ['done','הסתיימה','#9ca3af'], ['cancelled','בוטלה', C_RED],
+    ].filter(([k]) => sb[k]);
+    const stLabels = statusMeta.map(([,l]) => l);
+    const stColors = statusMeta.map(([,,c]) => c);
+    const stData   = statusMeta.map(([k]) => sb[k] || 0);
+    mkChart('chartStatus', {
+      type: 'doughnut',
+      data: { labels: stLabels, datasets: [{ data: stData, backgroundColor: stColors, borderWidth: 2, borderColor: '#fff' }] },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '60%',
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed}` }}},
+      },
+    });
+    makeLegend('chartStatusLegend', stLabels.map((l, i) => `${l}: ${stData[i]}`), stColors);
+
+    // ── 7. Top products bar ──
+    const tops = s.top_products || [];
+    mkChart('chartTopProducts', {
+      type: 'bar',
+      data: {
+        labels: tops.map(p => p.name),
+        datasets: [
+          { label: 'כמות', data: tops.map(p => p.count), backgroundColor: 'rgba(94,23,235,.8)', borderRadius: 6, yAxisID: 'y' },
+          { label: 'הכנסה ₪', data: tops.map(p => p.revenue || 0), backgroundColor: 'rgba(34,197,94,.7)', borderRadius: 6, yAxisID: 'y2' },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: {
+          legend: { labels: { color: textColor, font: { family: C_FONT, size: 11 } }, position: 'top' },
+          tooltip: { rtl: true },
+        },
+        scales: {
+          y:  { ticks: { color: textColor,  font: { family: C_FONT, size: 11 } }, grid: { display: false } },
+          y2: { display: false },
+          x:  { ticks: { color: mutedColor, font: { family: C_FONT, size: 11 } }, grid: { color: gridColor }, beginAtZero: true },
+        },
+      },
+    });
 
   } catch (err) {
-    if (statsCardsEl) statsCardsEl.innerHTML = `<div style="color:red;font-size:.85rem">שגיאה בטעינת סטטיסטיקות</div>`;
+    if (cardsEl) cardsEl.innerHTML = `<div style="color:red;font-size:.85rem">שגיאה: ${err.message}</div>`;
   }
 }
 
