@@ -725,6 +725,7 @@ function printOrder(orderId) {
     @media print {
       body { width:80mm; }
       @page { size:80mm auto; margin:0; }
+      button { display:none !important; }
     }
   </style>
 </head>
@@ -777,7 +778,11 @@ function printOrder(orderId) {
     הדפסה: ${now}
   </div>
 </div>
-<script>window.onload = () => { window.print(); }<\/script>
+<button onclick="window.close()" style="display:block;margin:16px auto 0;padding:10px 28px;background:#5e17eb;color:#fff;border:none;border-radius:50px;font-family:inherit;font-size:.85rem;font-weight:700;cursor:pointer">סגור</button>
+<script>
+  window.onload = () => { window.print(); };
+  window.onafterprint = () => { window.close(); };
+<\/script>
 </body>
 </html>`;
 
