@@ -58,6 +58,16 @@ CREATE TABLE IF NOT EXISTS product_additions (
 
 CREATE INDEX IF NOT EXISTS idx_additions_product ON product_additions(product_id);
 
+-- ── Push notification subscriptions ───────────────────────────
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  endpoint   TEXT NOT NULL UNIQUE,
+  p256dh     TEXT NOT NULL,
+  auth       TEXT NOT NULL,
+  user_agent TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ── Seed products (skip if already exist) ─────────────────
 INSERT INTO products (id, name_he, name_en, price, category, sort_order) VALUES
   ('11111111-0001-0001-0001-000000000001', 'פיצה משפחתית',    'Family Pizza',            58,   'main',   1),

@@ -1279,3 +1279,97 @@ showTab('orders');
 setInterval(() => {
   if (!document.getElementById('page-orders').classList.contains('hidden')) loadOrders();
 }, 30_000);
+
+// ─── Push notifications ───────────────────────────────────────────────────────
+
+let _pushSubscription = null;
+
+async function initPush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    document.getElementById('pushBtn').style.display = 'none';
+    return;
+  }
+
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js');
+
+    // Listen for messages from SW (e.g. tab focus on click)
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data?.type === 'NEW_ORDER') loadOrders();
+    });
+
+    // Check current subscription
+    _pushSubscription = await reg.pushManager.getSubscription();
+    updatePushBtn(_pushSubscription);
+  } catch (err) {
+    console.warn('[push] SW registration failed:', err);
+  }
+}
+
+function updatePushBtn(sub) {
+  const btn   = document.getElementById('pushBtn');
+  const slash = document.getElementById('pushSlash');
+  if (!btn) return;
+  if (sub) {
+    btn.title = 'התראות push פעילות — לחץ לכיבוי';
+    btn.style.color = '#4ade80';
+    if (slash) slash.style.display = 'none';
+  } else {
+    btn.title = 'הפעל התראות push';
+    btn.style.color = '';
+    if (slash) slash.style.display = '';
+  }
+}
+
+async function togglePushSubscription() {
+  if (!('serviceWorker' in navigator)) {
+    alert('הדפדפן שלך לא תומך בהתראות push');
+    return;
+  }
+
+  const reg = await navigator.serviceWorker.ready;
+
+  if (_pushSubscription) {
+    // Unsubscribe
+    await _pushSubscription.unsubscribe();
+    await api('POST', '/push-unsubscribe', { endpoint: _pushSubscription.endpoint }).catch(() => {});
+    _pushSubscription = null;
+    updatePushBtn(null);
+    showToast('התראות push כובו');
+    return;
+  }
+
+  // Request permission
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') {
+    showToast('נדרשת הרשאה להתראות בדפדפן');
+    return;
+  }
+
+  // Get VAPID key
+  let vapidPublicKey;
+  try {
+    const { publicKey } = await api('GET', '/push-vapid-key');
+    vapidPublicKey = publicKey;
+  } catch { showToast('שגיאה בהגדרת push'); return; }
+
+  // Subscribe
+  const sub = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+  });
+
+  await api('POST', '/push-subscribe', sub.toJSON());
+  _pushSubscription = sub;
+  updatePushBtn(sub);
+  showToast('✅ התראות push הופעלו!');
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw     = window.atob(base64);
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
+initPush();

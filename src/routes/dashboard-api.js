@@ -12,8 +12,9 @@ const settings                            = require('../services/settings');
 const { invalidateCache }                 = require('../services/menu-service');
 const { sendMessage }                     = require('../services/greenapi');
 
-const router   = express.Router();
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+const router       = express.Router();
+const supabase     = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+const pushNotifier = require('../services/push-notifier');
 
 // multer — memory storage, 5 MB limit, images only
 const upload = multer({
@@ -472,6 +473,33 @@ router.get('/public-menu', async (req, res) => {
       pickup_enabled:   allSettings.pickup_enabled   !== false,
       is_open:          allSettings.is_open           !== false,
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Push subscriptions ───────────────────────────────────────────────────────
+
+// Return VAPID public key so the frontend can subscribe
+router.get('/push-vapid-key', requireAuth, (_req, res) => {
+  res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || '' });
+});
+
+// Save a new push subscription
+router.post('/push-subscribe', requireAuth, async (req, res) => {
+  try {
+    await pushNotifier.saveSubscription(req.body, req.headers['user-agent'] || '');
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Remove a push subscription (browser opted out)
+router.post('/push-unsubscribe', requireAuth, async (req, res) => {
+  try {
+    await pushNotifier.removeSubscription(req.body.endpoint);
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

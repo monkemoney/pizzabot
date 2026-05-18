@@ -364,8 +364,12 @@ input[type=time] { direction: ltr; }
         <span id="userRole" style="color:rgba(255,255,255,.5);font-size:.72rem;display:block"></span>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
+        <!-- Push notifications toggle -->
+        <button class="notif-btn" onclick="togglePushSubscription()" id="pushBtn" title="התראות push">
+          <svg id="pushIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/><line x1="1" y1="1" x2="23" y2="23" id="pushSlash"/></svg>
+        </button>
         <!-- Notifications bell -->
-        <button class="notif-btn" onclick="toggleNotifPanel()" title="התראות">
+        <button class="notif-btn" onclick="toggleNotifPanel()" title="הזמנות חדשות">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
           <span class="notif-badge" id="notifBadge"></span>
         </button>

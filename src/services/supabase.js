@@ -138,10 +138,16 @@ async function saveOrder(orderData) {
   const { data, error } = await supabase
     .from('orders')
     .insert(orderData)
-    .select('id, order_number')
+    .select('id, order_number, customer_name, total_price')
     .single();
 
   if (error) throw new Error('Failed to save order: ' + error.message);
+
+  // Fire-and-forget push notification to all subscribed dashboard browsers
+  require('./push-notifier').notifyNewOrder(data).catch((err) =>
+    console.error('[push] notifyNewOrder error:', err.message)
+  );
+
   return { id: data.id, orderNumber: data.order_number };
 }
 
