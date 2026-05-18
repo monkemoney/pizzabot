@@ -413,7 +413,14 @@ input[type=time] { direction: ltr; }
   <!-- ORDERS -->
   <div id="page-orders" style="display:none">
     <div class="page-header"><div class="page-title">הזמנות</div>
-      <button onclick="loadOrders()" class="btn btn-ghost btn-sm">↻ רענן</button>
+      <div style="display:flex;gap:8px">
+        <button onclick="loadOrders()" class="btn btn-ghost btn-sm">↻ רענן</button>
+        <button onclick="exportOrdersCSV()" class="btn btn-ghost btn-sm admin-only"
+          style="color:#16a34a;border-color:#bbf7d0;display:none"
+          title="ייצוא הזמנות מסוננות לאקסל">
+          ⬇️ Excel
+        </button>
+      </div>
     </div>
 
     <!-- Status summary cards -->

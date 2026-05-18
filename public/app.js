@@ -179,6 +179,89 @@ function clearOrderFilters() {
   filterOrders();
 }
 
+function exportOrdersCSV() {
+  // Get the currently filtered orders from the rendered table rows
+  const q       = (document.getElementById('orderSearch')?.value   || '').trim().toLowerCase();
+  const status  = document.getElementById('statusFilter')?.value   || 'all';
+  const type    = document.getElementById('typeFilter')?.value     || 'all';
+  const payment = document.getElementById('paymentFilter')?.value  || 'all';
+  const from    = document.getElementById('dateFromFilter')?.value;
+  const to      = document.getElementById('dateToFilter')?.value;
+
+  let list = currentOrders;
+  if (status  !== 'all') list = list.filter(o => o.status === status);
+  if (type    !== 'all') list = list.filter(o => o.delivery_method === type);
+  if (payment !== 'all') list = list.filter(o => o.payment_method === payment);
+  if (from) list = list.filter(o => o.created_at >= new Date(from).toISOString());
+  if (to)   list = list.filter(o => o.created_at <= new Date(to + 'T23:59:59').toISOString());
+  if (q) list = list.filter(o =>
+    (o.customer_name  || '').toLowerCase().includes(q) ||
+    (o.customer_phone || o.phone || '').includes(q)    ||
+    (o.address        || '').toLowerCase().includes(q)
+  );
+
+  if (!list.length) { showToast('אין הזמנות לייצוא'); return; }
+
+  const statusHe = {
+    new:'חדשה', preparing:'בהכנה', out_for_delivery:'יצא למשלוח',
+    delivered:'נמסרה', done:'הסתיימה', cancelled:'בוטלה',
+  };
+
+  const headers = [
+    'מספר הזמנה','תאריך','שעה','שם לקוח','טלפון',
+    'סוג אספקה','כתובת','אמצעי תשלום','סטטוס תשלום',
+    'סטטוס הזמנה','פריטים','תוספות','סה"כ','הערות',
+  ];
+
+  const esc = (v) => {
+    const s = String(v == null ? '' : v).replace(/"/g, '""');
+    return s.includes(',') || s.includes('\n') || s.includes('"') ? `"${s}"` : s;
+  };
+
+  const rows = list.map(o => {
+    const d       = new Date(o.created_at);
+    const date    = d.toLocaleDateString('he-IL');
+    const time    = d.toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' });
+    const items   = (o.items||[]).map(it => {
+      const qty = it.quantity || it.qty || 1;
+      return `${it.name||it.name_he||''}${qty>1?` ×${qty}`:''}`;
+    }).join(' | ');
+    const toppings = (o.items||[]).flatMap(it =>
+      (it.toppings||[]).map(t => t.name||t.name_he||'')
+    ).filter(Boolean).join(', ');
+
+    return [
+      o.order_number || '',
+      date, time,
+      o.customer_name  || '',
+      o.customer_phone || o.phone || '',
+      o.delivery_method === 'delivery' ? 'משלוח' : 'איסוף',
+      o.address || '',
+      o.payment_method === 'cash' ? 'מזומן' : 'אשראי',
+      o.payment_status === 'paid'  ? 'שולם'  : 'ממתין',
+      statusHe[o.status] || o.status || '',
+      items,
+      toppings,
+      (parseFloat(o.total_price)||0).toFixed(2),
+      o.notes || '',
+    ].map(esc).join(',');
+  });
+
+  // UTF-8 BOM so Excel opens Hebrew correctly
+  const csv  = '﻿' + [headers.map(esc).join(','), ...rows].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), {
+    href:     url,
+    download: `הזמנות_${new Date().toISOString().slice(0,10)}.csv`,
+  });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  showToast(`✅ יוצאו ${list.length} הזמנות`);
+}
+
 function renderOrdersTable(orders) {
   const container = document.getElementById('ordersTable');
   if (!orders.length) {
