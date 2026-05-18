@@ -135,11 +135,13 @@ function renderStatusSummaryCards(orders) {
     delivered:orders.filter(o => o.status === 'delivered').length,
     pending:  orders.filter(o => o.payment_status === 'pending').length,
   };
-  const card = (label, val, color='var(--primary)') =>
-    `<div class="stat-card" style="padding:16px 18px;cursor:pointer">
-      <div style="font-size:1.6rem;font-weight:800;color:${color}">${val}</div>
+  const card = (label, val, color='var(--primary)') => {
+    const empty = val === 0;
+    return `<div class="stat-card" style="padding:16px 18px;cursor:pointer;opacity:${empty?.45:1}">
+      <div style="font-size:1.6rem;font-weight:800;color:${empty?'var(--text-muted)':color}">${val}</div>
       <div class="stat-label">${label}</div>
     </div>`;
+  };
   el.innerHTML =
     card('סה"כ הזמנות',      counts.total,     'var(--text)')     +
     card('חדשות',             counts.new,        'var(--primary)')  +
@@ -267,7 +269,19 @@ function exportOrdersCSV() {
 function renderOrdersTable(orders) {
   const container = document.getElementById('ordersTable');
   if (!orders.length) {
-    container.innerHTML = '<div class="empty-state">אין הזמנות תואמות</div>';
+    const hasFilters = document.getElementById('orderSearch')?.value ||
+      document.getElementById('statusFilter')?.value !== 'all' ||
+      document.getElementById('typeFilter')?.value !== 'all' ||
+      document.getElementById('paymentFilter')?.value !== 'all' ||
+      document.getElementById('dateFromFilter')?.value ||
+      document.getElementById('dateToFilter')?.value;
+    container.innerHTML = `<div class="empty-state">
+      <div class="empty-state-icon">${hasFilters ? '🔍' : '📋'}</div>
+      <div class="empty-state-title">${hasFilters ? 'אין הזמנות תואמות' : 'אין הזמנות עדיין'}</div>
+      <div class="empty-state-sub">${hasFilters
+        ? `<button onclick="clearOrderFilters()" style="background:none;border:none;cursor:pointer;color:var(--primary);font-weight:700;font-size:.84rem;padding:0;text-decoration:underline;font-family:inherit">נקה פילטרים</button>`
+        : 'הזמנות יופיעו כאן ברגע שלקוח יזמין'}</div>
+    </div>`;
     return;
   }
   container.innerHTML = `
