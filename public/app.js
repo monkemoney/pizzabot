@@ -700,9 +700,8 @@ async function loadProducts() {
 }
 
 function imgThumb(url) {
-  const imgPlaceholder = `<div style="width:52px;height:52px;border-radius:10px;border:1.5px dashed var(--border);background:var(--bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--text-muted)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>`;
-  if (!url) return imgPlaceholder;
-  return `<img src="${url}" style="width:52px;height:52px;object-fit:cover;border-radius:10px;border:1.5px solid var(--border);flex-shrink:0;display:block" onerror="this.outerHTML='${imgPlaceholder.replace(/'/g, "\\'")}'>";
+  if (!url) return `<div style="width:52px;height:52px;border-radius:10px;border:1.5px dashed var(--border);background:var(--bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--text-muted)">${SVG.camera}</div>`;
+  return `<img src="${url}" style="width:52px;height:52px;object-fit:cover;border-radius:10px;border:1.5px solid var(--border);flex-shrink:0;display:block" onerror="this.style.display='none'">`;
 }
 
 function toggleSwitch(isOn, onClickFn) {
