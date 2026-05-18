@@ -217,9 +217,11 @@ function renderOrdersTable(orders) {
               ).join('')}
             </select>
           </td>
-          <td>
+          <td style="display:flex;gap:6px;align-items:center">
             <button onclick="openOrderEdit('${o.id}')" title="עריכה"
               style="background:var(--primary-soft);border:none;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:1rem">✏️</button>
+            <button onclick="printOrder('${o.id}')" title="הדפסת קבלה"
+              style="background:#f0fdf4;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:1rem;color:#16a34a">🖨️</button>
           </td>
         </tr>`).join('')}
       </tbody>
@@ -314,6 +316,142 @@ async function loadStats(period = 'today', date) {
 
 let _editOrder = null;
 let _editItems = [];
+
+function printOrder(orderId) {
+  const o = currentOrders.find(x => x.id === orderId);
+  if (!o) return;
+
+  const items    = o.items || [];
+  const subtotal = items.reduce((s, it) => s + (parseFloat(it.price)||0) * (it.quantity||it.qty||1), 0);
+  const delivery = o.delivery_method === 'delivery' ? (parseFloat(o.delivery_fee)||30) : 0;
+  const total    = parseFloat(o.total_price) || (subtotal + delivery);
+  const vat      = total * 18 / 118;
+  const net      = total - vat;
+
+  const itemRows = items.map(it => {
+    const qty      = it.quantity || it.qty || 1;
+    const lineTotal= (parseFloat(it.price)||0) * qty;
+    const tops     = (it.toppings||[]).map(t => t.name || t.name_he || '').filter(Boolean).join(', ');
+    return `
+      <tr>
+        <td style="padding:8px 0;border-bottom:1px dashed #e5e7eb">
+          <strong>${it.name || it.name_he || 'פריט'}</strong>
+          ${tops ? `<br><span style="font-size:.78rem;color:#6b7280">+ ${tops}</span>` : ''}
+        </td>
+        <td style="padding:8px 0;border-bottom:1px dashed #e5e7eb;text-align:center;color:#6b7280">${qty}</td>
+        <td style="padding:8px 0;border-bottom:1px dashed #e5e7eb;text-align:left;font-weight:600">₪${lineTotal.toFixed(2)}</td>
+      </tr>`;
+  }).join('');
+
+  const addressLine = o.address
+    ? `<div style="margin-top:4px;color:#6b7280;font-size:.82rem">📍 ${o.address}</div>` : '';
+
+  const now = new Date().toLocaleString('he-IL');
+  const orderDate = o.created_at ? new Date(o.created_at).toLocaleString('he-IL') : now;
+
+  const html = `<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+  <meta charset="UTF-8">
+  <title>קבלה #${o.order_number}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;600;700;800&display=swap');
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body {
+      font-family:'Heebo',sans-serif;
+      background:#fff;
+      color:#111827;
+      padding:0;
+      width:80mm;
+      margin:0 auto;
+    }
+    .receipt { padding:16px 12px 24px; }
+    .logo-area { text-align:center; padding-bottom:12px; border-bottom:2px dashed #e5e7eb; margin-bottom:14px; }
+    .biz-name  { font-size:1.4rem; font-weight:800; color:#5e17eb; }
+    .biz-sub   { font-size:.72rem; color:#6b7280; margin-top:2px; }
+    .order-num { font-size:1.8rem; font-weight:800; color:#5e17eb; text-align:center; margin:10px 0 4px; }
+    .meta      { font-size:.78rem; color:#6b7280; text-align:center; margin-bottom:14px; }
+    .section-title { font-size:.7rem; font-weight:700; color:#5e17eb; text-transform:uppercase;
+                     letter-spacing:.06em; margin:12px 0 6px; }
+    .customer-box  { background:#f5f3ff; border-radius:8px; padding:10px 12px; margin-bottom:12px; }
+    .customer-name { font-size:.95rem; font-weight:700; }
+    .items-table   { width:100%; border-collapse:collapse; font-size:.85rem; }
+    .items-table th { font-size:.68rem; font-weight:700; color:#6b7280; padding-bottom:6px;
+                      border-bottom:2px solid #e5e7eb; text-align:right; }
+    .items-table th:last-child { text-align:left; }
+    .totals { margin-top:14px; border-top:2px dashed #e5e7eb; padding-top:12px; }
+    .total-row { display:flex; justify-content:space-between; font-size:.82rem;
+                 color:#6b7280; margin-bottom:4px; }
+    .total-row.big { font-size:1.1rem; font-weight:800; color:#111827; margin-top:8px; padding-top:8px;
+                     border-top:2px solid #111827; }
+    .payment-row { display:flex; justify-content:space-between; font-size:.8rem;
+                   margin-top:10px; color:#374151; }
+    .footer { text-align:center; margin-top:18px; padding-top:12px;
+              border-top:2px dashed #e5e7eb; font-size:.72rem; color:#9ca3af; }
+    .footer strong { color:#5e17eb; }
+    @media print {
+      body { width:80mm; }
+      @page { size:80mm auto; margin:0; }
+    }
+  </style>
+</head>
+<body>
+<div class="receipt">
+
+  <div class="logo-area">
+    <div class="biz-name">🍕 פיצה דליבריס</div>
+    <div class="biz-sub">jasell.com</div>
+  </div>
+
+  <div class="order-num">#${o.order_number}</div>
+  <div class="meta">${orderDate}</div>
+
+  <div class="section-title">פרטי לקוח</div>
+  <div class="customer-box">
+    <div class="customer-name">${o.customer_name || '—'}</div>
+    ${o.customer_phone ? `<div style="font-size:.8rem;color:#6b7280;margin-top:2px">📞 ${o.customer_phone}</div>` : ''}
+    <div style="margin-top:4px;font-size:.8rem">
+      ${o.delivery_method === 'delivery' ? `🛵 משלוח` : `🏍️ איסוף עצמי`}
+    </div>
+    ${addressLine}
+    ${o.courier_notes ? `<div style="margin-top:4px;font-size:.75rem;color:#6b7280">📝 ${o.courier_notes}</div>` : ''}
+  </div>
+
+  <div class="section-title">פריטים</div>
+  <table class="items-table">
+    <thead><tr>
+      <th>מנה</th>
+      <th style="text-align:center;width:30px">כמות</th>
+      <th style="text-align:left;width:60px">מחיר</th>
+    </tr></thead>
+    <tbody>${itemRows}</tbody>
+  </table>
+
+  <div class="totals">
+    ${delivery ? `<div class="total-row"><span>משלוח</span><span>₪${delivery.toFixed(2)}</span></div>` : ''}
+    <div class="total-row"><span>לפני מע"מ</span><span>₪${net.toFixed(2)}</span></div>
+    <div class="total-row"><span>מע"מ 18%</span><span>₪${vat.toFixed(2)}</span></div>
+    <div class="total-row big"><span>סה"כ לתשלום</span><span>₪${total.toFixed(2)}</span></div>
+  </div>
+
+  <div class="payment-row">
+    <span>${o.payment_method === 'cash' ? '💵 מזומן' : '💳 אשראי'}</span>
+    <span>${o.payment_status === 'paid' ? '✅ שולם' : '⏳ ממתין לתשלום'}</span>
+  </div>
+
+  <div class="footer">
+    תודה שבחרת <strong>פיצה דליבריס</strong>!<br>
+    הדפסה: ${now}
+  </div>
+</div>
+<script>window.onload = () => { window.print(); }<\/script>
+</body>
+</html>`;
+
+  const w = window.open('', '_blank', 'width=400,height=650');
+  w.document.write(html);
+  w.document.close();
+}
 
 async function openOrderEdit(orderId) {
   const order = currentOrders.find(o => o.id === orderId);

@@ -591,6 +591,10 @@ input[type=time] { direction: ltr; }
     </div>
     <div class="modal-footer">
       <button onclick="closeModal('orderEditModal')" class="btn btn-ghost">ביטול</button>
+      <button onclick="_editOrder && printOrder(_editOrder.id)" class="btn btn-ghost"
+        style="color:#16a34a;border-color:#16a34a" title="הדפסת קבלה">
+        🖨️ הדפס
+      </button>
       <button onclick="saveOrderEdit()" class="btn btn-primary">שמור שינויים</button>
     </div>
   </div>
