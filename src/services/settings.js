@@ -76,4 +76,6 @@ async function isOpen() {
   return nowMinutes >= openMinutes && nowMinutes <= closeMinutes;
 }
 
-module.exports = { get, set, loadAll, isOpen };
+function _clearCache() { cacheTime = 0; cache = {}; }
+
+module.exports = { get, set, loadAll, isOpen, _clearCache };

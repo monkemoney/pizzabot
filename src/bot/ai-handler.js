@@ -266,4 +266,4 @@ async function handleMessage(phone, userMessage) {
   await updateSession(phone, { conversation_history: updatedHistory });
 }
 
-module.exports = { handleMessage };
+module.exports = { handleMessage, stripAction, detectLang, parsePayload };
