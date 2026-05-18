@@ -53,10 +53,7 @@ function showTab(name) {
   if (page) page.style.display = 'block';
   if (tab)  tab.classList.add('active');
 
-  // Sync mobile bottom nav
-  document.querySelectorAll('.mobile-nav-btn').forEach(btn => btn.classList.remove('active'));
-  const mobileTab = document.getElementById('mobile-tab-' + name);
-  if (mobileTab) mobileTab.classList.add('active');
+  closeMobileMenu();
 
   if (name === 'orders')    loadOrders();
   if (name === 'products')  loadProducts();
@@ -1448,6 +1445,16 @@ function removeZone(i) {
 
 async function saveZones() {
   await saveSection({ delivery_zones: _deliveryZones });
+}
+
+// ─── Mobile burger menu ───────────────────────────────────────────────────────
+
+function toggleMobileMenu() {
+  document.body.classList.toggle('sidebar-open');
+}
+
+function closeMobileMenu() {
+  document.body.classList.remove('sidebar-open');
 }
 
 // ─── Dark / Light Mode ────────────────────────────────────────────────────────
