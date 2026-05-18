@@ -16,13 +16,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Stack:** Node.js + Express · Supabase (PostgreSQL) · Render (hosting) · Green API (WhatsApp) · Anthropic Claude `claude-opus-4-7` · Cardcom (Israeli payment processor)
 
 **Live:**
-- Dashboard + bot: `https://pizzabot-jasell.onrender.com`
-- Public menu: `https://pizzabot-jasell.onrender.com/menu.html`
-- Webhook: `https://pizzabot-jasell.onrender.com/webhook`
+- Dashboard + bot: `https://www.jasell.com` (jasell.com → 301 → www)
+- Public menu: `https://www.jasell.com/menu.html`
+- Webhook: `https://www.jasell.com/webhook`
 - GitHub: `git@github.com:monkemoney/pizzabot.git`
 - Render service ID: `srv-d831jc8js32c73ef8mng`
 - Render owner ID: `tea-cuppja5umphs73ea2qe0`
 - Render API key: `rnd_aymW3XEYR53CgqhIR5PgqDvP7Q97`
+- Fallback URL: `https://pizzabot-jasell.onrender.com` (still works — do NOT change this)
 
 ---
 
@@ -30,7 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```env
 PORT=3000
-PUBLIC_URL=https://pizzabot-jasell.onrender.com
+PUBLIC_URL=https://www.jasell.com
 
 # Green API — customer WhatsApp bot
 GREEN_API_INSTANCE_ID=7105619659
@@ -300,7 +301,7 @@ customers          -- VIEW over orders (name, phone, last_address, order_count, 
 |------|-------|
 | Business owner bot | Code written, needs `GREEN_API_BUSINESS_INSTANCE_ID` env var + second Green API instance |
 | Cardcom production | Using test terminal 1000. Need real terminal for live payments |
-| jasell.com DNS | CNAME `www` → `pizzabot-jasell.onrender.com`, ALIAS `@` → same |
+| ~~jasell.com DNS~~ | ✅ Connected — www.jasell.com live, @ → 301 redirect to www |
 | No test suite | Zero automated tests |
 | `JWT_SECRET` | Should be a strong random string in production |
 | Bit / Paybox payment | Settings toggles exist but no actual integration |
