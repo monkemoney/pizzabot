@@ -14,12 +14,43 @@ async function buildSystemPrompt(customerProfile = null) {
   const cashEnabled     = allSettings.payment_cash     !== false;
   const creditEnabled   = allSettings.payment_credit   !== false;
 
-  const pickupAddress = allSettings.pickup_address || 'רוטשילד 19, תל אביב';
-  const deliveryPrice = allSettings.delivery_price  ?? 30;
-  const menuUrl       = (allSettings.bot_url || process.env.PUBLIC_URL || 'https://www.jasell.com') + '/menu.html';
+  const pickupAddress  = allSettings.pickup_address || 'רוטשילד 19, תל אביב';
+  const menuUrl        = (allSettings.bot_url || process.env.PUBLIC_URL || 'https://www.jasell.com') + '/menu.html';
+
+  // ── Delivery zones — read from delivery_zones (new) or fallback to delivery_cities (legacy) ──
+  const zones = Array.isArray(allSettings.delivery_zones) && allSettings.delivery_zones.length
+    ? allSettings.delivery_zones
+    : null;
+
+  // Build per-city fee table for the prompt
+  let deliveryZonesText = '';
+  let allowedCities     = [];
+
+  if (zones) {
+    allowedCities     = zones.map(z => z.city.trim()).filter(Boolean);
+    deliveryZonesText = zones.map(z => {
+      const fee = z.fee ?? allSettings.delivery_price ?? 30;
+      const eta = z.eta_minutes ? ` (~${z.eta_minutes} דקות)` : '';
+      return `  • ${z.city}${z.area ? ` (${z.area})` : ''} — ${fee}₪${eta}`;
+    }).join('\n');
+  } else {
+    // Legacy fallback: delivery_cities array or single city
+    const legacyCities = Array.isArray(allSettings.delivery_cities)
+      ? allSettings.delivery_cities
+      : allSettings.delivery_cities
+      ? [allSettings.delivery_cities]
+      : ['תל אביב'];
+    allowedCities     = legacyCities;
+    const defaultFee  = allSettings.delivery_price ?? 30;
+    deliveryZonesText = legacyCities.map(c => `  • ${c} — ${defaultFee}₪`).join('\n');
+  }
+
+  const allowedCitiesStr = allowedCities.join(', ') || 'תל אביב';
+  const defaultFee       = zones ? (zones[0]?.fee ?? 30) : (allSettings.delivery_price ?? 30);
+  console.log(`[prompts] delivery zones loaded: ${allowedCitiesStr || 'none'} (${zones ? zones.length : 0} zones)`);
 
   const deliveryQuestion = deliveryEnabled && pickupEnabled
-    ? `משלוח 🛵 (${deliveryPrice}₪) או איסוף עצמי 🏍️ (חינם)?`
+    ? `משלוח 🛵 (מחיר לפי אזור) או איסוף עצמי 🏍️ (חינם)?`
     : deliveryEnabled ? `משלוח בלבד — לאיזו כתובת?`
     : `איסוף עצמי בלבד מ-${pickupAddress}.`;
 
@@ -54,6 +85,14 @@ ${parts.join('\n')}
 ${menuText}
 ══════════════════════════════════════════
 קישור לתפריט המלא עם תמונות: ${menuUrl}
+
+══════════════════════════════════════════
+אזורי משלוח ומחירים
+══════════════════════════════════════════
+${deliveryZonesText || `  • ${allowedCitiesStr} — ${defaultFee}₪`}
+
+ערים מורשות למשלוח: ${allowedCitiesStr}
+עיר שאינה ברשימה → הצע איסוף עצמי מ-${pickupAddress} (או בדוק אם קרובה לאזור קיים).
 
 ══════════════════════════════════════════
 עיקרון המלצר — Deal-breakers קודם, הזמנה אחר-כך
@@ -115,7 +154,9 @@ ${paymentQuestion}"
 
 שלב 2 — אחרי deal-breakers:
 • אשר בקצרה ("מצוין, משלוח + אשראי 👍")
-• משלוח: שאל כתובת מלאה (עיר, רחוב, בית, קומה/דירה). תל אביב בלבד — עיר אחרת → הצע איסוף מ-${pickupAddress}.
+• משלוח: שאל כתובת מלאה (עיר, רחוב, בית, קומה/דירה).
+  — עיר מורשת (${allowedCitiesStr}) → המשך, ציין את דמי המשלוח לפי האזור.
+  — עיר שאינה ברשימה → הצע איסוף עצמי מ-${pickupAddress}.
 • איסוף: ציין כתובת: *${pickupAddress}*.
 • שאל מה הלקוח רוצה. אפשר להוסיף: "תפריט עם תמונות: ${menuUrl}"
 

@@ -1652,7 +1652,9 @@ function removeZone(i) {
 }
 
 async function saveZones() {
-  await saveSection({ delivery_zones: _deliveryZones });
+  // Sync delivery_cities from zones so the bot always has the current city list
+  const cities = [...new Set(_deliveryZones.map(z => (z.city || '').trim()).filter(Boolean))];
+  await saveSection({ delivery_zones: _deliveryZones, delivery_cities: cities });
 }
 
 // ─── Mobile burger menu ───────────────────────────────────────────────────────
