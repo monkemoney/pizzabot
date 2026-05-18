@@ -624,54 +624,43 @@ input[type=time] { direction: ltr; }
     <div id="settingsForm" style="display:flex;flex-direction:column;gap:18px"></div>
   </div>
 
-</div>
-
-<!-- ── Order Detail Modal ── -->
-<div id="orderModal" class="modal-overlay">
-  <div class="modal">
-    <div class="modal-header">
-      <div class="modal-title" id="orderModalTitle">פרטי הזמנה</div>
-      <button onclick="closeModal('orderModal')" class="modal-close">&times;</button>
+  <!-- STATS -->
+  <div id="page-stats" style="display:none">
+    <div class="page-header">
+      <div class="page-title">סטטיסטיקות</div>
+      <button onclick="loadStats(currentPeriod)" class="btn btn-ghost btn-sm">↻ רענן</button>
     </div>
-    <div class="modal-body" id="orderModalContent"></div>
-  </div>
-</div>
 
-<!-- ── Stats Page ── -->
-<div id="page-stats" style="display:none">
-  <div class="page-header">
-    <div class="page-title">סטטיסטיקות</div>
-    <button onclick="loadStats(currentPeriod)" class="btn btn-ghost btn-sm">↻ רענן</button>
-  </div>
-
-  <!-- Period picker -->
-  <div class="card" style="padding:16px 22px;margin-bottom:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <span style="font-weight:700;font-size:.85rem;color:var(--text-muted)">תקופה:</span>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
-      <button class="period-btn btn btn-sm" data-period="today" onclick="setPeriod('today')">היום</button>
-      <button class="period-btn btn btn-sm" data-period="week"  onclick="setPeriod('week')">שבוע</button>
-      <button class="period-btn btn btn-sm" data-period="month" onclick="setPeriod('month')">חודש</button>
-      <button class="period-btn btn btn-sm" data-period="year"  onclick="setPeriod('year')">שנה</button>
-      <button class="period-btn btn btn-sm" data-period="all"   onclick="setPeriod('all')">הכל</button>
+    <!-- Period picker -->
+    <div class="card" style="padding:16px 22px;margin-bottom:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-weight:700;font-size:.85rem;color:var(--text-muted)">תקופה:</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="period-btn btn btn-sm" data-period="today" onclick="setPeriod('today')">היום</button>
+        <button class="period-btn btn btn-sm" data-period="week"  onclick="setPeriod('week')">שבוע</button>
+        <button class="period-btn btn btn-sm" data-period="month" onclick="setPeriod('month')">חודש</button>
+        <button class="period-btn btn btn-sm" data-period="year"  onclick="setPeriod('year')">שנה</button>
+        <button class="period-btn btn btn-sm" data-period="all"   onclick="setPeriod('all')">הכל</button>
+      </div>
+      <input type="date" id="statsCustomDate" class="filter-select" style="padding:6px 12px;font-size:.8rem"
+        onchange="setPeriod('custom',this.value)">
     </div>
-    <input type="date" id="statsCustomDate" class="filter-select" style="padding:6px 12px;font-size:.8rem"
-      onchange="setPeriod('custom',this.value)">
+
+    <!-- KPI cards -->
+    <div id="statsCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:20px"></div>
+
+    <!-- Bar chart -->
+    <div class="card" style="padding:22px 26px;margin-bottom:20px">
+      <div style="font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:16px">הזמנות לפי יום</div>
+      <div id="ordersChart"></div>
+    </div>
+
+    <!-- Top products table -->
+    <div class="card" style="padding:22px 26px">
+      <div style="font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:16px">מוצרים מובילים</div>
+      <div id="statsTopProducts"></div>
+    </div>
   </div>
 
-  <!-- KPI cards -->
-  <div id="statsCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:20px"></div>
-
-  <!-- Bar chart -->
-  <div class="card" style="padding:22px 26px;margin-bottom:20px">
-    <div style="font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:16px">הזמנות לפי יום</div>
-    <div id="ordersChart"></div>
-  </div>
-
-  <!-- Top products table -->
-  <div class="card" style="padding:22px 26px">
-    <div style="font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:16px">מוצרים מובילים</div>
-    <div id="statsTopProducts"></div>
-  </div>
 </div>
 
 <!-- ── Order Edit Modal ── -->
