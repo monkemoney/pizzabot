@@ -529,11 +529,12 @@ input[type=time] { direction: ltr; }
   <div id="page-orders" style="display:none">
     <div class="page-header"><div class="page-title">הזמנות</div>
       <div style="display:flex;gap:8px">
-        <button onclick="loadOrders()" class="btn btn-ghost btn-sm">↻ רענן</button>
+        <button onclick="loadOrders()" class="btn btn-ghost btn-sm" style="display:inline-flex;align-items:center;gap:5px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.38-7.2"/></svg> רענן</button>
         <button onclick="exportOrdersCSV()" class="btn btn-ghost btn-sm admin-only"
-          style="color:#16a34a;border-color:#bbf7d0;display:none"
+          style="color:#16a34a;border-color:#bbf7d0;display:none;align-items:center;gap:5px"
           title="ייצוא הזמנות מסוננות לאקסל">
-          ⬇️ Excel
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Excel
         </button>
       </div>
     </div>
@@ -545,7 +546,7 @@ input[type=time] { direction: ltr; }
     <div id="statsSection" class="admin-only" style="display:none;margin-bottom:22px">
       <div class="card" style="padding:22px 26px">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
-          <span style="font-weight:800;font-size:.95rem">📊 סטטיסטיקות</span>
+          <span style="font-weight:800;font-size:.95rem;display:inline-flex;align-items:center;gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg> סטטיסטיקות</span>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
             <button class="period-btn btn btn-sm" data-period="today" onclick="setPeriod('today')">היום</button>
             <button class="period-btn btn btn-sm" data-period="week"  onclick="setPeriod('week')">שבוע</button>
@@ -563,7 +564,7 @@ input[type=time] { direction: ltr; }
 
     <!-- Filters -->
     <div class="card filters-bar" style="padding:14px 20px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <input type="text" id="orderSearch" placeholder="🔍 חיפוש שם, טלפון, כתובת..."
+      <input type="text" id="orderSearch" placeholder="חיפוש שם, טלפון, כתובת..."
         oninput="filterOrders()"
         style="flex:1;min-width:180px;border-radius:50px;padding:8px 18px;font-size:.84rem">
       <select id="statusFilter" class="filter-select" style="font-size:.84rem" onchange="filterOrders()">
@@ -591,10 +592,10 @@ input[type=time] { direction: ltr; }
         <span class="date-label">—</span>
         <input type="date" id="dateToFilter" class="filter-select" style="font-size:.82rem" onchange="filterOrders()">
       </div>
-      <button onclick="clearOrderFilters()" class="btn btn-sm" style="border-color:var(--accent);color:var(--accent);background:transparent;white-space:nowrap">✕ נקה</button>
+      <button onclick="clearOrderFilters()" class="btn btn-sm" style="border-color:var(--accent);color:var(--accent);background:transparent;white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> נקה</button>
     </div>
 
-    <div id="ordersTable" class="card"><div class="empty-state"><div class="empty-state-icon">⏳</div><div class="empty-state-sub">טוען הזמנות...</div></div></div>
+    <div id="ordersTable" class="card"><div class="empty-state"><div class="empty-state-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div class="empty-state-sub">טוען הזמנות...</div></div></div>
   </div>
 
   <!-- PRODUCTS -->
@@ -613,7 +614,7 @@ input[type=time] { direction: ltr; }
   <div id="page-customers" style="display:none">
     <div class="page-header">
       <div class="page-title">לקוחות</div>
-      <button onclick="openBroadcastModal()" class="btn btn-accent btn-sm">📤 שלח הודעה</button>
+      <button onclick="openBroadcastModal()" class="btn btn-accent btn-sm" style="display:inline-flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> שלח הודעה</button>
     </div>
 
     <!-- Stats -->
@@ -621,7 +622,7 @@ input[type=time] { direction: ltr; }
 
     <!-- Filters -->
     <div class="card filters-bar" style="padding:16px 20px;margin-bottom:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-      <input type="text" id="customerSearch" placeholder="🔍 חיפוש לפי שם, טלפון או כתובת..."
+      <input type="text" id="customerSearch" placeholder="חיפוש לפי שם, טלפון או כתובת..."
         oninput="filterCustomers()"
         style="flex:1;min-width:220px;border-radius:50px;padding:9px 18px;font-size:.85rem">
       <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;font-weight:600;cursor:pointer;white-space:nowrap">
@@ -663,7 +664,7 @@ input[type=time] { direction: ltr; }
 
       <!-- Address -->
       <div style="margin-bottom:20px">
-        <div style="font-weight:700;font-size:.88rem;color:var(--primary);margin-bottom:12px;text-transform:uppercase;letter-spacing:.04em">📍 כתובת למשלוח</div>
+        <div style="font-weight:700;font-size:.88rem;color:var(--primary);margin-bottom:12px;text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> כתובת למשלוח</div>
         <div class="address-grid" style="display:grid;grid-template-columns:1fr 1fr 80px;gap:10px;margin-bottom:10px">
           <div><label>עיר</label><input type="text" id="editCity" style="width:100%;margin-top:4px"></div>
           <div><label>רחוב</label><input type="text" id="editStreet" style="width:100%;margin-top:4px"></div>
@@ -688,14 +689,14 @@ input[type=time] { direction: ltr; }
 
       <!-- Items -->
       <div style="margin-bottom:20px">
-        <div style="font-weight:700;font-size:.88rem;color:var(--primary);margin-bottom:12px;text-transform:uppercase;letter-spacing:.04em">🍕 פריטי ההזמנה</div>
+        <div style="font-weight:700;font-size:.88rem;color:var(--primary);margin-bottom:12px;text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> פריטי ההזמנה</div>
         <div id="editItemsList"></div>
         <button onclick="openAddProductToOrder()" class="btn btn-outline btn-sm" style="margin-top:10px">+ הוסף מוצר</button>
       </div>
 
       <!-- Financial summary -->
       <div style="background:var(--primary-soft);border-radius:14px;padding:16px 18px">
-        <div style="font-weight:700;font-size:.88rem;color:var(--primary);margin-bottom:12px">💰 סיכום כספי</div>
+        <div style="font-weight:700;font-size:.88rem;color:var(--primary);margin-bottom:12px;display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> סיכום כספי</div>
         <div style="display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:6px">
           <span style="color:var(--text-muted)">סכום ביניים</span>
           <span id="editSubtotal" style="font-weight:700">₪0</span>
@@ -718,8 +719,8 @@ input[type=time] { direction: ltr; }
     <div class="modal-footer">
       <button onclick="closeModal('orderEditModal')" class="btn btn-ghost">ביטול</button>
       <button onclick="_editOrder && printOrder(_editOrder.id)" class="btn btn-ghost"
-        style="color:#16a34a;border-color:#16a34a" title="הדפסת קבלה">
-        🖨️ הדפס
+        style="color:#16a34a;border-color:#16a34a;display:inline-flex;align-items:center;gap:6px" title="הדפסת קבלה">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> הדפס
       </button>
       <button onclick="saveOrderEdit()" class="btn btn-primary">שמור שינויים</button>
     </div>
@@ -791,7 +792,7 @@ input[type=time] { direction: ltr; }
         <div class="form-group">
           <label>תמונה</label>
           <div style="display:flex;gap:10px;align-items:flex-start">
-            <div id="productImgPreview" style="width:80px;height:80px;border-radius:12px;border:2px dashed var(--border);background:var(--bg);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:1.6rem;color:var(--text-muted)">📷</div>
+            <div id="productImgPreview" style="width:80px;height:80px;border-radius:12px;border:2px dashed var(--border);background:var(--bg);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--text-muted)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
             <div style="flex:1;display:flex;flex-direction:column;gap:8px">
               <input type="url" id="productImageUrl" dir="ltr" placeholder="https://..."
                 oninput="previewProductImg(this.value)">
@@ -847,7 +848,7 @@ input[type=time] { direction: ltr; }
         <div class="form-group">
           <label>תמונה</label>
           <div style="display:flex;gap:10px;align-items:flex-start">
-            <div id="additionImgPreview" style="width:64px;height:64px;border-radius:12px;border:2px dashed var(--border);background:var(--bg);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:var(--text-muted)">📷</div>
+            <div id="additionImgPreview" style="width:64px;height:64px;border-radius:12px;border:2px dashed var(--border);background:var(--bg);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--text-muted)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
             <div style="flex:1;display:flex;flex-direction:column;gap:8px">
               <input type="url" id="additionImageUrl" dir="ltr" placeholder="https://..."
                 oninput="previewAdditionImg(this.value)">
@@ -879,7 +880,7 @@ input[type=time] { direction: ltr; }
     </div>
     <div class="modal-body">
       <div style="background:#fff0f9;border:1.5px solid #ff66c4;border-radius:10px;padding:12px 14px;font-size:.82rem;color:#a0006a;margin-bottom:14px">
-        ⚠️ שליחת הודעות ללא יזימת לקוח עלולה לגרום לחסימה. מומלץ עד 50 נמענים.
+        <span style="display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> שליחת הודעות ללא יזימת לקוח עלולה לגרום לחסימה. מומלץ עד 50 נמענים.</span>
       </div>
       <div id="broadcastRecipients" style="font-size:.85rem;color:var(--text-muted);margin-bottom:10px"></div>
       <textarea id="broadcastMessage" rows="4" dir="rtl"

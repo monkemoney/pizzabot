@@ -23,6 +23,28 @@ function logout() {
   window.location.href = '/';
 }
 
+// ─── SVG icon helpers ─────────────────────────────────────────────────────────
+
+const S = (d, w=14) => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;flex-shrink:0">${d}</svg>`;
+
+const SVG = {
+  search:    S('<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>'),
+  clipboard: S('<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/>'),
+  truck:     S('<rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>'),
+  home:      S('<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>'),
+  wallet:    S('<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>'),
+  card:      S('<rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>'),
+  check:     S('<polyline points="20 6 9 17 4 12"/>', 13),
+  clock:     S('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'),
+  printer:   S('<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>'),
+  pin:       S('<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>', 13),
+  award:     S('<circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/>'),
+  edit:      S('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'),
+  camera:    S('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>', 24),
+  phone:     S('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.56 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>', 13),
+  notes:     S('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>', 13),
+};
+
 // ─── API helper ───────────────────────────────────────────────────────────────
 
 async function api(method, path, body) {
@@ -263,7 +285,7 @@ function exportOrdersCSV() {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-  showToast(`✅ יוצאו ${list.length} הזמנות`);
+  showToast(`יוצאו ${list.length} הזמנות`);
 }
 
 function renderOrdersTable(orders) {
@@ -276,7 +298,7 @@ function renderOrdersTable(orders) {
       document.getElementById('dateFromFilter')?.value ||
       document.getElementById('dateToFilter')?.value;
     container.innerHTML = `<div class="empty-state">
-      <div class="empty-state-icon">${hasFilters ? '🔍' : '📋'}</div>
+      <div class="empty-state-icon">${hasFilters ? SVG.search : SVG.clipboard}</div>
       <div class="empty-state-title">${hasFilters ? 'אין הזמנות תואמות' : 'אין הזמנות עדיין'}</div>
       <div class="empty-state-sub">${hasFilters
         ? `<button onclick="clearOrderFilters()" style="background:none;border:none;cursor:pointer;color:var(--primary);font-weight:700;font-size:.84rem;padding:0;text-decoration:underline;font-family:inherit">נקה פילטרים</button>`
@@ -302,11 +324,11 @@ function renderOrdersTable(orders) {
             <div style="font-weight:700">${o.customer_name||'—'}</div>
             <div style="font-size:.72rem;color:var(--text-muted)">${(o.address||'').slice(0,26)}</div>
           </td>
-          <td><span class="badge ${o.delivery_method==='delivery'?'badge-delivery':'badge-done'}">
-            ${o.delivery_method==='delivery'?'🛵 משלוח':'🏍️ איסוף'}</span></td>
-          <td style="font-size:.82rem;color:var(--text-muted)">${o.payment_method==='cash'?'💵 מזומן':'💳 אשראי'}</td>
-          <td><span class="badge ${o.payment_status==='paid'?'badge-paid':'badge-pending-pay'}">
-            ${o.payment_status==='paid'?'✓ שולם':'⏳ ממתין'}</span></td>
+          <td><span class="badge ${o.delivery_method==='delivery'?'badge-delivery':'badge-done'}" style="display:inline-flex;align-items:center;gap:4px">
+            ${o.delivery_method==='delivery'?`${SVG.truck} משלוח`:`${SVG.home} איסוף`}</span></td>
+          <td style="font-size:.82rem;color:var(--text-muted)"><span style="display:inline-flex;align-items:center;gap:4px">${o.payment_method==='cash'?`${SVG.wallet} מזומן`:`${SVG.card} אשראי`}</span></td>
+          <td><span class="badge ${o.payment_status==='paid'?'badge-paid':'badge-pending-pay'}" style="display:inline-flex;align-items:center;gap:4px">
+            ${o.payment_status==='paid'?`${SVG.check} שולם`:`${SVG.clock} ממתין`}</span></td>
           <td style="font-weight:800">₪${(parseFloat(o.total_price)||0).toFixed(0)}</td>
           <td>
             <select onchange="updateOrderStatus('${o.id}',this.value,${o.order_number})"
@@ -318,9 +340,9 @@ function renderOrdersTable(orders) {
           </td>
           <td style="display:flex;gap:6px;align-items:center">
             <button onclick="openOrderEdit('${o.id}')" title="עריכה"
-              style="background:var(--primary-soft);border:none;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:1rem">✏️</button>
+              style="background:var(--primary-soft);border:none;border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--primary)">${SVG.edit}</button>
             <button onclick="printOrder('${o.id}')" title="הדפסת קבלה"
-              style="background:#f0fdf4;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:1rem;color:#16a34a">🖨️</button>
+              style="background:#f0fdf4;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;color:#16a34a">${SVG.printer}</button>
           </td>
         </tr>`).join('')}
       </tbody>
@@ -381,7 +403,7 @@ async function loadStats(period = 'today', date) {
         <div class="stat-label">יחס המרה</div>
       </div>
       <div class="stat-card" style="grid-column:span 2">
-        <div style="font-size:.75rem;font-weight:700;color:var(--primary);margin-bottom:8px">🏆 נמכרים ביותר</div>
+        <div style="font-size:.75rem;font-weight:700;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:5px">${SVG.award} נמכרים ביותר</div>
         ${(s.top_products||[]).map((p,i)=>`
           <div style="display:flex;justify-content:space-between;font-size:.8rem;padding:3px 0">
             <span>${i+1}. ${p.name}</span><span style="font-weight:700;color:var(--primary)">${p.count}x</span>
@@ -443,7 +465,7 @@ function printOrder(orderId) {
   }).join('');
 
   const addressLine = o.address
-    ? `<div style="margin-top:4px;color:#6b7280;font-size:.82rem">📍 ${o.address}</div>` : '';
+    ? `<div style="margin-top:4px;color:#6b7280;font-size:.82rem;display:flex;align-items:center;gap:4px">${SVG.pin} ${o.address}</div>` : '';
 
   const now = new Date().toLocaleString('he-IL');
   const orderDate = o.created_at ? new Date(o.created_at).toLocaleString('he-IL') : now;
@@ -498,7 +520,7 @@ function printOrder(orderId) {
 <div class="receipt">
 
   <div class="logo-area">
-    <div class="biz-name">🍕 פיצה דליבריס</div>
+    <div class="biz-name">פיצה דליבריס</div>
     <div class="biz-sub">jasell.com</div>
   </div>
 
@@ -508,12 +530,12 @@ function printOrder(orderId) {
   <div class="section-title">פרטי לקוח</div>
   <div class="customer-box">
     <div class="customer-name">${o.customer_name || '—'}</div>
-    ${o.customer_phone ? `<div style="font-size:.8rem;color:#6b7280;margin-top:2px">📞 ${o.customer_phone}</div>` : ''}
+    ${o.customer_phone ? `<div style="font-size:.8rem;color:#6b7280;margin-top:2px">טל׳: ${o.customer_phone}</div>` : ''}
     <div style="margin-top:4px;font-size:.8rem">
-      ${o.delivery_method === 'delivery' ? `🛵 משלוח` : `🏍️ איסוף עצמי`}
+      ${o.delivery_method === 'delivery' ? 'משלוח' : 'איסוף עצמי'}
     </div>
     ${addressLine}
-    ${o.courier_notes ? `<div style="margin-top:4px;font-size:.75rem;color:#6b7280">📝 ${o.courier_notes}</div>` : ''}
+    ${o.courier_notes ? `<div style="margin-top:4px;font-size:.75rem;color:#6b7280">הערות: ${o.courier_notes}</div>` : ''}
   </div>
 
   <div class="section-title">פריטים</div>
@@ -534,8 +556,8 @@ function printOrder(orderId) {
   </div>
 
   <div class="payment-row">
-    <span>${o.payment_method === 'cash' ? '💵 מזומן' : '💳 אשראי'}</span>
-    <span>${o.payment_status === 'paid' ? '✅ שולם' : '⏳ ממתין לתשלום'}</span>
+    <span>${o.payment_method === 'cash' ? 'מזומן' : 'אשראי'}</span>
+    <span>${o.payment_status === 'paid' ? 'שולם' : 'ממתין לתשלום'}</span>
   </div>
 
   <div class="footer">
@@ -595,7 +617,7 @@ function renderEditItems() {
           <span style="font-weight:800;min-width:20px;text-align:center">${qty}</span>
           <button onclick="changeQty(${i},+1)" style="width:26px;height:26px;border-radius:50%;border:2px solid var(--primary);background:var(--primary-soft);color:var(--primary);cursor:pointer;font-weight:700;font-size:1rem;display:flex;align-items:center;justify-content:center">+</button>
         </div>
-        <button onclick="removeEditItem(${i})" style="background:none;border:none;cursor:pointer;font-size:1.1rem;color:#e0004d;padding:0 4px">✕</button>
+        <button onclick="removeEditItem(${i})" style="background:none;border:none;cursor:pointer;color:#e0004d;padding:0 4px;display:flex;align-items:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>`;
   }).join('');
   updateEditSummary(_editOrder);
@@ -652,7 +674,7 @@ async function saveOrderEdit() {
     });
     closeModal('orderEditModal');
     await loadOrders();
-    showToast('הזמנה עודכנה ✅');
+    showToast('הזמנה עודכנה');
   } catch (err) { alert(err.message); }
 }
 
@@ -678,8 +700,9 @@ async function loadProducts() {
 }
 
 function imgThumb(url) {
-  if (!url) return `<div style="width:52px;height:52px;border-radius:10px;border:1.5px dashed var(--border);background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;color:var(--text-muted)">🖼️</div>`;
-  return `<img src="${url}" style="width:52px;height:52px;object-fit:cover;border-radius:10px;border:1.5px solid var(--border);flex-shrink:0;display:block" onerror="this.outerHTML='<div style=\\'width:52px;height:52px;border-radius:10px;border:1.5px dashed var(--border);background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0\\'>🖼️</div>'">`;
+  const imgPlaceholder = `<div style="width:52px;height:52px;border-radius:10px;border:1.5px dashed var(--border);background:var(--bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--text-muted)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>`;
+  if (!url) return imgPlaceholder;
+  return `<img src="${url}" style="width:52px;height:52px;object-fit:cover;border-radius:10px;border:1.5px solid var(--border);flex-shrink:0;display:block" onerror="this.outerHTML='${imgPlaceholder.replace(/'/g, "\\'")}'>";
 }
 
 function toggleSwitch(isOn, onClickFn) {
@@ -891,9 +914,9 @@ function previewProductImg(url) {
   const box = document.getElementById('productImgPreview');
   if (!box) return;
   if (url && url.startsWith('http')) {
-    box.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='📷'">`;
+    box.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=SVG.camera">`;
   } else {
-    box.innerHTML = '📷';
+    box.innerHTML = SVG.camera;
   }
 }
 
@@ -915,7 +938,7 @@ async function uploadProductImage(input) {
     if (!res.ok) throw new Error(data.error || 'שגיאה');
     document.getElementById('productImageUrl').value = data.url;
     previewProductImg(data.url);
-    showToast('תמונה הועלתה ✅');
+    showToast('תמונה הועלתה');
   } catch (err) {
     alert('שגיאה בהעלאה: ' + err.message);
   } finally {
@@ -974,9 +997,9 @@ function previewAdditionImg(url) {
   const box = document.getElementById('additionImgPreview');
   if (!box) return;
   if (url && url.startsWith('http')) {
-    box.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='📷'">`;
+    box.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=SVG.camera">`;
   } else {
-    box.innerHTML = '📷';
+    box.innerHTML = SVG.camera;
   }
 }
 
@@ -998,7 +1021,7 @@ async function uploadAdditionImage(input) {
     if (!res.ok) throw new Error(data.error || 'שגיאה');
     document.getElementById('additionImageUrl').value = data.url;
     previewAdditionImg(data.url);
-    showToast('תמונה הועלתה ✅');
+    showToast('תמונה הועלתה');
   } catch (err) {
     alert('שגיאה בהעלאה: ' + err.message);
   } finally {
@@ -1221,7 +1244,7 @@ function sCard(title, content) {
 async function saveSection(updates, successMsg) {
   try {
     await api('PATCH', '/settings', updates);
-    showToast(successMsg || 'נשמר ✅');
+    showToast(successMsg || 'נשמר');
   } catch (err) { alert(err.message); }
 }
 
@@ -1620,7 +1643,7 @@ async function togglePushSubscription() {
   await api('POST', '/push-subscribe', sub.toJSON());
   _pushSubscription = sub;
   updatePushBtn(sub);
-  showToast('✅ התראות push הופעלו!');
+  showToast('התראות push הופעלו!');
 }
 
 function urlBase64ToUint8Array(base64String) {
