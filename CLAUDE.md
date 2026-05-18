@@ -237,17 +237,29 @@ Claude embeds invisible commands (stripped before sending to customer):
 
 ### Dashboard
 
-Brand: `#5e17eb` violet · `#ff66c4` pink · `#eeede9` bg · Heebo + Poppins fonts
+Brand: `#5e17eb` violet · `#ff66c4` pink · `#eeede9` bg · Poppins font
 
-- **Settings page:** 6 sections with SVG line icons (no emojis), iOS-style toggle switches
+- **No emojis anywhere** — all icons are inline SVG (stroke-based, Feather-style). SVG constants defined in `const SVG = {...}` at top of `app.js`. Category emojis are the only exception (user-defined per category).
+- **Settings page:** 6 sections with SVG line icons, iOS-style toggle switches
 - **Dark mode:** `[data-theme=dark]` on `<html>`, toggled by sun/moon SVG button
 - **Notification bell:** badge count of `status==='new'` orders
 - **Orders:** stats cards, period picker, filters (status/payment/date range/search), edit modal
   - Edit modal: change items, qty, address, destination_type, courier_notes
   - VAT shown as 18% (`total * 18 / 118`)
+  - **Mobile:** renders as swipeable cards (`renderOrderCard`), not table. Re-renders on resize via debounced `window.resize` listener.
 - **Products:** expandable rows with additions, image thumbnails, description field
 - **Customers:** stats, returning-only filter, broadcast (max 50)
 - **Auth:** admin (full) · manager (orders only) · HMAC-SHA256 tokens, 24h expiry
+
+### Mobile Layout
+
+- **Breakpoint:** `768px`
+- **Navigation:** burger menu (hamburger → X animation) slides sidebar in from right. Overlay closes it. Bottom nav removed.
+- **Z-index stack:** mobile-header `41` > sidebar `40` > overlay `39` > content
+- **Orders:** card layout via `renderOrderCard()` when `window.innerWidth <= 768`
+- **Filters:** column layout, date inputs grouped in `.date-range-row` with מ:/עד: labels
+- **Modals:** bottom sheets (`border-radius: 20px 20px 0 0`)
+- **Rule: every desktop UI change must include a mobile update in the same commit**
 
 ### Settings & Menu — Always Live
 
@@ -288,13 +300,14 @@ customers          -- VIEW over orders (name, phone, last_address, order_count, 
 - 15-minute edit/cancel window
 - Status notifications via WhatsApp on order status change
 - Dashboard: login, orders (edit modal, stats, filters), products (descriptions), customers, settings, dark mode
-- iOS-style toggle switches, SVG line icons throughout settings
+- iOS-style toggle switches, SVG line icons throughout (no emojis)
 - Business hours per day (open/close time + enabled toggle)
 - Delivery zones settings
 - Auto-complete delivered → done after 1 hour
 - Stale-session guard (resets old-flow sessions on new deploy)
 - isOpen() uses Israel timezone (Asia/Jerusalem) — not UTC
 - Health check `/health`, env var backup/restore scripts, render-guard hook
+- Mobile: burger menu with X animation, order cards layout, responsive filters
 
 ### ❌ Still missing / needs work
 | Item | Notes |
@@ -321,6 +334,10 @@ customers          -- VIEW over orders (name, phone, last_address, order_count, 
 3. **Cache invalidation:** Call `invalidateCache()` (menu-service) and `settings.set()` auto-invalidates settings cache after any product/setting update via the dashboard API.
 
 4. **Always update CLAUDE.md** when architecture, env vars, or hard-won lessons change.
+
+5. **After every JS change to `app.js`:** run `node --check public/app.js` before committing. A syntax error (e.g. missing backtick in a template literal) crashes the entire dashboard silently.
+
+6. **Every desktop UI change must include a mobile update** — check `@media (max-width: 768px)` CSS and the `window.innerWidth <= 768` JS branches in the same commit.
 
 ---
 
@@ -383,3 +400,18 @@ Service role key is a JWT for REST API. DB password (`mUprot-tefno8-zikgak`) is 
 ### Poll webhook fires on every vote change
 Green API sends `pollUpdateMessage` on every selection change, not just on submit.
 Filter: only process when `✅ confirm` button is voted. Intermediate votes (items selected but no confirm yet) are ignored silently.
+
+### Missing backtick in template literal crashed entire dashboard
+A template literal in `imgThumb()` was missing its closing backtick. The JS file parsed but silently failed — the entire `app.js` refused to run, leaving the dashboard body completely empty (all tabs are `display:none` by default and JS never showed them).
+Prevention: run `node --check public/app.js` before every push. Now in Operational Rules.
+
+### Emojis replaced with SVG icons throughout dashboard
+All UI emojis (📊 🛵 💵 💳 🖨️ etc.) replaced with inline SVG. Icon constants live in `const SVG = {...}` at top of `app.js`. SVG strings generated via helper `const S = (d, w=14) => \`<svg...>\``.
+Exception: category emojis (user-defined per category in DB) are intentional and kept.
+Receipt (printOrderReceipt) uses plain text — SVG doesn't print reliably in popup windows.
+
+### box-sizing: border-box already set globally
+`*, *::before, *::after { box-sizing: border-box }` is in the global CSS reset. Adding it again in mobile overrides is redundant (harmless but unnecessary).
+
+### Mobile burger menu z-index stack
+When adding an overlay above content, the mobile header must be above the overlay (z-index 41 > 39) so the burger button remains clickable when the drawer is open.
