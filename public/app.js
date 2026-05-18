@@ -288,6 +288,38 @@ function exportOrdersCSV() {
   showToast(`יוצאו ${list.length} הזמנות`);
 }
 
+function renderOrderCard(o) {
+  const statusOpts = Object.entries(STATUS_LABELS).map(([val, label]) =>
+    `<option value="${val}" ${val === o.status ? 'selected' : ''}>${label}</option>`).join('');
+  return `
+  <div class="order-card-mobile" style="background:var(--white);border-radius:16px;padding:14px 16px;box-shadow:0 2px 12px rgba(94,23,235,.06)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-weight:800;color:var(--primary)">#${o.order_number||'—'}</span>
+        <span style="font-size:.7rem;color:var(--text-muted)">${formatDate(o.created_at)}</span>
+      </div>
+      <span style="font-weight:800;font-size:1rem">₪${(parseFloat(o.total_price)||0).toFixed(0)}</span>
+    </div>
+    <div style="font-weight:700;font-size:.92rem;margin-bottom:4px">${o.customer_name||'—'}</div>
+    ${o.address ? `<div style="font-size:.75rem;color:var(--text-muted);margin-bottom:8px;display:flex;align-items:center;gap:4px">${SVG.pin} ${o.address}</div>` : '<div style="margin-bottom:8px"></div>'}
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+      <span class="badge ${o.delivery_method==='delivery'?'badge-delivery':'badge-done'}" style="display:inline-flex;align-items:center;gap:4px">${o.delivery_method==='delivery'?`${SVG.truck} משלוח`:`${SVG.home} איסוף`}</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;font-size:.72rem;background:var(--bg);padding:3px 10px;border-radius:999px;color:var(--text-muted)">${o.payment_method==='cash'?`${SVG.wallet} מזומן`:`${SVG.card} אשראי`}</span>
+      <span class="badge ${o.payment_status==='paid'?'badge-paid':'badge-pending-pay'}" style="display:inline-flex;align-items:center;gap:4px">${o.payment_status==='paid'?`${SVG.check} שולם`:`${SVG.clock} ממתין`}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <select onchange="updateOrderStatus('${o.id}',this.value,${o.order_number})"
+        style="flex:1;padding:8px 10px;border-radius:10px;border:2px solid var(--border);font-family:inherit;font-size:.8rem;cursor:pointer">
+        ${statusOpts}
+      </select>
+      <button onclick="openOrderEdit('${o.id}')" title="עריכה"
+        style="background:var(--primary-soft);border:none;border-radius:10px;padding:8px 12px;cursor:pointer;color:var(--primary);display:flex;align-items:center">${SVG.edit}</button>
+      <button onclick="printOrder('${o.id}')" title="הדפסת קבלה"
+        style="background:#f0fdf4;border:none;border-radius:10px;padding:8px 12px;cursor:pointer;color:#16a34a;display:flex;align-items:center">${SVG.printer}</button>
+    </div>
+  </div>`;
+}
+
 function renderOrdersTable(orders) {
   const container = document.getElementById('ordersTable');
   if (!orders.length) {
@@ -306,6 +338,14 @@ function renderOrdersTable(orders) {
     </div>`;
     return;
   }
+
+  if (window.innerWidth <= 768) {
+    container.innerHTML = `<div style="padding:12px;display:flex;flex-direction:column;gap:10px">
+      ${orders.map(renderOrderCard).join('')}
+    </div>`;
+    return;
+  }
+
   container.innerHTML = `
     <div style="overflow-x:auto">
     <table>
@@ -1728,6 +1768,13 @@ showTab('orders');
 setInterval(() => {
   if (!document.getElementById('page-orders').classList.contains('hidden')) loadOrders();
 }, 30_000);
+
+// Re-render on resize (mobile↔desktop layout switch)
+let _resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(() => { if (currentOrders.length) filterOrders(); }, 200);
+});
 
 // ─── Push notifications ───────────────────────────────────────────────────────
 

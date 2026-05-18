@@ -428,9 +428,24 @@ input[type=time] { direction: ltr; }
   .stat-card { padding: 14px 12px; }
   .stat-value { font-size: 1.4rem; }
 
+  /* Stats KPI grid: 2 cols on mobile */
+  #statsCards { grid-template-columns: repeat(2, 1fr) !important; }
+
+  /* Stats period buttons: wrap */
+  #statsSection .card > div:first-child { flex-direction: column; align-items: flex-start !important; }
+
+  /* Chart containers: reasonable height */
+  .chart-wrap { height: 180px !important; }
+
   /* Wrap product and hours rows */
   .product-row { flex-wrap: wrap; }
   .hours-row   { flex-wrap: wrap; }
+}
+
+/* Dark mode: order cards on mobile */
+[data-theme="dark"] .order-card-mobile {
+  background: #1e1530 !important;
+  box-shadow: 0 2px 12px rgba(0,0,0,.3) !important;
 }
 
 [data-theme="dark"] .sidebar-overlay { background: rgba(0,0,0,.6); }
