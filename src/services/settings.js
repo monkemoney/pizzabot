@@ -54,17 +54,24 @@ async function isOpen() {
   const hours = await get('business_hours');
   if (!hours) return true;
 
-  const now = new Date();
+  // Always use Israel time (UTC+2 winter / UTC+3 summer) — the server runs on UTC
+  const nowIL = new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' });
+  const now   = new Date(nowIL);
+
   const days = ['sun','mon','tue','wed','thu','fri','sat'];
   const day  = days[now.getDay()];
   const todayHours = hours[day];
-  if (!todayHours) return false;
 
-  const [openH, openM]   = todayHours.open.split(':').map(Number);
-  const [closeH, closeM] = todayHours.close.split(':').map(Number);
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  // If no hours defined for today OR the day is marked closed → closed
+  if (!todayHours || todayHours.is_open === false) return false;
+
+  const [openH, openM]   = (todayHours.open  || '00:00').split(':').map(Number);
+  const [closeH, closeM] = (todayHours.close || '23:59').split(':').map(Number);
+  const nowMinutes   = now.getHours() * 60 + now.getMinutes();
   const openMinutes  = openH  * 60 + openM;
   const closeMinutes = closeH * 60 + closeM;
+
+  console.log(`[settings] isOpen check — IL time: ${now.toLocaleTimeString('he-IL')} day:${day} window:${todayHours.open}-${todayHours.close} → ${nowMinutes >= openMinutes && nowMinutes <= closeMinutes}`);
 
   return nowMinutes >= openMinutes && nowMinutes <= closeMinutes;
 }
