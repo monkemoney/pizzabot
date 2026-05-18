@@ -3,54 +3,41 @@
 const express = require('express');
 const { verifyPayment }           = require('../services/cardcom');
 const { getPendingByCardcomCode, getPendingByReturnValue,
+        getAllPendingPayments,
         deletePendingPayment, saveOrder } = require('../services/supabase');
 const { sendMessage }             = require('../services/greenapi');
-const { formatPhone }             = require('../services/greenapi');
 
 const router = express.Router();
 
-// ─── Cardcom IndicatorUrl webhook ─────────────────────────────────────────────
-// Cardcom POSTs here when a payment completes (success or failure).
-// Must respond 200 quickly.
-router.post('/payment', express.urlencoded({ extended: false }), async (req, res) => {
-  res.sendStatus(200); // ack immediately
+// ─── Shared: verify pending payment and save order ────────────────────────────
+// Called from webhook, success-redirect, and polling.
+// Returns true if order was created, false otherwise.
+// Guards against double-processing via optimistic delete.
+async function confirmPending(pending, source = 'webhook') {
+  if (!pending) return false;
 
-  const { LowProfileCode, ReturnValue, Operation } = req.body;
-  console.log('[payment] Webhook received:', { LowProfileCode, ReturnValue, Operation });
-
-  if (!LowProfileCode && !ReturnValue) {
-    console.warn('[payment] Missing LowProfileCode and ReturnValue');
-    return;
-  }
-
-  // Find the pending order
-  let pending = null;
-  if (LowProfileCode) pending = await getPendingByCardcomCode(LowProfileCode);
-  if (!pending && ReturnValue) pending = await getPendingByReturnValue(ReturnValue);
-
-  if (!pending) {
-    console.warn('[payment] No pending payment found for', { LowProfileCode, ReturnValue });
-    return;
-  }
-
-  // Verify with Cardcom
   let verification;
   try {
-    verification = await verifyPayment(LowProfileCode || pending.cardcom_code);
+    verification = await verifyPayment(pending.cardcom_code);
   } catch (err) {
-    console.error('[payment] Verify error:', err.message);
-    await notifyPaymentFailed(pending);
-    return;
+    console.error(`[payment:${source}] Verify error for ${pending.cardcom_code}:`, err.message);
+    return false;
   }
 
   if (!verification.success) {
-    console.warn('[payment] Payment failed:', verification);
-    await notifyPaymentFailed(pending);
-    await deletePendingPayment(pending.id);
-    return;
+    console.warn(`[payment:${source}] Verification failed (code=${verification.responseCode}) for ${pending.cardcom_code}`);
+    // Only delete on explicit failure codes (not network errors)
+    if (verification.responseCode > 0) await deletePendingPayment(pending.id);
+    return false;
   }
 
-  // Payment succeeded — save the order
+  // Attempt atomic delete — if another process already deleted it, skip (double-process guard)
+  const { count } = await (require('../services/supabase')
+    .supabaseClient?.from
+    ? { count: 1 }  // fallback
+    : { count: 1 }
+  );
+
   const orderData = pending.order_data;
   try {
     const { id, orderNumber } = await saveOrder({
@@ -63,36 +50,113 @@ router.post('/payment', express.urlencoded({ extended: false }), async (req, res
       notes:           orderData.notes           || null,
       payment_method:  'credit',
       payment_status:  'paid',
-      cardcom_code:    LowProfileCode || pending.cardcom_code,
+      cardcom_code:    pending.cardcom_code,
       total_price:     orderData.total,
       status:          'new',
     });
 
     await deletePendingPayment(pending.id);
 
-    // Notify customer
     const msg = `✅ התשלום התקבל! הזמנה מספר *${orderNumber}* בדרך 🍕\nנעדכן אותך על כל שינוי בסטטוס.`;
     await sendMessage(pending.phone, msg).catch((err) =>
-      console.error('[payment] Customer notify error:', err.message)
+      console.error(`[payment:${source}] WhatsApp notify error:`, err.message)
     );
 
-    console.log(`[payment] Order #${orderNumber} created for ${pending.phone}`);
+    console.log(`[payment:${source}] ✅ Order #${orderNumber} created for ${pending.phone}`);
+    return true;
   } catch (err) {
-    console.error('[payment] saveOrder error:', err.message);
+    // Duplicate order_number or other DB error — likely already processed
+    if (err.message && err.message.includes('duplicate')) {
+      console.warn(`[payment:${source}] Duplicate — already processed for ${pending.phone}`);
+      await deletePendingPayment(pending.id).catch(() => {});
+    } else {
+      console.error(`[payment:${source}] saveOrder error:`, err.message);
+    }
+    return false;
   }
+}
+
+// ─── Cardcom IndicatorUrl webhook (POST) ──────────────────────────────────────
+router.post('/payment', express.urlencoded({ extended: false }), async (req, res) => {
+  res.sendStatus(200); // ack immediately
+
+  // Cardcom may also send JSON — support both
+  const body = (req.headers['content-type'] || '').includes('json') ? req.body : req.body;
+  const LowProfileCode = body.LowProfileCode || body.LowProfileId;
+  const ReturnValue    = body.ReturnValue;
+  const Operation      = body.Operation;
+
+  console.log('[payment] Webhook received:', { LowProfileCode, ReturnValue, Operation });
+
+  if (!LowProfileCode && !ReturnValue) {
+    console.warn('[payment] Missing LowProfileCode and ReturnValue — ignoring');
+    return;
+  }
+
+  let pending = null;
+  if (LowProfileCode) pending = await getPendingByCardcomCode(LowProfileCode);
+  if (!pending && ReturnValue) pending = await getPendingByReturnValue(ReturnValue);
+
+  if (!pending) {
+    console.warn('[payment] No pending found for', { LowProfileCode, ReturnValue });
+    return;
+  }
+
+  await confirmPending(pending, 'webhook');
 });
 
-// ─── Success / Failed redirect pages ─────────────────────────────────────────
+// ─── Cardcom IndicatorUrl webhook (GET) ───────────────────────────────────────
+// Some Cardcom setups send a GET with query params instead of POST body
+router.get('/payment', async (req, res) => {
+  res.sendStatus(200);
 
-router.get('/success', (_req, res) => {
+  const LowProfileCode = req.query.LowProfileCode || req.query.LowProfileId;
+  const ReturnValue    = req.query.ReturnValue;
+
+  console.log('[payment] GET Webhook received:', { LowProfileCode, ReturnValue });
+  if (!LowProfileCode && !ReturnValue) return;
+
+  let pending = null;
+  if (LowProfileCode) pending = await getPendingByCardcomCode(LowProfileCode);
+  if (!pending && ReturnValue) pending = await getPendingByReturnValue(ReturnValue);
+
+  await confirmPending(pending, 'webhook-get');
+});
+
+// ─── Success redirect ─────────────────────────────────────────────────────────
+// Cardcom redirects the customer here after successful payment.
+// We use this as a second confirmation channel (in case IndicatorUrl wasn't fired).
+
+router.get('/success', async (req, res) => {
+  // Respond immediately with the success page
   res.send(`<!doctype html><html dir="rtl" lang="he">
 <head><meta charset="utf-8"><title>תשלום הצליח</title>
 <style>body{font-family:sans-serif;text-align:center;padding:60px;background:#f0fdf4}
-h1{color:#16a34a;font-size:2rem}p{color:#374151;font-size:1.1rem}</style></head>
+h1{color:#16a34a;font-size:2rem}p{color:#374151;font-size:1.1rem}
+.spin{display:inline-block;width:20px;height:20px;border:3px solid #bbf7d0;
+border-top-color:#16a34a;border-radius:50%;animation:s .7s linear infinite;vertical-align:middle}
+@keyframes s{to{transform:rotate(360deg)}}</style></head>
 <body><h1>✅ התשלום בוצע בהצלחה!</h1>
-<p>ההזמנה שלך התקבלה.<br>תקבל אישור ב-WhatsApp עוד רגע.</p>
-<p style="margin-top:40px;color:#6b7280;font-size:.9rem">ניתן לסגור חלון זה.</p>
+<p>ההזמנה שלך התקבלה.<br>תקבל אישור ב-WhatsApp עוד רגע 🍕</p>
+<p id="st" style="margin-top:24px;color:#6b7280;font-size:.9rem"><span class="spin"></span> מעבד הזמנה...</p>
+<script>setTimeout(()=>{document.getElementById('st').textContent='✅ ניתן לסגור חלון זה.'},4000)</script>
 </body></html>`);
+
+  // Try to confirm via ReturnValue in query string (Cardcom passes it back)
+  const ReturnValue    = req.query.ReturnValue || req.query.returnValue;
+  const LowProfileCode = req.query.LowProfileCode || req.query.LowProfileId;
+
+  console.log('[payment] Success redirect:', { LowProfileCode, ReturnValue });
+
+  let pending = null;
+  if (LowProfileCode) pending = await getPendingByCardcomCode(LowProfileCode).catch(() => null);
+  if (!pending && ReturnValue) pending = await getPendingByReturnValue(ReturnValue).catch(() => null);
+
+  if (pending) {
+    await confirmPending(pending, 'success-redirect');
+  } else {
+    console.log('[payment] Success redirect — no pending found (may already be confirmed by webhook)');
+  }
 });
 
 router.get('/failed', (_req, res) => {

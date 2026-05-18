@@ -132,6 +132,17 @@ async function deletePendingPayment(id) {
   await supabase.from('pending_payments').delete().eq('id', id);
 }
 
+/** Get all pending payments that haven't expired yet */
+async function getAllPendingPayments() {
+  const { data, error } = await supabase
+    .from('pending_payments')
+    .select('*')
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: true });
+  if (error) return [];
+  return data || [];
+}
+
 // ─── Orders ───────────────────────────────────────────────────────────────────
 
 async function saveOrder(orderData) {
@@ -223,6 +234,7 @@ module.exports = {
   getPendingByCardcomCode,
   getPendingByReturnValue,
   deletePendingPayment,
+  getAllPendingPayments,
   saveOrder,
   getOrders,
   getOrderById,

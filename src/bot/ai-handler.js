@@ -239,13 +239,15 @@ async function handleMessage(phone, userMessage) {
         phone,
       });
 
-      // Save the pending payment so the webhook can find it later
+      // Save the pending payment so the webhook / polling can confirm it later
       await savePendingPayment({
         phone,
         cardcomCode:  lowProfileCode,
         returnValue,
         orderData:    payload,
       });
+
+      console.log(`[ai-handler] CREATE_PAYMENT — phone=${phone} code=${lowProfileCode} rv=${returnValue} total=${payload.total}`);
 
       const lang = detectLang(userMessage, history);
       const linkMsg = lang === 'en'
@@ -255,6 +257,7 @@ async function handleMessage(phone, userMessage) {
       await reply(phone, linkMsg);
     } catch (err) {
       console.error('[ai-handler] createPaymentPage error:', err.message);
+      const lang = detectLang(userMessage, history);
       await reply(phone, lang === 'en'
         ? 'Sorry, could not generate a payment link. Please try again.'
         : 'מצטערים, לא הצלחנו ליצור קישור תשלום. אנא נסה שוב.');

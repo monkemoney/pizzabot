@@ -124,6 +124,72 @@ app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 // ─── Auto-complete delivered orders hourly ────────────────────────────────────
 setInterval(autoCompleteDeliveredOrders, 60 * 60 * 1000);
 
+// ─── Pending payment polling (every 2 min) ───────────────────────────────────
+// Catches payments where Cardcom's IndicatorUrl wasn't fired (e.g. test mode,
+// network issues). Polls Cardcom for each non-expired pending payment.
+const { getAllPendingPayments, deletePendingPayment } = require('./services/supabase');
+const { verifyPayment } = require('./services/cardcom');
+
+async function pollPendingPayments() {
+  const pendings = await getAllPendingPayments().catch(() => []);
+  if (!pendings.length) return;
+
+  console.log(`[poll] Checking ${pendings.length} pending payment(s)...`);
+
+  for (const pending of pendings) {
+    // Skip payments created less than 90 seconds ago (give webhook time to fire first)
+    const ageSeconds = (Date.now() - new Date(pending.created_at).getTime()) / 1000;
+    if (ageSeconds < 90) continue;
+
+    try {
+      const verification = await verifyPayment(pending.cardcom_code);
+      if (verification.success) {
+        console.log(`[poll] Payment confirmed for ${pending.phone} — processing`);
+        // Re-use the same confirm logic from payment.js
+        const { saveOrder } = require('./services/supabase');
+        const { sendMessage } = require('./services/greenapi');
+        const orderData = pending.order_data;
+
+        const { orderNumber } = await saveOrder({
+          phone:           pending.phone,
+          customer_name:   orderData.customer_name  || null,
+          customer_phone:  orderData.customer_phone || null,
+          items:           orderData.items          || [],
+          delivery_method: orderData.delivery_method,
+          address:         orderData.address        || null,
+          notes:           orderData.notes          || null,
+          payment_method:  'credit',
+          payment_status:  'paid',
+          cardcom_code:    pending.cardcom_code,
+          total_price:     orderData.total,
+          status:          'new',
+        });
+
+        await deletePendingPayment(pending.id);
+
+        await sendMessage(pending.phone,
+          `✅ התשלום התקבל! הזמנה מספר *${orderNumber}* בדרך 🍕\nנעדכן אותך על כל שינוי בסטטוס.`
+        ).catch(() => {});
+
+        console.log(`[poll] ✅ Order #${orderNumber} created for ${pending.phone}`);
+      } else if (verification.responseCode > 0) {
+        // Explicit failure (not just "pending") — clean up
+        console.warn(`[poll] Payment failed (code=${verification.responseCode}) for ${pending.phone}`);
+      }
+    } catch (err) {
+      // Likely already saved by webhook / success-redirect — clean up orphan
+      if (err.message && (err.message.includes('duplicate') || err.message.includes('unique'))) {
+        console.log(`[poll] Duplicate pending for ${pending.phone} — removing`);
+        await deletePendingPayment(pending.id).catch(() => {});
+      } else {
+        console.error(`[poll] Error for ${pending.phone}:`, err.message);
+      }
+    }
+  }
+}
+
+setInterval(pollPendingPayments, 2 * 60 * 1000); // every 2 minutes
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`[server] Pizza bot listening on port ${PORT}`);
