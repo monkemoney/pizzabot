@@ -53,6 +53,11 @@ function showTab(name) {
   if (page) page.style.display = 'block';
   if (tab)  tab.classList.add('active');
 
+  // Sync mobile bottom nav
+  document.querySelectorAll('.mobile-nav-btn').forEach(btn => btn.classList.remove('active'));
+  const mobileTab = document.getElementById('mobile-tab-' + name);
+  if (mobileTab) mobileTab.classList.add('active');
+
   if (name === 'orders')    loadOrders();
   if (name === 'products')  loadProducts();
   if (name === 'customers') loadCustomers();
@@ -1456,10 +1461,14 @@ function toggleTheme() {
 }
 
 function updateThemeIcon(theme) {
-  const sun  = document.getElementById('iconSun');
-  const moon = document.getElementById('iconMoon');
-  if (sun)  sun.style.display  = theme === 'dark'  ? 'none'  : 'block';
-  if (moon) moon.style.display = theme === 'dark'  ? 'block' : 'none';
+  ['iconSun', 'iconSunMobile'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = theme === 'dark' ? 'none' : 'block';
+  });
+  ['iconMoon', 'iconMoonMobile'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = theme === 'dark' ? 'block' : 'none';
+  });
 }
 
 function initTheme() {
@@ -1472,14 +1481,16 @@ function initTheme() {
 
 function updateNotifBadge() {
   const newOrders = currentOrders.filter(o => o.status === 'new').length;
-  const badge     = document.getElementById('notifBadge');
-  if (!badge) return;
-  if (newOrders > 0) {
-    badge.style.display = 'flex';
-    badge.textContent   = newOrders > 9 ? '9+' : newOrders;
-  } else {
-    badge.style.display = 'none';
-  }
+  ['notifBadge', 'notifBadgeMobile'].forEach(id => {
+    const badge = document.getElementById(id);
+    if (!badge) return;
+    if (newOrders > 0) {
+      badge.style.display = 'flex';
+      badge.textContent   = newOrders > 9 ? '9+' : newOrders;
+    } else {
+      badge.style.display = 'none';
+    }
+  });
 }
 
 function toggleNotifPanel() {
@@ -1507,7 +1518,10 @@ let _pushSubscription = null;
 
 async function initPush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    document.getElementById('pushBtn').style.display = 'none';
+    ['pushBtn', 'pushBtnMobile'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
     return;
   }
 
@@ -1528,18 +1542,20 @@ async function initPush() {
 }
 
 function updatePushBtn(sub) {
-  const btn   = document.getElementById('pushBtn');
-  const slash = document.getElementById('pushSlash');
-  if (!btn) return;
-  if (sub) {
-    btn.title = 'התראות push פעילות — לחץ לכיבוי';
-    btn.style.color = '#4ade80';
-    if (slash) slash.style.display = 'none';
-  } else {
-    btn.title = 'הפעל התראות push';
-    btn.style.color = '';
-    if (slash) slash.style.display = '';
-  }
+  [['pushBtn', 'pushSlash'], ['pushBtnMobile', 'pushSlashMobile']].forEach(([btnId, slashId]) => {
+    const btn   = document.getElementById(btnId);
+    const slash = document.getElementById(slashId);
+    if (!btn) return;
+    if (sub) {
+      btn.title = 'התראות push פעילות — לחץ לכיבוי';
+      btn.style.color = '#4ade80';
+      if (slash) slash.style.display = 'none';
+    } else {
+      btn.title = 'הפעל התראות push';
+      btn.style.color = '';
+      if (slash) slash.style.display = '';
+    }
+  });
 }
 
 async function togglePushSubscription() {
