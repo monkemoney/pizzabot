@@ -12,7 +12,7 @@ const { stripAction, detectLang, parsePayload } = require('../src/bot/ai-handler
 
 describe('stripAction', () => {
   test('removes RESET action', () => {
-    expect(stripAction('שלום! <!--ACTION:RESET-->')).toBe('WRONG');
+    expect(stripAction('שלום! <!--ACTION:RESET-->')).toBe('שלום!');
   });
 
   test('removes SHOW_TOPPINGS action', () => {
