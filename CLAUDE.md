@@ -246,6 +246,13 @@ Brand: `#5e17eb` violet · `#ff66c4` pink · `#eeede9` bg · Poppins font
 - **Orders:** stats cards, period picker, filters (status/payment/date range/search), edit modal
   - Edit modal: change items, qty, address, destination_type, courier_notes
   - VAT shown as 18% (`total * 18 / 118`)
+  - **Cancel modal** (`POST /api/orders/:id/cancel-refund`): red ✕ button on every non-cancelled/done row. Modal has:
+    - Who cancelled — radio: `יוזמת העסק` / `בקשת הלקוח` (saved to `orders.cancelled_by`)
+    - Reason textarea (internal by default, saved to `orders.cancel_reason`)
+    - "Send to customer" iOS toggle (on by default) — note appended to WhatsApp message if on
+    - Live WhatsApp preview — updates on every keystroke, shows exactly what customer receives
+    - Backend tries Cardcom `CancelDeal.aspx` if `cardcom_deal_number` is stored; falls back to manual-refund alert with Cardcom link
+  - **Receipt popup:** separate `window.open()` popup. Includes close button + auto-closes via `window.onafterprint`
   - **Mobile:** renders as swipeable cards (`renderOrderCard`), not table. Re-renders on resize via debounced `window.resize` listener.
 - **Products:** expandable rows with additions, image thumbnails, description field
 - **Customers:** stats, returning-only filter, broadcast (max 50)
@@ -281,7 +288,8 @@ product_additions  -- per-product toppings/additions, FK → products CASCADE
 settings           -- key/value JSONB config
 sessions           -- per-phone: conversation_history (40 msg cap), pending_order, updated_at
 pending_payments   -- holds order JSON while customer is on Cardcom (30min expiry)
-orders             -- final orders, order_number sequence from 1000, destination_type, courier_notes
+orders             -- final orders, order_number sequence from 1000, destination_type, courier_notes,
+                   --   cardcom_deal_number, refund_status, cancelled_by, cancel_reason
 customers          -- VIEW over orders (name, phone, last_address, order_count, total_spent)
 ```
 
@@ -308,6 +316,8 @@ customers          -- VIEW over orders (name, phone, last_address, order_count, 
 - isOpen() uses Israel timezone (Asia/Jerusalem) — not UTC
 - Health check `/health`, env var backup/restore scripts, render-guard hook
 - Mobile: burger menu with X animation, order cards layout, responsive filters
+- Cancel + refund flow: cancel modal with who-cancelled, reason, send-toggle, live preview, optional Cardcom auto-refund
+- Receipt popup: close button + auto-close after print (`window.onafterprint`)
 
 ### ❌ Still missing / needs work
 | Item | Notes |
@@ -415,3 +425,19 @@ Receipt (printOrderReceipt) uses plain text — SVG doesn't print reliably in po
 
 ### Mobile burger menu z-index stack
 When adding an overlay above content, the mobile header must be above the overlay (z-index 41 > 39) so the burger button remains clickable when the drawer is open.
+
+### Cardcom auto-refund requires `cardcom_deal_number` — not yet populated
+`CancelDeal.aspx` needs the deal number returned by Cardcom after a successful payment. The test-terminal webhook (`IndicatorUrl`) doesn't reliably return `InternalDealNumber` in the current flow, so `cardcom_deal_number` on orders is always null.
+Result: all cancellations fall through to the "manual refund" path — an alert shows the Cardcom dashboard link.
+Fix when moving to production: extract and save `InternalDealNumber` from the Cardcom verify-payment response (`payment.js`) into the `orders` row.
+
+### Receipt popup in `window.open()` — SVG doesn't print, use plain text
+The print receipt function opens a new popup window with raw HTML. SVG icons do not render reliably in print dialogs (they appear blank on some browsers/OSes).
+Rule: receipt content must use plain-text characters (₪, →, etc.), never SVG.
+`window.onafterprint` + a close button are both needed — `onafterprint` fires automatically after the dialog closes, but the user can also dismiss without printing.
+
+### Cancel modal — "who cancelled" must be persisted, not just sent in message
+`cancelled_by` column stores `'business'` or `'customer'`. The WhatsApp message wording changes accordingly:
+- `'business'` → "הזמנה בוטלה על ידי העסק"
+- `'customer'` → "הזמנה בוטלה לפי בקשתך"
+The `send_to_customer` toggle only controls whether the *reason* is appended to the message — the cancellation message itself is always sent.
