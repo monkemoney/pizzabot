@@ -212,6 +212,17 @@ async function updateOrderStatus(id, status) {
   return data;
 }
 
+async function updateOrder(id, updates) {
+  const { data, error } = await supabase
+    .from('orders')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw new Error('updateOrder: ' + error.message);
+  return data;
+}
+
 // Auto-complete delivered orders older than 1 hour
 async function autoCompleteDeliveredOrders() {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -240,5 +251,6 @@ module.exports = {
   getOrderById,
   getLastOrderByPhone,
   updateOrderStatus,
+  updateOrder,
   autoCompleteDeliveredOrders,
 };

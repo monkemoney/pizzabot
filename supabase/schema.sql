@@ -208,3 +208,9 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS cardcom_deal_number TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_status       TEXT;  -- null | pending | refunded | manual
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_by        TEXT;  -- 'customer' | 'business'
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancel_reason       TEXT;
+
+-- ── Item dispute columns ───────────────────────────────────────────────────────
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS pending_dispute   JSONB;  -- {order_id,order_number,item_name,item_price,created_at}
+ALTER TABLE orders   ADD COLUMN IF NOT EXISTS dispute_status    TEXT;   -- null | 'pending' | 'resolved'
+ALTER TABLE orders   ADD COLUMN IF NOT EXISTS dispute_item      TEXT;
+ALTER TABLE orders   ADD COLUMN IF NOT EXISTS dispute_resolution TEXT;  -- 'cancelled' | 'removed_item' | 'continued'

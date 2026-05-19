@@ -43,7 +43,8 @@ const SVG = {
   camera:    S('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>', 24),
   phone:     S('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.56 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>', 13),
   notes:     S('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>', 13),
-  xCircle:   S('<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>'),
+  xCircle:       S('<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>'),
+  alertTriangle: S('<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>'),
 };
 
 // ─── API helper ───────────────────────────────────────────────────────────────
@@ -317,6 +318,11 @@ function renderOrderCard(o) {
         style="background:var(--primary-soft);border:none;border-radius:10px;padding:8px 12px;cursor:pointer;color:var(--primary);display:flex;align-items:center">${SVG.edit}</button>
       <button onclick="printOrder('${o.id}')" title="הדפסת קבלה"
         style="background:#f0fdf4;border:none;border-radius:10px;padding:8px 12px;cursor:pointer;color:#16a34a;display:flex;align-items:center">${SVG.printer}</button>
+      ${!['cancelled','done'].includes(o.status) ? `
+      ${o.dispute_status === 'pending'
+        ? `<span title="מחלוקת פתוחה" style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:8px 12px;color:#d97706;display:flex;align-items:center;cursor:default">${SVG.alertTriangle}</span>`
+        : `<button onclick="openDisputeModal('${o.id}')" title="פריט חסר" style="background:#fffbeb;border:none;border-radius:10px;padding:8px 12px;cursor:pointer;color:#d97706;display:flex;align-items:center">${SVG.alertTriangle}</button>`}
+      <button onclick="openCancelRefundModal('${o.id}')" title="ביטול" style="background:#fff0f6;border:none;border-radius:10px;padding:8px 12px;cursor:pointer;color:#e0004d;display:flex;align-items:center">${SVG.xCircle}</button>` : ''}
     </div>
   </div>`;
 }
@@ -384,7 +390,10 @@ function renderOrdersTable(orders) {
               style="background:var(--primary-soft);border:none;border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--primary)">${SVG.edit}</button>
             <button onclick="printOrder('${o.id}')" title="הדפסת קבלה"
               style="background:#f0fdf4;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;color:#16a34a">${SVG.printer}</button>
-            ${o.status !== 'cancelled' && o.status !== 'done' ? `
+            ${!['cancelled','done'].includes(o.status) ? `
+            ${o.dispute_status === 'pending'
+              ? `<span title="מחלוקת פתוחה — ממתין לתגובת לקוח" style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:8px;padding:6px 10px;color:#d97706;display:inline-flex;align-items:center;cursor:default">${SVG.alertTriangle}</span>`
+              : `<button onclick="openDisputeModal('${o.id}')" title="פריט חסר" style="background:#fffbeb;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;color:#d97706">${SVG.alertTriangle}</button>`}
             <button onclick="openCancelRefundModal('${o.id}')" title="ביטול והחזר"
               style="background:#fff0f6;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;color:#e0004d">${SVG.xCircle}</button>` : ''}
           </td>
@@ -650,6 +659,83 @@ async function loadStats(period = 'today', date) {
 }
 
 // ─── CANCEL + REFUND (DISPUTE) ───────────────────────────────────────────────
+
+// ─── Item Dispute Modal ───────────────────────────────────────────────────────
+
+let _disputeOrderId = null;
+
+function openDisputeModal(orderId) {
+  const o = currentOrders.find(x => x.id === orderId);
+  if (!o) return;
+  _disputeOrderId = orderId;
+
+  document.getElementById('disputeOrderNum').textContent = `#${o.order_number} — ${o.customer_name || '—'}`;
+
+  const items  = Array.isArray(o.items) ? o.items : [];
+  const select = document.getElementById('disputeItemSelect');
+  select.innerHTML = items.length
+    ? items.map((it, i) => {
+        const name  = it.name || it.name_he || 'פריט';
+        const qty   = it.quantity || it.qty || 1;
+        const price = parseFloat(it.price) || 0;
+        return `<option value="${i}">${name}${qty > 1 ? ` ×${qty}` : ''} — ₪${(price * qty).toFixed(0)}</option>`;
+      }).join('')
+    : '<option value="">אין פריטים</option>';
+
+  updateDisputePreview();
+  openModal('disputeModal');
+}
+
+function updateDisputePreview() {
+  const o = currentOrders.find(x => x.id === _disputeOrderId);
+  if (!o) return;
+  const items  = Array.isArray(o.items) ? o.items : [];
+  const idx    = parseInt(document.getElementById('disputeItemSelect').value);
+  const item   = items[idx];
+  const el     = document.getElementById('disputePreview');
+  if (!item) { el.textContent = ''; return; }
+
+  const name     = item.name || item.name_he || 'פריט';
+  const price    = parseFloat(item.price) || 0;
+  const qty      = item.quantity || item.qty || 1;
+  const priceStr = price > 0 ? ` (החזר של ₪${(price * qty).toFixed(0)})` : '';
+  const greeting = o.customer_name ? `שלום ${o.customer_name}! 🙏` : `שלום! 🙏`;
+
+  el.textContent =
+    `${greeting}\n\nלצערנו, הפריט "${name}" אזל במלאי ואינו זמין להזמנה מספר ${o.order_number}.\n\nבחר אחת מהאפשרויות הבאות:\n1 — לבטל את ההזמנה לגמרי\n2 — להמשיך ללא "${name}"${priceStr}\n3 — להמשיך עם ההזמנה כפי שהיא\n\nשלח את המספר המתאים 👆`;
+}
+
+async function confirmDispute() {
+  const o = currentOrders.find(x => x.id === _disputeOrderId);
+  if (!o) return;
+  const items = Array.isArray(o.items) ? o.items : [];
+  const idx   = parseInt(document.getElementById('disputeItemSelect').value);
+  const item  = items[idx];
+  if (!item) return;
+
+  const name  = item.name || item.name_he || 'פריט';
+  const price = parseFloat(item.price) || 0;
+  const btn   = document.getElementById('disputeConfirmBtn');
+
+  btn.disabled    = true;
+  btn.textContent = 'שולח...';
+
+  try {
+    await api('POST', `/orders/${_disputeOrderId}/item-dispute`, { item_name: name, item_price: price });
+    closeModal('disputeModal');
+    const ord = currentOrders.find(x => x.id === _disputeOrderId);
+    if (ord) { ord.dispute_status = 'pending'; ord.dispute_item = name; }
+    renderOrdersTable(currentOrders);
+    showToast(`הודעה נשלחה ללקוח בנוגע ל"${name}"`);
+  } catch (err) {
+    showToast(err.message || 'שגיאה בשליחת המחלוקת', 'error');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'שלח ללקוח';
+  }
+}
+
+// ─── Cancel + Refund Modal ────────────────────────────────────────────────────
 
 let _cancelOrderId = null;
 

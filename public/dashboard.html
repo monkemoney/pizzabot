@@ -782,6 +782,33 @@ input[type=time] { direction: ltr; }
   </div>
 </div>
 
+<!-- ── Item Dispute Modal ── -->
+<div id="disputeModal" class="modal-overlay">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <div class="modal-title">פריט חסר בהזמנה</div>
+      <button onclick="closeModal('disputeModal')" class="modal-close">&times;</button>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:var(--bg);border-radius:12px;margin-bottom:18px">
+      <span style="color:var(--text-muted);font-size:.85rem">הזמנה</span>
+      <span style="font-weight:800;color:var(--primary);font-size:1rem" id="disputeOrderNum">#—</span>
+    </div>
+    <div class="form-group" style="margin-bottom:14px">
+      <label class="form-label">בחר את הפריט החסר:</label>
+      <select id="disputeItemSelect" class="form-input" onchange="updateDisputePreview()" style="width:100%"></select>
+    </div>
+    <div style="background:var(--bg);border-radius:12px;padding:14px;margin-bottom:20px">
+      <div style="font-size:.74rem;font-weight:700;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">הודעה שתישלח ללקוח</div>
+      <div id="disputePreview" style="font-size:.82rem;line-height:1.6;white-space:pre-line;direction:rtl;color:var(--text)"></div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button onclick="closeModal('disputeModal')" class="btn btn-ghost" style="flex:1">ביטול</button>
+      <button onclick="confirmDispute()" id="disputeConfirmBtn"
+        class="btn" style="flex:2;background:#f59e0b;color:#fff;border-color:#f59e0b">שלח ללקוח</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Order Edit Modal ── -->
 <div id="orderEditModal" class="modal-overlay">
   <div class="modal" style="max-width:600px">

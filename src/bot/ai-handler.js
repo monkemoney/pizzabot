@@ -4,7 +4,8 @@ const { callClaude }              = require('../services/claude');
 const { buildSystemPrompt }       = require('./prompts');
 const { sendMessage, sendToppingsPoll } = require('../services/greenapi');
 const { getSession, updateSession, savePendingPayment, saveOrder,
-        getLastOrderByPhone, saveCustomerProfile, getCustomerProfile } = require('../services/supabase');
+        getLastOrderByPhone, saveCustomerProfile, getCustomerProfile,
+        getOrderById, updateOrderStatus, updateOrder } = require('../services/supabase');
 const { createPaymentPage }       = require('../services/cardcom');
 const settings                    = require('../services/settings');
 const crypto                      = require('crypto');
@@ -42,13 +43,83 @@ function makeReturnValue() {
   return 'PB-' + crypto.randomBytes(6).toString('hex').toUpperCase();
 }
 
+// ─── Item dispute response handler ───────────────────────────────────────────
+
+async function handleDisputeResponse(phone, userMessage, session) {
+  const dispute = session.pending_dispute;
+  const choice  = userMessage.trim().replace(/\s+/g, '');
+
+  const priceStr = (dispute.item_price || 0) > 0
+    ? ` (החזר של ₪${parseFloat(dispute.item_price).toFixed(0)})` : '';
+
+  if (!['1', '2', '3'].includes(choice)) {
+    await reply(phone,
+      `אנא שלח *1*, *2* או *3* לפי בחירתך:\n*1* — לבטל את ההזמנה\n*2* — להמשיך ללא *${dispute.item_name}*${priceStr}\n*3* — להמשיך עם ההזמנה כפי שהיא`
+    );
+    return;
+  }
+
+  const order = await getOrderById(dispute.order_id);
+
+  if (!order || ['cancelled', 'done'].includes(order.status)) {
+    await updateSession(phone, { pending_dispute: null });
+    await reply(phone, 'ההזמנה כבר אינה פעילה. תודה! 🙏');
+    return;
+  }
+
+  if (choice === '1') {
+    await updateOrderStatus(order.id, 'cancelled');
+    await updateOrder(order.id, { dispute_status: 'resolved', dispute_resolution: 'cancelled' });
+    await updateSession(phone, { pending_dispute: null, conversation_history: [], pending_order: {} });
+    const refundNote = order.payment_method === 'credit'
+      ? '\nנחזור אליך בנוגע להחזר התשלום.' : '';
+    await reply(phone, `✅ הזמנה מספר *${dispute.order_number}* בוטלה.${refundNote}\n\nמצטערים על אי הנוחות 🙏`);
+
+  } else if (choice === '2') {
+    const existing = (order.items || []).find(
+      (it) => (it.name || it.name_he) === dispute.item_name
+    );
+    const itemQty  = existing ? (existing.quantity || existing.qty || 1) : 1;
+    const removed  = (parseFloat(dispute.item_price) || 0) * itemQty;
+    const newItems = (order.items || []).filter(
+      (it) => (it.name || it.name_he) !== dispute.item_name
+    );
+    const newTotal = Math.max(0, (parseFloat(order.total_price) || 0) - removed);
+    await updateOrder(order.id, {
+      items:              newItems,
+      total_price:        newTotal,
+      dispute_status:     'resolved',
+      dispute_resolution: 'removed_item',
+    });
+    await updateSession(phone, { pending_dispute: null });
+    const refundNote = order.payment_method === 'credit' && removed > 0
+      ? `\nהחזר של ₪${removed.toFixed(0)} יזוכה לכרטיסך.` : '';
+    await reply(phone,
+      `✅ הפריט *${dispute.item_name}* הוסר מהזמנתך.\nהסכום המעודכן: ₪${newTotal.toFixed(0)}.${refundNote}\nתודה על ההבנה! 🙏`
+    );
+
+  } else {
+    // choice === '3' — continue as-is
+    await updateOrder(order.id, { dispute_status: 'resolved', dispute_resolution: 'continued' });
+    await updateSession(phone, { pending_dispute: null });
+    await reply(phone, `✅ מעולה! נמשיך עם הזמנתך מספר *${dispute.order_number}* כפי שהיא.\nתודה על ההבנה! 🙏`);
+  }
+}
+
 // ─── Main handler ────────────────────────────────────────────────────────────
 
 async function handleMessage(phone, userMessage) {
+  const session = await getSession(phone);
+
+  // ── Pending dispute — process before isOpen check ────────────────────────────
+  // Customer is replying to a "missing item" question about an existing order.
+  if (session.pending_dispute) {
+    return handleDisputeResponse(phone, userMessage, session);
+  }
+
   // Check if the restaurant is open
   const open = await settings.isOpen();
   if (!open) {
-    const session = await getSession(phone);
     const lang = session.language || 'he';
     await reply(phone, lang === 'en'
       ? "Sorry, we're currently closed. Please try again during business hours 🕐"
@@ -56,7 +127,6 @@ async function handleMessage(phone, userMessage) {
     return;
   }
 
-  const session = await getSession(phone);
   let history = Array.isArray(session.conversation_history) ? session.conversation_history : [];
 
   // ── Stale session guard ───────────────────────────────────────────────────────
@@ -96,7 +166,6 @@ async function handleMessage(phone, userMessage) {
         const wantsCancel = cancelKeywords.some((k) => userMessage.toLowerCase().includes(k));
         if (wantsCancel) {
           // Cancel the order
-          const { updateOrderStatus } = require('../services/supabase');
           await updateOrderStatus(lastOrder.id, 'cancelled');
           const msg = lang === 'en'
             ? `✅ Order #${lastOrder.order_number} has been cancelled. Want to place a new order?`

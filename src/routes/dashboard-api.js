@@ -5,7 +5,7 @@ const multer   = require('multer');
 const path     = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { sign, requireAuth, requireAdmin } = require('../middleware/auth');
-const { getOrders, getOrderById, updateOrderStatus,
+const { getOrders, getOrderById, updateOrderStatus, updateOrder, updateSession,
         autoCompleteDeliveredOrders }      = require('../services/supabase');
 const { notifyStatusChange }              = require('../services/status-notifier');
 const settings                            = require('../services/settings');
@@ -201,6 +201,60 @@ router.post('/orders/:id/cancel-refund', requireAdmin, async (req, res) => {
     refundMessage: refundMessage || (order.payment_method === 'cash' ? 'הזמנה בוטלה (מזומן — אין זיכוי)' : ''),
     orderNumber:   order.order_number,
   });
+});
+
+// ─── Item Dispute ─────────────────────────────────────────────────────────────
+
+router.post('/orders/:id/item-dispute', requireAdmin, async (req, res) => {
+  const { item_name, item_price = 0 } = req.body;
+  if (!item_name) return res.status(400).json({ error: 'item_name required' });
+
+  const order = await getOrderById(req.params.id);
+  if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+  if (['cancelled', 'done'].includes(order.status))
+    return res.status(400).json({ error: 'לא ניתן לפתוח מחלוקת על הזמנה זו' });
+  if (order.dispute_status === 'pending')
+    return res.status(400).json({ error: 'כבר קיימת מחלוקת פתוחה להזמנה זו' });
+
+  // Mark order as having a pending dispute
+  const { error: orderErr } = await supabase.from('orders').update({
+    dispute_status: 'pending',
+    dispute_item:   item_name,
+    updated_at:     new Date().toISOString(),
+  }).eq('id', order.id);
+  if (orderErr) return res.status(500).json({ error: orderErr.message });
+
+  // Store dispute context in customer's session so the bot can handle the reply
+  await updateSession(order.phone, {
+    pending_dispute: {
+      order_id:     order.id,
+      order_number: order.order_number,
+      item_name,
+      item_price:   parseFloat(item_price) || 0,
+      created_at:   new Date().toISOString(),
+    },
+  });
+
+  // Build and send WhatsApp message to customer
+  const greeting = order.customer_name ? `שלום ${order.customer_name}! 🙏` : `שלום! 🙏`;
+  const priceStr = parseFloat(item_price) > 0
+    ? ` (החזר של ₪${parseFloat(item_price).toFixed(0)})` : '';
+
+  const msg =
+    `${greeting}\n\n` +
+    `לצערנו, הפריט *${item_name}* אזל במלאי ואינו זמין להזמנה מספר *${order.order_number}*.\n\n` +
+    `בחר אחת מהאפשרויות הבאות:\n` +
+    `*1* — לבטל את ההזמנה לגמרי\n` +
+    `*2* — להמשיך ללא *${item_name}*${priceStr}\n` +
+    `*3* — להמשיך עם ההזמנה כפי שהיא\n\n` +
+    `שלח את המספר המתאים 👆`;
+
+  await sendMessage(order.phone, msg).catch((err) =>
+    console.error('[dispute] WhatsApp notify failed:', err.message)
+  );
+
+  console.log(`[dispute] Opened for order #${order.order_number}, item="${item_name}"`);
+  res.json({ success: true, orderNumber: order.order_number });
 });
 
 // ─── Stats (admin only) ───────────────────────────────────────────────────────
