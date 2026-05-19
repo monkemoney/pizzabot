@@ -202,3 +202,9 @@ SELECT
 FROM orders
 WHERE status NOT IN ('cancelled')
 GROUP BY phone;
+
+-- ── Refund / dispute columns ──────────────────────────────────────────────────
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cardcom_deal_number TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_status       TEXT;  -- null | pending | refunded | manual
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_by        TEXT;  -- 'customer' | 'business'
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancel_reason       TEXT;
