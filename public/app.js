@@ -659,36 +659,74 @@ function openCancelRefundModal(orderId) {
   _cancelOrderId = orderId;
 
   const isCreditPaid = o.payment_method === 'credit' && o.payment_status === 'paid';
-  const modal = document.getElementById('cancelRefundModal');
 
   document.getElementById('cancelRefundTitle').textContent   = `ביטול הזמנה #${o.order_number}`;
   document.getElementById('cancelRefundAmount').textContent  = `₪${parseFloat(o.total_price||0).toFixed(2)}`;
-  document.getElementById('cancelRefundPayment').textContent = isCreditPaid ? 'אשראי — יינתן זיכוי' : o.payment_method === 'cash' ? 'מזומן — אין זיכוי אוטומטי' : 'לא שולם';
+  document.getElementById('cancelRefundPayment').textContent = isCreditPaid ? 'אשראי — יינתן זיכוי' : o.payment_method === 'cash' ? 'מזומן' : 'לא שולם';
   document.getElementById('cancelRefundPayment').style.color = isCreditPaid ? '#16a34a' : '#c07000';
   document.getElementById('cancelRefundReason').value        = '';
+  document.getElementById('cancelSendToCustomer').checked    = true;
 
+  // Reset radio to "business"
+  document.querySelectorAll('input[name="cancelledBy"]').forEach(r => { r.checked = r.value === 'business'; });
+
+  updateCancelUI();
   openModal('cancelRefundModal');
+}
+
+function updateCancelUI() {
+  const byCustomer  = document.querySelector('input[name="cancelledBy"]:checked')?.value === 'customer';
+  const reason      = document.getElementById('cancelRefundReason')?.value.trim() || '';
+  const sendToCustomer = document.getElementById('cancelSendToCustomer')?.checked;
+
+  // Highlight active radio label
+  document.getElementById('cancelByBusinessLabel').style.borderColor = !byCustomer ? '#e0004d' : 'var(--border)';
+  document.getElementById('cancelByCustomerLabel').style.borderColor  =  byCustomer ? '#e0004d' : 'var(--border)';
+
+  // Update preview
+  const orderId = _cancelOrderId;
+  const o = orderId ? currentOrders.find(x => x.id === orderId) : null;
+  const orderNum = o?.order_number || '—';
+  const isCreditPaid = o?.payment_method === 'credit' && o?.payment_status === 'paid';
+
+  const refundLine = isCreditPaid ? '\nהתשלום יזוכה לכרטיסך תוך 3-5 ימי עסקים.' : '';
+  const reasonLine = reason && sendToCustomer ? `\nסיבה: ${reason}` : '';
+  const byLine     = byCustomer ? 'בוטלה לפי בקשתך.' : 'בוטלה על ידי העסק.';
+
+  document.getElementById('cancelPreview').textContent =
+    `❌ הזמנה מספר *${orderNum}* ${byLine}${reasonLine}${refundLine}\n\nמצטערים על אי הנוחות 🙏`;
+
+  // Hint text
+  const hint = document.getElementById('cancelSendHint');
+  if (hint) hint.textContent = sendToCustomer
+    ? 'ההערה תצורף להודעת הביטול ב-WhatsApp'
+    : 'ההערה תישמר פנימית בלבד — לא תישלח ללקוח';
 }
 
 async function confirmCancelRefund() {
   if (!_cancelOrderId) return;
-  const reason = document.getElementById('cancelRefundReason').value.trim();
-  const btn    = document.getElementById('cancelRefundBtn');
+  const reason         = document.getElementById('cancelRefundReason').value.trim();
+  const cancelledBy    = document.querySelector('input[name="cancelledBy"]:checked')?.value || 'business';
+  const sendToCustomer = document.getElementById('cancelSendToCustomer').checked;
+  const btn            = document.getElementById('cancelRefundBtn');
+
   btn.textContent = 'מבטל...';
   btn.disabled    = true;
 
   try {
-    const res = await api('POST', `/orders/${_cancelOrderId}/cancel-refund`, { reason });
+    const res = await api('POST', `/orders/${_cancelOrderId}/cancel-refund`, {
+      reason,
+      cancelled_by:     cancelledBy,
+      send_to_customer: sendToCustomer,
+    });
     closeModal('cancelRefundModal');
     loadOrders();
 
-    // Show result toast
     const icon = res.refundStatus === 'refunded' ? '✅' : res.refundStatus === 'manual' ? '⚠️' : '✅';
     showToast(`${icon} הזמנה בוטלה${res.refundMessage ? ' — ' + res.refundMessage : ''}`);
 
-    // If manual refund needed — show prominent alert
     if (res.refundStatus === 'manual') {
-      setTimeout(() => alert(`⚠️ נדרש זיכוי ידני\n\n${res.refundMessage}\n\nבצע זיכוי דרך לוח הניהול של Cardcom:\nhttps://secure.cardcom.solutions`), 300);
+      setTimeout(() => alert(`⚠️ נדרש זיכוי ידני\n\n${res.refundMessage}\n\nבצע זיכוי דרך:\nhttps://secure.cardcom.solutions`), 300);
     }
   } catch (err) {
     alert('שגיאה: ' + err.message);
@@ -697,6 +735,14 @@ async function confirmCancelRefund() {
     btn.disabled    = false;
   }
 }
+
+// Update preview live as user types
+document.addEventListener('DOMContentLoaded', () => {
+  ['cancelRefundReason','cancelSendToCustomer'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', updateCancelUI);
+  });
+});
 
 // ─── ORDER EDIT ───────────────────────────────────────────────────────────────
 

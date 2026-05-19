@@ -116,7 +116,7 @@ router.put('/orders/:id', requireAdmin, async (req, res) => {
 // ─── Cancel + Refund (dispute) ───────────────────────────────────────────────
 
 router.post('/orders/:id/cancel-refund', requireAdmin, async (req, res) => {
-  const { reason = '' } = req.body;
+  const { reason = '', cancelled_by = 'business', send_to_customer = true } = req.body;
 
   const order = await getOrderById(req.params.id);
   if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
@@ -165,7 +165,7 @@ router.post('/orders/:id/cancel-refund', requireAdmin, async (req, res) => {
   // ── Cancel order in DB ───────────────────────────────────────────────────────
   const { error } = await supabase.from('orders').update({
     status:         'cancelled',
-    cancelled_by:   'business',
+    cancelled_by:   cancelled_by,
     cancel_reason:  reason || null,
     refund_status:  refundStatus,
     updated_at:     new Date().toISOString(),
@@ -180,9 +180,12 @@ router.post('/orders/:id/cancel-refund', requireAdmin, async (req, res) => {
         : '\nנחזור אליך בנוגע להחזר התשלום.')
     : '';
 
+  const byLine     = cancelled_by === 'customer' ? 'בוטלה לפי בקשתך.' : 'בוטלה על ידי העסק.';
+  const reasonLine = (reason && send_to_customer) ? `\nסיבה: ${reason}` : '';
+
   const customerMsg =
-    `❌ הזמנה מספר *${order.order_number}* בוטלה על ידי העסק.` +
-    (reason ? `\nסיבה: ${reason}` : '') +
+    `❌ הזמנה מספר *${order.order_number}* ${byLine}` +
+    reasonLine +
     refundLine +
     `\n\nמצטערים על אי הנוחות 🙏`;
 
