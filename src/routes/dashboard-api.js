@@ -718,7 +718,6 @@ router.patch('/settings', requireAdmin, async (req, res) => {
 // admin_users table is created via supabase/schema.sql (run once in Supabase SQL editor)
 
 router.get('/admin-users', requireAdmin, async (_req, res) => {
-  await ensureAdminUsersTable();
   const { data, error } = await supabase
     .from('admin_users').select('*').order('created_at');
   if (error) return res.status(500).json({ error: error.message });
