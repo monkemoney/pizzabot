@@ -211,13 +211,33 @@ app.listen(PORT, async () => {
     const sb = createSB(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const { error } = await sb.from('admin_users').select('id').limit(1);
     if (error && error.code === 'PGRST205') {
-      // Table doesn't exist — create it via raw SQL through the Supabase JS client
-      // (supabase-js doesn't support DDL directly; log instruction instead)
       console.warn('[server] admin_users table missing — run supabase/schema.sql to create it');
     } else {
       console.log('[server] admin_users table ✅');
     }
   } catch {}
+
+  // Schema migration: add tenant_id to orders (idempotent — safe on every deploy)
+  try {
+    const { Client: PgClient } = require('pg');
+    const pg = new PgClient({
+      host:     'db.umoftdmutxhrbknowbyh.supabase.co',
+      port:     5432,
+      user:     'postgres',
+      password: process.env.SUPABASE_DB_PASSWORD,
+      database: 'postgres',
+      ssl:      { rejectUnauthorized: false },
+      connectionTimeoutMillis: 10000,
+    });
+    await pg.connect();
+    await pg.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS tenant_id UUID DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001'`);
+    await pg.query(`UPDATE orders SET tenant_id = 'aaaaaaaa-0000-0000-0000-000000000001' WHERE tenant_id IS NULL`);
+    await pg.query(`CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id)`);
+    await pg.end();
+    console.log('[migration] tenant_id on orders ✅');
+  } catch (e) {
+    console.error('[migration] tenant_id failed:', e.message);
+  }
 
   // Notify vendor on restart
   vendorAlerts.alerts.serverRestart().catch(() => {});

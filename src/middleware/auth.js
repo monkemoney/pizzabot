@@ -4,6 +4,9 @@ const crypto = require('crypto');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 
+// Default tenant for this deployment (single-tenant mode)
+const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
+
 /** Sign a payload → token string */
 function sign(payload) {
   const data = JSON.stringify(payload);
@@ -27,12 +30,24 @@ function verify(token) {
   } catch { return null; }
 }
 
-/** Express middleware — require valid token; attaches req.user */
+/** Sign a dashboard token — always includes tenant_id */
+function signDashboard(username, role) {
+  return sign({
+    username,
+    role,
+    tenant_id: DEFAULT_TENANT_ID,
+    exp: Date.now() + 24 * 60 * 60 * 1000,
+  });
+}
+
+/** Express middleware — require valid token; attaches req.user (includes tenant_id) */
 function requireAuth(req, res, next) {
   const header = req.headers['authorization'] || '';
   const token  = header.replace(/^Bearer\s+/i, '');
   const user   = verify(token);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  // Ensure tenant_id is always set (fallback for old tokens)
+  if (!user.tenant_id) user.tenant_id = DEFAULT_TENANT_ID;
   req.user = user;
   next();
 }
@@ -45,7 +60,7 @@ function requireAdmin(req, res, next) {
   });
 }
 
-/** Require vendor role (platform owner) */
+/** Require vendor role (platform owner — no tenant restriction) */
 function requireVendor(req, res, next) {
   requireAuth(req, res, () => {
     if (req.user.role !== 'vendor') return res.status(403).json({ error: 'Forbidden — vendor only' });
@@ -53,4 +68,4 @@ function requireVendor(req, res, next) {
   });
 }
 
-module.exports = { sign, verify, requireAuth, requireAdmin, requireVendor };
+module.exports = { sign, verify, signDashboard, requireAuth, requireAdmin, requireVendor, DEFAULT_TENANT_ID };

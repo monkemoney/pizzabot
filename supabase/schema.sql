@@ -224,6 +224,12 @@ CREATE TABLE IF NOT EXISTS admin_users (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ── Tenant isolation ─────────────────────────────────────────────────────────
+-- Single-tenant default; future multi-tenant: each business gets its own UUID
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS tenant_id UUID DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001';
+UPDATE orders SET tenant_id = 'aaaaaaaa-0000-0000-0000-000000000001' WHERE tenant_id IS NULL;
+CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id);
+
 -- ── Clients (businesses using Jasell platform) ────────────────────────────────
 -- Run once via Supabase SQL Editor
 CREATE TABLE IF NOT EXISTS clients (

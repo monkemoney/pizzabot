@@ -4,7 +4,7 @@ const express  = require('express');
 const multer   = require('multer');
 const path     = require('path');
 const { createClient } = require('@supabase/supabase-js');
-const { sign, requireAuth, requireAdmin, requireVendor } = require('../middleware/auth');
+const { signDashboard, requireAuth, requireAdmin, requireVendor } = require('../middleware/auth');
 const { getOrders, getOrderById, updateOrderStatus, updateOrder, updateSession,
         autoCompleteDeliveredOrders }      = require('../services/supabase');
 const { notifyStatusChange }              = require('../services/status-notifier');
@@ -15,6 +15,16 @@ const { sendMessage }                     = require('../services/greenapi');
 const router       = express.Router();
 const supabase     = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 const pushNotifier = require('../services/push-notifier');
+
+// Shorthand: tenant_id from JWT
+const tid = (req) => req.user?.tenant_id;
+
+// Guard: verify a fetched row belongs to the requesting tenant
+function assertTenant(row, req) {
+  if (!row) return false;
+  if (row.tenant_id && row.tenant_id !== tid(req)) return false;
+  return true;
+}
 
 // multer — memory storage, 5 MB limit, images only
 const upload = multer({
@@ -42,12 +52,7 @@ router.post('/auth/login', async (req, res) => {
     return res.status(401).json({ error: 'שם משתמש או סיסמא שגויים' });
   }
 
-  const token = sign({
-    username,
-    role: user.role,
-    exp:  Date.now() + 24 * 60 * 60 * 1000, // 24h
-  });
-
+  const token = signDashboard(username, user.role);
   res.json({ token, role: user.role, username });
 });
 
@@ -57,7 +62,9 @@ router.get('/orders', requireAuth, async (req, res) => {
   try {
     await autoCompleteDeliveredOrders();
 
-    let query = supabase.from('orders').select('*').order('created_at', { ascending: false });
+    let query = supabase.from('orders').select('*')
+      .eq('tenant_id', tid(req))
+      .order('created_at', { ascending: false });
 
     const { status, date_from, date_to } = req.query;
     if (status && status !== 'all') query = query.eq('status', status);
@@ -78,7 +85,7 @@ router.get('/orders', requireAuth, async (req, res) => {
 
 router.get('/orders/:id', requireAuth, async (req, res) => {
   const order = await getOrderById(req.params.id);
-  if (!order) return res.status(404).json({ error: 'Not found' });
+  if (!order || !assertTenant(order, req)) return res.status(404).json({ error: 'Not found' });
   res.json(order);
 });
 
@@ -90,6 +97,8 @@ router.patch('/orders/:id/status', requireAuth, async (req, res) => {
     return res.status(400).json({ error: `Invalid status. Valid: ${STATUS_ORDER.join(', ')}` });
   }
   try {
+    const existing = await getOrderById(req.params.id);
+    if (!assertTenant(existing, req)) return res.status(404).json({ error: 'Not found' });
     const order = await updateOrderStatus(req.params.id, status);
     await notifyStatusChange(order.phone, status, 'he', order.order_number, order);
     res.json({ success: true, order });
@@ -100,6 +109,9 @@ router.patch('/orders/:id/status', requireAuth, async (req, res) => {
 
 // Full order edit (items, address, notes, destination_type, courier_notes)
 router.put('/orders/:id', requireAdmin, async (req, res) => {
+  const existing = await getOrderById(req.params.id);
+  if (!assertTenant(existing, req)) return res.status(404).json({ error: 'Not found' });
+
   const allowed = ['items','address','notes','destination_type','courier_notes',
                    'delivery_method','total_price'];
   const updates = {};
@@ -120,7 +132,7 @@ router.post('/orders/:id/cancel-refund', requireAdmin, async (req, res) => {
   const { reason = '', cancelled_by = 'business', send_to_customer = true, custom_message = '' } = req.body;
 
   const order = await getOrderById(req.params.id);
-  if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+  if (!order || !assertTenant(order, req)) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
   if (order.status === 'cancelled') return res.status(400).json({ error: 'ההזמנה כבר בוטלה' });
 
   const isCreditPaid = order.payment_method === 'credit' && order.payment_status === 'paid';
@@ -220,7 +232,7 @@ router.post('/orders/:id/item-dispute', requireAdmin, async (req, res) => {
   if (!items.length) return res.status(400).json({ error: 'יש לבחור לפחות פריט אחד' });
 
   const order = await getOrderById(req.params.id);
-  if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+  if (!order || !assertTenant(order, req)) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
   if (['cancelled', 'done'].includes(order.status))
     return res.status(400).json({ error: 'לא ניתן לפתוח מחלוקת על הזמנה זו' });
   if (order.dispute_status === 'pending')
@@ -315,6 +327,7 @@ router.get('/stats', requireAdmin, async (req, res) => {
     const { data: dayOrders } = await supabase
       .from('orders')
       .select('total_price, items, status, created_at, updated_at, delivery_method, payment_status')
+      .eq('tenant_id', tid(req))
       .gte('created_at', start)
       .lt('created_at', end);
 
