@@ -4,7 +4,7 @@ const express  = require('express');
 const multer   = require('multer');
 const path     = require('path');
 const { createClient } = require('@supabase/supabase-js');
-const { sign, requireAuth, requireAdmin } = require('../middleware/auth');
+const { sign, requireAuth, requireAdmin, requireVendor } = require('../middleware/auth');
 const { getOrders, getOrderById, updateOrderStatus, updateOrder, updateSession,
         autoCompleteDeliveredOrders }      = require('../services/supabase');
 const { notifyStatusChange }              = require('../services/status-notifier');
@@ -34,6 +34,7 @@ router.post('/auth/login', async (req, res) => {
   const users = {
     admin:   { password: process.env.DASHBOARD_ADMIN_PASSWORD,   role: 'admin'   },
     manager: { password: process.env.DASHBOARD_MANAGER_PASSWORD, role: 'manager' },
+    vendor:  { password: process.env.DASHBOARD_VENDOR_PASSWORD,  role: 'vendor'  },
   };
 
   const user = users[username];
@@ -747,6 +748,89 @@ router.delete('/admin-users/:id', requireAdmin, async (req, res) => {
   const { error } = await supabase
     .from('admin_users').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+// ─── Vendor routes (platform owner) ──────────────────────────────────────────
+
+// GET /vendor/clients — all client businesses
+router.get('/vendor/clients', requireVendor, async (_req, res) => {
+  const { data, error } = await supabase
+    .from('clients').select('*').order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+// POST /vendor/clients — add a client
+router.post('/vendor/clients', requireVendor, async (req, res) => {
+  const { name, contact_phone, plan = 'basic', notes = '' } = req.body;
+  if (!name) return res.status(400).json({ error: 'name required' });
+  const { data, error } = await supabase
+    .from('clients')
+    .insert({ name: name.trim(), contact_phone: (contact_phone||'').replace(/\D/g,''), plan, notes, status: 'active' })
+    .select().single();
+  if (error) return res.status(400).json({ error: error.message });
+  res.status(201).json(data);
+});
+
+// PATCH /vendor/clients/:id — update status / plan / notes
+router.patch('/vendor/clients/:id', requireVendor, async (req, res) => {
+  const allowed = ['status','plan','notes','contact_phone','name'];
+  const updates = Object.fromEntries(Object.entries(req.body).filter(([k]) => allowed.includes(k)));
+  updates.updated_at = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('clients').update(updates).eq('id', req.params.id).select().single();
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
+});
+
+// DELETE /vendor/clients/:id
+router.delete('/vendor/clients/:id', requireVendor, async (req, res) => {
+  const { error } = await supabase.from('clients').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+// GET /vendor/stats — cross-client platform stats
+router.get('/vendor/stats', requireVendor, async (_req, res) => {
+  const [ordersRes, clientsRes, sessionsRes] = await Promise.all([
+    supabase.from('orders').select('id, status, total_price, created_at', { count: 'exact' }),
+    supabase.from('clients').select('id, status', { count: 'exact' }),
+    supabase.from('sessions').select('phone', { count: 'exact' }),
+  ]);
+  const orders   = ordersRes.data   || [];
+  const clients  = clientsRes.data  || [];
+  const revenue  = orders.filter(o => o.status !== 'cancelled')
+    .reduce((s, o) => s + (parseFloat(o.total_price) || 0), 0);
+  res.json({
+    total_orders:   orders.length,
+    total_revenue:  Math.round(revenue),
+    active_clients: clients.filter(c => c.status === 'active').length,
+    total_clients:  clients.length,
+    total_sessions: sessionsRes.count || 0,
+  });
+});
+
+// GET /vendor/alerts-test — send test WhatsApp alert to vendor
+router.post('/vendor/alerts-test', requireVendor, async (_req, res) => {
+  const { alerts } = require('../services/vendor-alerts');
+  await alerts.serverRestart();
+  res.json({ sent: true });
+});
+
+// PATCH /vendor/settings — update vendor_phone and alert preferences
+router.patch('/vendor/settings', requireVendor, async (req, res) => {
+  const { vendor_phone, vendor_name, alert_on_error, alert_on_payment_fail, alert_on_restart } = req.body;
+  const sb = supabase;
+  const updates = [];
+  if (vendor_phone    !== undefined) updates.push(['vendor_phone',    vendor_phone.replace(/\D/g,'')]);
+  if (vendor_name     !== undefined) updates.push(['vendor_name',     vendor_name]);
+  if (alert_on_error  !== undefined) updates.push(['vendor_alert_error',   alert_on_error]);
+  if (alert_on_payment_fail !== undefined) updates.push(['vendor_alert_payment', alert_on_payment_fail]);
+  if (alert_on_restart !== undefined) updates.push(['vendor_alert_restart', alert_on_restart]);
+  for (const [key, value] of updates) await settings.set(key, value);
+  const { invalidateVendorPhone } = require('../services/vendor-alerts');
+  invalidateVendorPhone();
   res.json({ success: true });
 });
 

@@ -13,6 +13,7 @@ const { handleAdminMessage, getAdminUser }   = require('./bot/admin-handler');
 const { formatPhone } = require('./services/greenapi');
 const { autoCompleteDeliveredOrders } = require('./services/supabase');
 const { createClient: createSB }       = require('@supabase/supabase-js');
+const vendorAlerts                     = require('./services/vendor-alerts');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -212,6 +213,27 @@ app.listen(PORT, async () => {
       console.log('[server] admin_users table ✅');
     }
   } catch {}
+
+  // Notify vendor on restart
+  vendorAlerts.alerts.serverRestart().catch(() => {});
+});
+
+// ─── Global error handler — notify vendor ────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+  vendorAlerts.alerts.serverError(err).catch(() => {});
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+  vendorAlerts.alerts.serverError(reason).catch(() => {});
+});
+
+// Express error middleware
+app.use((err, _req, res, _next) => {
+  console.error('[express-error]', err);
+  vendorAlerts.alerts.serverError(err).catch(() => {});
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 module.exports = app;

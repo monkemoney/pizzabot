@@ -252,6 +252,7 @@ async function handleMessage(phone, userMessage) {
     assistantText = await callClaude(systemPrompt, history, userMessage);
   } catch (err) {
     console.error('[ai-handler] Claude error:', err.message);
+    require('../services/vendor-alerts').alerts.botError(phone, err).catch(() => {});
     await reply(phone, 'מצטערים, אירעה שגיאה זמנית. אנא נסה שוב. 🙏');
     return;
   }

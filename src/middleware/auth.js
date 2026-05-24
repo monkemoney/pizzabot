@@ -40,9 +40,17 @@ function requireAuth(req, res, next) {
 /** Require admin role */
 function requireAdmin(req, res, next) {
   requireAuth(req, res, () => {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+    if (req.user.role !== 'admin' && req.user.role !== 'vendor') return res.status(403).json({ error: 'Forbidden' });
     next();
   });
 }
 
-module.exports = { sign, verify, requireAuth, requireAdmin };
+/** Require vendor role (platform owner) */
+function requireVendor(req, res, next) {
+  requireAuth(req, res, () => {
+    if (req.user.role !== 'vendor') return res.status(403).json({ error: 'Forbidden — vendor only' });
+    next();
+  });
+}
+
+module.exports = { sign, verify, requireAuth, requireAdmin, requireVendor };

@@ -223,3 +223,16 @@ CREATE TABLE IF NOT EXISTS admin_users (
   role       TEXT NOT NULL DEFAULT 'admin',  -- 'admin' | 'manager'
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ── Clients (businesses using Jasell platform) ────────────────────────────────
+-- Run once via Supabase SQL Editor
+CREATE TABLE IF NOT EXISTS clients (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name          TEXT NOT NULL,
+  contact_phone TEXT,
+  plan          TEXT NOT NULL DEFAULT 'basic',  -- 'basic' | 'pro' | 'enterprise'
+  status        TEXT NOT NULL DEFAULT 'active', -- 'active' | 'inactive' | 'trial'
+  notes         TEXT,
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ DEFAULT NOW()
+);
