@@ -113,8 +113,7 @@ label { display: block; font-size: .82rem; font-weight: 700; color: var(--text-m
 .alert-row:last-child { border-bottom: none; }
 
 /* Alerts page grid */
-#alertsGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-#alertsGrid > .card { min-width: 0; }
+#alertsGrid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 20px; }
 
 /* Mobile bottom nav */
 #mobile-nav {
@@ -153,8 +152,11 @@ label { display: block; font-size: .82rem; font-weight: 700; color: var(--text-m
   /* scrollable tables */
   #clientsTable, #recentClients { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   #clientsTable table, #recentClients table { min-width: 520px; }
-  /* alerts: 2-col → 1-col */
-  #alertsGrid { grid-template-columns: 1fr; }
+  /* alerts: 2-col → 1-col, cards no-clip */
+  #alertsGrid { grid-template-columns: minmax(0,1fr); }
+  #alertsGrid > .card { overflow: visible; padding: 16px !important; }
+  #alertsGrid label { display: block !important; }
+  #alertsGrid label input[type=checkbox] { margin-left: 8px; }
   /* stats grid smaller min */
   #statsGrid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important; }
   /* modal full-width */
