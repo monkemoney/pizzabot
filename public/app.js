@@ -131,8 +131,9 @@ function statusBadge(status) {
 
 // ─── ORDERS ───────────────────────────────────────────────────────────────────
 
-let currentOrders = [];
-let currentPeriod = 'today';
+let currentOrders   = [];
+let currentPeriod   = 'today';
+const expandedOrders = new Set();
 
 async function loadOrders() {
   const container = document.getElementById('ordersTable');
@@ -327,6 +328,135 @@ function renderOrderCard(o) {
   </div>`;
 }
 
+function toggleOrderExpand(id) {
+  if (expandedOrders.has(id)) expandedOrders.delete(id);
+  else expandedOrders.add(id);
+  filterOrders(); // re-render with current filter state
+}
+
+function renderOrderRow(o) {
+  const isExpanded  = expandedOrders.has(o.id);
+  const isMobile    = window.innerWidth <= 768;
+  const isCancelled = ['cancelled','done'].includes(o.status);
+
+  // ── Items list ──
+  const items = (o.items || []);
+  const itemsHtml = items.map(it => {
+    const qty     = it.quantity || it.qty || 1;
+    const tops    = (it.toppings||[]).map(t=>t.name||t.name_he||'').filter(Boolean).join(', ');
+    const lineTotal = ((parseFloat(it.price)||0)*qty).toFixed(0);
+    return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <span style="font-weight:600;font-size:.85rem">${it.name||it.name_he||'פריט'}</span>
+        ${qty>1?`<span style="color:var(--text-muted);font-size:.78rem"> ×${qty}</span>`:''}
+        ${tops?`<div style="font-size:.72rem;color:var(--text-muted)">+ ${tops}</div>`:''}
+      </div>
+      <span style="font-weight:700;color:var(--primary);white-space:nowrap;margin-right:12px">₪${lineTotal}</span>
+    </div>`;
+  }).join('') || '<div style="color:var(--text-muted);font-size:.82rem">אין פריטים</div>';
+
+  // ── Financial summary ──
+  const total    = parseFloat(o.total_price)||0;
+  const delivery = o.delivery_method==='delivery' ? (parseFloat(o.delivery_fee)||30) : 0;
+  const vat      = total * 18 / 118;
+
+  // ── Status selector ──
+  const statusOpts = Object.entries(STATUS_LABELS).map(([val,label])=>
+    `<option value="${val}" ${val===o.status?'selected':''}>${label}</option>`).join('');
+
+  // ── Action buttons ──
+  const actions = `
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+      <button onclick="event.stopPropagation();openOrderEdit('${o.id}')"
+        class="btn btn-ghost btn-sm" style="gap:5px">${SVG.edit} ערוך פריטים</button>
+      <button onclick="event.stopPropagation();printOrder('${o.id}')"
+        class="btn btn-ghost btn-sm" style="gap:5px;color:#16a34a;border-color:#bbf7d0">${SVG.printer} הדפסה</button>
+      ${!isCancelled ? `
+        ${o.dispute_status==='pending'
+          ? `<span style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:50px;padding:5px 14px;font-size:.78rem;font-weight:700;color:#d97706">${SVG.alertTriangle} מחלוקת פתוחה</span>`
+          : `<button onclick="event.stopPropagation();openDisputeModal('${o.id}')"
+              class="btn btn-sm" style="background:#fffbeb;border-color:#fcd34d;color:#d97706;gap:5px">${SVG.alertTriangle} פריט חסר</button>`}
+        <button onclick="event.stopPropagation();openCancelRefundModal('${o.id}')"
+          class="btn btn-sm" style="background:#fff0f6;border-color:#ffd0e6;color:#e0004d;gap:5px">${SVG.xCircle} ביטול</button>
+      ` : `<span class="badge badge-cancelled" style="font-size:.78rem">
+        ${o.cancelled_by==='customer'?'בוטל ע"י לקוח':'בוטל ע"י העסק'}
+        ${o.cancel_reason?`— ${o.cancel_reason}`:''}
+      </span>`}
+    </div>`;
+
+  // ── Expanded panel ──
+  const expandedHtml = `
+    <div style="border-top:2px solid var(--primary-soft);background:#faf8ff;padding:18px 20px;display:grid;grid-template-columns:1fr 1fr;gap:20px" onclick="event.stopPropagation()">
+
+      <!-- Left: customer + delivery -->
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">פרטי לקוח</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:.84rem">
+          <div style="display:flex;align-items:center;gap:7px">${SVG.phone} <strong>${o.customer_name||'—'}</strong></div>
+          ${o.customer_phone||o.phone ? `<div style="color:var(--text-muted)">${o.customer_phone||o.phone}</div>` : ''}
+          <div style="display:flex;align-items:center;gap:7px;margin-top:4px">
+            ${o.delivery_method==='delivery' ? `${SVG.truck} <span>משלוח — ${o.address||'כתובת לא ידועה'}</span>` : `${SVG.home} <span>איסוף עצמי</span>`}
+          </div>
+          ${o.courier_notes ? `<div style="color:var(--text-muted);font-size:.78rem;padding:6px 10px;background:var(--accent-soft);border-radius:8px;margin-top:4px">📝 ${o.courier_notes}</div>` : ''}
+          ${o.notes ? `<div style="color:var(--text-muted);font-size:.78rem;margin-top:2px">הערות: ${o.notes}</div>` : ''}
+        </div>
+
+        <div style="font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">סטטוס</div>
+        <select onchange="updateOrderStatus('${o.id}',this.value,${o.order_number})"
+          style="width:100%;padding:8px 12px;border-radius:10px;border:2px solid var(--border);font-family:inherit;font-size:.84rem;cursor:pointer">
+          ${statusOpts}
+        </select>
+      </div>
+
+      <!-- Right: items + totals + actions -->
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">פריטים</div>
+        <div style="margin-bottom:10px">${itemsHtml}</div>
+        <div style="font-size:.8rem;display:flex;flex-direction:column;gap:4px;padding:10px;background:var(--bg);border-radius:10px;margin-bottom:14px">
+          ${delivery ? `<div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>משלוח</span><span>₪${delivery.toFixed(0)}</span></div>` : ''}
+          <div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>מע"מ 18%</span><span>₪${vat.toFixed(2)}</span></div>
+          <div style="display:flex;justify-content:space-between;font-weight:800;font-size:.92rem;border-top:1.5px solid var(--border);padding-top:6px;margin-top:4px">
+            <span>סה"כ</span><span style="color:var(--primary)">₪${total.toFixed(2)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;color:var(--text-muted);font-size:.75rem">
+            <span>${o.payment_method==='cash'?'מזומן':'אשראי'}</span>
+            <span class="badge ${o.payment_status==='paid'?'badge-paid':'badge-pending-pay'}">${o.payment_status==='paid'?'שולם':'ממתין'}</span>
+          </div>
+        </div>
+        ${actions}
+      </div>
+    </div>`;
+
+  // ── Summary row ──
+  const chevron = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s;transform:rotate(${isExpanded?'180deg':'0deg'})"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+  const summaryRow = `
+    <div onclick="toggleOrderExpand('${o.id}')"
+      style="display:grid;grid-template-columns:44px 1fr 1fr auto auto auto auto 60px;align-items:center;gap:12px;padding:14px 18px;cursor:pointer;transition:background .15s;${isExpanded?'background:var(--primary-soft);':''}border-bottom:${isExpanded?'none':'1px solid var(--border)'}"
+      onmouseover="if(!${isExpanded})this.style.background='var(--bg)'" onmouseout="if(!${isExpanded})this.style.background=''">
+      <div style="font-weight:800;color:var(--primary);font-size:.9rem">#${o.order_number||'—'}</div>
+      <div>
+        <div style="font-weight:700;font-size:.88rem">${o.customer_name||'—'}</div>
+        <div style="font-size:.72rem;color:var(--text-muted)">${formatDate(o.created_at)}</div>
+      </div>
+      <div style="font-size:.8rem;color:var(--text-muted)">${(o.address||'איסוף עצמי').slice(0,28)}</div>
+      <span class="badge ${o.delivery_method==='delivery'?'badge-delivery':'badge-done'}" style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap">
+        ${o.delivery_method==='delivery'?`${SVG.truck} משלוח`:`${SVG.home} איסוף`}
+      </span>
+      <span class="badge ${o.payment_status==='paid'?'badge-paid':'badge-pending-pay'}" style="display:inline-flex;align-items:center;gap:3px">
+        ${o.payment_status==='paid'?`${SVG.check} שולם`:`${SVG.clock} ממתין`}
+      </span>
+      <div style="font-weight:800;font-size:.95rem">₪${(parseFloat(o.total_price)||0).toFixed(0)}</div>
+      ${statusBadge(o.status)}
+      <div style="display:flex;align-items:center;justify-content:flex-end">${chevron}</div>
+    </div>`;
+
+  return `<div style="border-radius:${isExpanded?'16px':'0'};overflow:hidden;margin-bottom:${isExpanded?'8px':'0'};${isExpanded?'box-shadow:0 4px 20px rgba(94,23,235,.12);':''}transition:all .2s">
+    ${summaryRow}
+    ${isExpanded ? expandedHtml : ''}
+  </div>`;
+}
+
 function renderOrdersTable(orders) {
   const container = document.getElementById('ordersTable');
   if (!orders.length) {
@@ -346,61 +476,9 @@ function renderOrdersTable(orders) {
     return;
   }
 
-  if (window.innerWidth <= 768) {
-    container.innerHTML = `<div style="padding:12px;display:flex;flex-direction:column;gap:10px">
-      ${orders.map(renderOrderCard).join('')}
-    </div>`;
-    return;
-  }
-
-  container.innerHTML = `
-    <div style="overflow-x:auto">
-    <table>
-      <thead>
-        <tr>
-          <th>#</th><th>תאריך</th><th>לקוח</th><th>סוג</th>
-          <th>תשלום</th><th>שולם</th><th>סכום</th><th>סטטוס</th><th></th>
-        </tr>
-      </thead>
-      <tbody>
-        ${orders.map((o) => `
-        <tr>
-          <td style="font-weight:800;color:var(--primary)">${o.order_number||'—'}</td>
-          <td style="color:var(--text-muted);font-size:.78rem">${formatDate(o.created_at)}</td>
-          <td>
-            <div style="font-weight:700">${o.customer_name||'—'}</div>
-            <div style="font-size:.72rem;color:var(--text-muted)">${(o.address||'').slice(0,26)}</div>
-          </td>
-          <td><span class="badge ${o.delivery_method==='delivery'?'badge-delivery':'badge-done'}" style="display:inline-flex;align-items:center;gap:4px">
-            ${o.delivery_method==='delivery'?`${SVG.truck} משלוח`:`${SVG.home} איסוף`}</span></td>
-          <td style="font-size:.82rem;color:var(--text-muted)"><span style="display:inline-flex;align-items:center;gap:4px">${o.payment_method==='cash'?`${SVG.wallet} מזומן`:`${SVG.card} אשראי`}</span></td>
-          <td><span class="badge ${o.payment_status==='paid'?'badge-paid':'badge-pending-pay'}" style="display:inline-flex;align-items:center;gap:4px">
-            ${o.payment_status==='paid'?`${SVG.check} שולם`:`${SVG.clock} ממתין`}</span></td>
-          <td style="font-weight:800">₪${(parseFloat(o.total_price)||0).toFixed(0)}</td>
-          <td>
-            <select onchange="updateOrderStatus('${o.id}',this.value,${o.order_number})"
-              style="padding:5px 8px;border-radius:8px;border:2px solid var(--border);font-family:inherit;font-size:.78rem;cursor:pointer">
-              ${Object.entries(STATUS_LABELS).map(([val,label])=>
-                `<option value="${val}" ${val===o.status?'selected':''}>${label}</option>`
-              ).join('')}
-            </select>
-          </td>
-          <td style="display:flex;gap:6px;align-items:center">
-            <button onclick="openOrderEdit('${o.id}')" title="עריכה"
-              style="background:var(--primary-soft);border:none;border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--primary)">${SVG.edit}</button>
-            <button onclick="printOrder('${o.id}')" title="הדפסת קבלה"
-              style="background:#f0fdf4;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;color:#16a34a">${SVG.printer}</button>
-            ${!['cancelled','done'].includes(o.status) ? `
-            ${o.dispute_status === 'pending'
-              ? `<span title="מחלוקת פתוחה — ממתין לתגובת לקוח" style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:8px;padding:6px 10px;color:#d97706;display:inline-flex;align-items:center;cursor:default">${SVG.alertTriangle}</span>`
-              : `<button onclick="openDisputeModal('${o.id}')" title="פריט חסר" style="background:#fffbeb;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;color:#d97706">${SVG.alertTriangle}</button>`}
-            <button onclick="openCancelRefundModal('${o.id}')" title="ביטול והחזר"
-              style="background:#fff0f6;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;color:#e0004d">${SVG.xCircle}</button>` : ''}
-          </td>
-        </tr>`).join('')}
-      </tbody>
-    </table>
-    </div>`;
+  container.innerHTML = `<div style="border-radius:16px;overflow:hidden;border:1.5px solid var(--border)">
+    ${orders.map(renderOrderRow).join('')}
+  </div>`;
 }
 
 async function updateOrderStatus(orderId, status, orderNumber) {
