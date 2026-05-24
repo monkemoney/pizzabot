@@ -1314,57 +1314,77 @@ function renderProductsTable() {
 }
 
 function renderProductRow(p, cat) {
-  const isExpanded   = expandedProducts.has(p.id);
-  const pData        = encodeProduct(p);
-  const addCount     = (p.additions || []).length;
+  const isExpanded = expandedProducts.has(p.id);
+  const pData      = encodeProduct(p);
+  const additions  = p.additions || [];
+  const addCount   = additions.length;
 
-  const additionsSection = isExpanded ? `
-    <div style="margin:0 20px 16px;border-radius:14px;border:1.5px solid var(--primary-soft);overflow:hidden;background:#faf8ff">
-      <div style="display:grid;grid-template-columns:1fr 80px 60px 44px 110px;padding:10px 18px;background:var(--primary-soft);font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.04em;gap:16px">
-        <span>תוספת</span><span>מחיר</span><span>תמונה</span><span>זמין</span><span></span>
+  // ── Topping toggles — always visible below the product row ──────────────────
+  const toppingsBar = addCount ? `
+    <div style="padding:8px 16px 12px 52px;display:flex;flex-wrap:wrap;gap:6px;border-top:1px solid var(--border);background:var(--bg)">
+      ${additions.map((a) => `
+        <button onclick="toggleAddition('${p.id}','${a.id}',${!a.is_available})"
+          title="${a.is_available ? 'זמין — לחץ לסימון כאזל' : 'אזל — לחץ להחזרה'}"
+          style="display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:50px;border:1.5px solid ${a.is_available ? 'var(--primary-soft)' : '#ffd0e6'};background:${a.is_available ? 'var(--primary-soft)' : '#fff0f6'};cursor:pointer;font-family:inherit;font-size:.76rem;font-weight:700;color:${a.is_available ? 'var(--primary)' : '#e0004d'};transition:all .18s">
+          <span style="width:7px;height:7px;border-radius:50%;background:${a.is_available ? '#22c55e' : '#e0004d'};flex-shrink:0"></span>
+          ${a.name_he}
+          <span style="font-weight:400;opacity:.75">+₪${parseFloat(a.price).toFixed(0)}</span>
+        </button>`).join('')}
+      <button onclick="toggleExpand('${p.id}')"
+        style="display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:50px;border:1.5px dashed var(--border);background:none;cursor:pointer;font-family:inherit;font-size:.76rem;color:var(--text-muted)">
+        ${isExpanded ? '▴ פחות' : '✏️ עריכה'}
+      </button>
+    </div>` : `
+    <div style="padding:6px 16px 10px 52px;border-top:1px solid var(--border);background:var(--bg)">
+      <button onclick="toggleExpand('${p.id}')"
+        style="display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:50px;border:1.5px dashed var(--border);background:none;cursor:pointer;font-family:inherit;font-size:.76rem;color:var(--text-muted)">
+        + הוסף תוספות
+      </button>
+    </div>`;
+
+  // ── Expanded: full edit table with edit/delete ───────────────────────────────
+  const editSection = isExpanded ? `
+    <div style="margin:0 12px 14px 52px;border-radius:12px;border:1.5px solid var(--primary-soft);overflow:hidden;background:#faf8ff">
+      <div style="display:grid;grid-template-columns:1fr 70px 50px 100px;padding:8px 14px;background:var(--primary-soft);font-size:.7rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.04em;gap:12px">
+        <span>תוספת</span><span>מחיר</span><span>תמונה</span><span></span>
       </div>
-      ${(p.additions||[]).map((a) => `
-        <div style="display:grid;grid-template-columns:1fr 80px 60px 44px 110px;padding:12px 18px;border-top:1px solid var(--primary-soft);align-items:center;gap:16px;font-size:.85rem">
+      ${additions.map((a) => `
+        <div style="display:grid;grid-template-columns:1fr 70px 50px 100px;padding:10px 14px;border-top:1px solid var(--primary-soft);align-items:center;gap:12px;font-size:.83rem">
           <span style="font-weight:600">${a.name_he}</span>
-          <span style="font-weight:700;color:var(--primary)">+₪${parseFloat(a.price).toFixed(2)}</span>
+          <span style="font-weight:700;color:var(--primary)">+₪${parseFloat(a.price).toFixed(0)}</span>
           <span>${imgThumb(a.image_url)}</span>
-          <span>${toggleSwitch(a.is_available, `toggleAddition('${p.id}','${a.id}',${!a.is_available})`)}</span>
-          <div style="display:flex;gap:6px">
-            <button onclick="openAdditionModal('${p.id}',${encodeAddition(a)})" class="btn btn-ghost btn-sm" style="padding:4px 10px;font-size:.75rem">עריכה</button>
-            <button onclick="deleteAddition('${p.id}','${a.id}','${a.name_he}')" class="btn-danger" style="font-size:.75rem;padding:4px 8px">מחק</button>
+          <div style="display:flex;gap:5px">
+            <button onclick="openAdditionModal('${p.id}',${encodeAddition(a)})" class="btn btn-ghost btn-sm" style="padding:3px 9px;font-size:.72rem">עריכה</button>
+            <button onclick="deleteAddition('${p.id}','${a.id}','${a.name_he}')" class="btn-danger" style="font-size:.72rem;padding:3px 7px">מחק</button>
           </div>
         </div>`).join('')}
-      ${!addCount ? `<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:.82rem">אין תוספות — לחץ להוספה</div>` : ''}
-      <div style="padding:12px 18px;border-top:1px solid var(--primary-soft)">
+      <div style="padding:10px 14px;border-top:1px solid var(--primary-soft)">
         <button onclick="openAdditionModal('${p.id}',null)" class="btn btn-outline btn-sm">+ הוסף תוספת</button>
       </div>
     </div>` : '';
 
-  const expandBtn = `<button onclick="toggleExpand('${p.id}')"
-    title="${isExpanded ? 'סגור תוספות' : 'ערוך תוספות'}"
-    style="background:${addCount ? 'var(--primary)' : 'var(--primary-soft)'};border:none;border-radius:8px;width:28px;height:28px;cursor:pointer;font-size:.78rem;color:${addCount ? '#fff' : 'var(--primary)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700">
-    ${isExpanded ? '▾' : (addCount ? addCount : '+')}</button>`;
-
   return `
-    <div class="product-row">
-      ${expandBtn}
-      ${imgThumb(p.image_url)}
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:700;font-size:.92rem">${p.name_he}</div>
-        ${p.name_en ? `<div style="font-size:.75rem;color:var(--text-muted)" dir="ltr">${p.name_en}</div>` : ''}
-        ${p.description ? `<div style="font-size:.73rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;margin-top:2px">${p.description}</div>` : ''}
+    <div style="border-bottom:1px solid var(--border)">
+      <div class="product-row" style="border-bottom:none">
+        ${imgThumb(p.image_url)}
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-weight:700;font-size:.92rem">${p.name_he}</span>
+            ${!p.is_available ? `<span style="font-size:.68rem;background:#fff0f6;color:#e0004d;padding:1px 8px;border-radius:50px;font-weight:700;border:1px solid #ffd0e6">אזל</span>` : ''}
+          </div>
+          ${p.name_en ? `<div style="font-size:.75rem;color:var(--text-muted)" dir="ltr">${p.name_en}</div>` : ''}
+          ${p.description ? `<div style="font-size:.73rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;margin-top:2px">${p.description}</div>` : ''}
+        </div>
+        <div style="font-weight:800;font-size:.95rem;color:var(--primary);min-width:60px">₪${parseFloat(p.price).toFixed(0)}</div>
+        ${toggleSwitch(p.is_available, `toggleProduct('${p.id}',${!p.is_available})`)}
+        <div style="display:flex;gap:6px;margin-right:4px">
+          <button onclick="openProductModal(${pData},'${p.category_id||''}')" class="btn btn-ghost btn-sm">עריכה</button>
+          <button onclick="deleteProduct('${p.id}','${p.name_he}')" class="btn-danger">מחק</button>
+        </div>
       </div>
-      <div style="font-weight:800;font-size:.95rem;color:var(--primary);min-width:70px">₪${parseFloat(p.price).toFixed(2)}</div>
-      <div style="font-size:.75rem;color:var(--text-muted);min-width:60px;text-align:center">
-        ${addCount ? `<span style="background:var(--primary-soft);color:var(--primary);padding:2px 10px;border-radius:50px;font-weight:700">${addCount} תוספות</span>` : ''}
-      </div>
-      ${toggleSwitch(p.is_available, `toggleProduct('${p.id}',${!p.is_available})`)}
-      <div style="display:flex;gap:8px;margin-right:4px">
-        <button onclick="openProductModal(${pData},'${p.category_id||''}')" class="btn btn-ghost btn-sm">עריכה</button>
-        <button onclick="deleteProduct('${p.id}','${p.name_he}')" class="btn-danger">מחק</button>
-      </div>
-    </div>
-    ${additionsSection}`;
+      ${toppingsBar}
+      ${editSection}
+    </div>`;
 }
 
 function encodeProduct(p) {
