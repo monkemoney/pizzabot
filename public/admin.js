@@ -139,6 +139,19 @@ function renderClients() {
     return;
   }
 
+  const q = (document.getElementById('clientSearch')?.value || '').trim().toLowerCase();
+  const list = q
+    ? _clients.filter(c =>
+        (c.name         || '').toLowerCase().includes(q) ||
+        (c.contact_phone|| '').includes(q) ||
+        (c.notes        || '').toLowerCase().includes(q))
+    : _clients;
+
+  if (!list.length) {
+    el.innerHTML = '<div style="color:#9b8fc0;font-size:.84rem;padding:20px;text-align:center">לא נמצאו תוצאות</div>';
+    return;
+  }
+
   const PLAN_LABELS = { basic:'Basic', pro:'Pro', enterprise:'Enterprise', trial:'Trial' };
 
   el.innerHTML = `<table>
@@ -146,7 +159,7 @@ function renderClients() {
       <th>שם עסק</th><th>טלפון</th><th>תוכנית</th><th>סטטוס</th><th>הערות</th><th>נוסף</th><th></th>
     </tr></thead>
     <tbody>
-      ${_clients.map(c => `
+      ${list.map(c => `
         <tr>
           <td style="font-weight:700">${c.name}</td>
           <td style="font-family:monospace;direction:ltr;font-size:.82rem;color:#9b8fc0">${c.contact_phone||'—'}</td>
