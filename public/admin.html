@@ -112,6 +112,10 @@ label { display: block; font-size: .82rem; font-weight: 700; color: var(--text-m
 .alert-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); font-size: .83rem; }
 .alert-row:last-child { border-bottom: none; }
 
+/* Alerts page grid */
+#alertsGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+#alertsGrid > .card { min-width: 0; }
+
 /* Mobile bottom nav */
 #mobile-nav {
   display: none; position: fixed; bottom: 0; left: 0; right: 0;
@@ -150,7 +154,7 @@ label { display: block; font-size: .82rem; font-weight: 700; color: var(--text-m
   #clientsTable, #recentClients { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   #clientsTable table, #recentClients table { min-width: 520px; }
   /* alerts: 2-col → 1-col */
-  #alertsGrid { grid-template-columns: 1fr !important; }
+  #alertsGrid { grid-template-columns: 1fr; }
   /* stats grid smaller min */
   #statsGrid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important; }
   /* modal full-width */
@@ -221,7 +225,7 @@ label { display: block; font-size: .82rem; font-weight: 700; color: var(--text-m
     <div class="page-header">
       <div class="page-title">התראות מערכת</div>
     </div>
-    <div id="alertsGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div id="alertsGrid">
       <!-- Settings card -->
       <div class="card" style="padding:24px 26px">
         <div style="font-size:.9rem;font-weight:800;color:var(--text);margin-bottom:18px">הגדרות התראות</div>
