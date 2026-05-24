@@ -340,9 +340,16 @@ Dashboard: ✕ button → modal:
 
 POST /api/orders/:id/cancel-refund:
   - assertTenant check first
-  - Tries Cardcom CancelDeal.aspx if cardcom_deal_number stored
-  - Falls back to manual-refund alert with Cardcom portal link
+  - cancelDeal(order.cardcom_deal_number) from cardcom.js
+      → has deal number: calls CancelDeal.aspx → refund_status='refunded'
+      → no deal number:  refund_status='manual' (order confirmed via redirect/polling, not webhook)
   - Always sends WhatsApp to customer
+
+refund_status='manual' → red indicator in dashboard:
+  - Summary row: "💳 זיכוי ידני" badge under status
+  - Expanded panel: red bar with direct link to Cardcom portal
+  - Actions area: "💳 זיכוי ידני נדרש ↗" clickable badge
+  - Mobile card: full-width red bar at bottom
 ```
 
 ### Cardcom Payment Flow
@@ -351,11 +358,17 @@ POST /api/orders/:id/cancel-refund:
 1. CREATE_PAYMENT → POST /api/v11/LowProfile/Create
    SuccessRedirectUrl = .../payment/success?rv=PB-XXXX
 2. pending_payments saved, URL sent to customer
-3a. /payment/success?rv= → confirms pending → saveOrder → notifies
-3b. IndicatorUrl POST (may not fire in test mode)
-3c. Polling every 2 min — confirms pending > 5 min old
+3a. IndicatorUrl POST → confirmPending(pending, 'webhook', dealNumber)
+      extracts: DealNumber || InternalDealNumber || CardcomDealNumber
+      saveOrder saves cardcom_deal_number → enables auto-refund later
+3b. /payment/success?rv= → confirmPending(pending, 'success-redirect', null)
+      no dealNumber from redirect — cardcom_deal_number stays null
+3c. Polling every 2 min — confirmPending(pending, 'poll', null)
+      no dealNumber — cardcom_deal_number stays null
 
 NOTE: GetLowProfileIndicatorData = 404. verifyPayment() = no-op.
+NOTE: auto-refund only works when order confirmed via webhook (has dealNumber).
+      redirect/polling confirmations → refund_status='manual' on cancellation.
 ```
 
 ### Products — Always-Visible Topping Toggles
@@ -415,7 +428,9 @@ clients            -- platform clients: name, contact_phone, plan, status, notes
 - Credit payment: Cardcom v11, success-redirect rv=, 5-min polling fallback
 - Cash payment: direct save
 - Dispute flow: multi-item/topping checkbox, bot handles 1/2/3 responses
-- Cancel + refund: editable WhatsApp preview, Cardcom refund attempt
+- Cancel + refund: editable WhatsApp preview, `cancelDeal()` auto-refund via Cardcom
+- `cardcom_deal_number` saved from IndicatorUrl webhook → enables auto-refund
+- Red manual-refund indicator in dashboard when `refund_status='manual'` (4 locations)
 - Expandable order rows with full details + actions inline
 - Stats page: 7 Chart.js charts
 - Push notifications: VAPID + Service Worker
@@ -426,16 +441,16 @@ clients            -- platform clients: name, contact_phone, plan, status, notes
 - Public menu `/menu.html`
 - **Vendor portal** `/admin`: isolated SPA for platform owner — client CRUD, KPI dashboard, alert settings
 - **Vendor alerts**: real-time throttled WhatsApp alerts for errors/payments/restarts
-- **Tenant isolation**: orders filtered/guarded by `tenant_id` on all read + write endpoints
+- `assertTenant()` soft guard on all order mutation endpoints
 
 ### ❌ Missing / needs work
 | Item | Notes |
 |------|-------|
-| Cardcom production | Test terminal 1000. Auto-refund needs `cardcom_deal_number` from prod webhook |
-| Cardcom auto-refund | `CancelDeal.aspx` needs `InternalDealNumber` — not stored yet |
+| Cardcom production | Test terminal 1000 — switch to prod terminal before go-live |
+| Cardcom auto-refund blind spot | Orders confirmed via success-redirect or polling have no `cardcom_deal_number` → manual refund |
 | No test suite | Zero automated tests |
 | Bit / Paybox | Settings toggles only |
-| Multi-tenant full isolation | categories/products/settings not yet per-tenant (single deployment per business) |
+| Multi-tenant full isolation | deferred — one deployment per client (model A) for now |
 
 ---
 
@@ -493,7 +508,13 @@ Until this runs, all order API calls return empty (`.eq('tenant_id', ...)` on a 
 The function signature is `notifyStatusChange(phone, status, lang, orderNumber, order)`. The 5th param `order` is needed to build the courier WhatsApp message. Dashboard API's `PATCH /orders/:id/status` passes the full order object. Other callers (admin-handler, payment.js) should also pass it when available.
 
 ### Cardcom GetLowProfileIndicatorData = 404
-Verified 2026-05. No v11 JSON verification endpoint exists. `verifyPayment()` returns `success:true` immediately. Confirmation via: success-redirect `?rv=`, IndicatorUrl POST, 5-min polling.
+Verified 2026-05. No v11 JSON verification endpoint exists. `verifyPayment()` returns `success:true` immediately. Confirmation via: IndicatorUrl POST (preferred — sends `DealNumber`), success-redirect `?rv=`, 5-min polling.
+
+### cardcom_deal_number only available from IndicatorUrl POST
+`DealNumber` (also `InternalDealNumber`, `CardcomDealNumber`) comes only in the Cardcom IndicatorUrl webhook POST. Success-redirect and polling do not carry it. Orders confirmed via redirect/polling will have `cardcom_deal_number=null` and cannot be auto-refunded — `refund_status` is set to `'manual'` and a red indicator appears in the dashboard.
+
+### cancelDeal() lives in cardcom.js
+`cancelDeal(dealNumber)` posts to `CancelDeal.aspx` (form-encoded, not JSON v11). Returns `{ success, message }`. Called from cancel-refund handler in dashboard-api.js. If `dealNumber` is null, returns `{ success: false }` immediately.
 
 ### Cardcom success redirect doesn't pass params
 Test terminal doesn't append params to SuccessRedirectUrl. Fix: embed `ReturnValue` in the URL itself as `?rv=PB-XXXX`.
