@@ -35,8 +35,11 @@ async function api(method, path, body) {
 function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.mnav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
   document.getElementById('nav-' + name).classList.add('active');
+  const mb = document.getElementById('mnav-' + name);
+  if (mb) mb.classList.add('active');
 
   if (name === 'dashboard') refreshDashboard();
   if (name === 'clients')   loadClients();
