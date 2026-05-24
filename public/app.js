@@ -747,69 +747,134 @@ function openDisputeModal(orderId) {
   if (!o) return;
   _disputeOrderId = orderId;
 
-  document.getElementById('disputeOrderNum').textContent = `#${o.order_number} — ${o.customer_name || '—'}`;
+  document.getElementById('disputeOrderNum').textContent = `#${o.order_number}`;
 
-  const items  = Array.isArray(o.items) ? o.items : [];
-  const select = document.getElementById('disputeItemSelect');
-  select.innerHTML = items.length
-    ? items.map((it, i) => {
-        const name  = it.name || it.name_he || 'פריט';
-        const qty   = it.quantity || it.qty || 1;
-        const price = parseFloat(it.price) || 0;
-        return `<option value="${i}">${name}${qty > 1 ? ` ×${qty}` : ''} — ₪${(price * qty).toFixed(0)}</option>`;
-      }).join('')
-    : '<option value="">אין פריטים</option>';
+  const items = Array.isArray(o.items) ? o.items : [];
+  const list  = document.getElementById('disputeItemList');
+
+  list.innerHTML = items.map((it, i) => {
+    const name     = it.name || it.name_he || 'פריט';
+    const qty      = it.quantity || it.qty || 1;
+    const price    = parseFloat(it.price) || 0;
+    const toppings = (it.toppings || []).filter(t => (t.name || t.name_he));
+
+    const toppingRows = toppings.map((t, ti) => {
+      const tName  = t.name || t.name_he || 'תוספת';
+      const tPrice = parseFloat(t.price) || 0;
+      return `
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 10px 5px 28px;cursor:pointer;font-size:.8rem;color:var(--text-muted)">
+          <input type="checkbox" data-item="${i}" data-topping="${ti}"
+            onchange="updateDisputePreview()"
+            style="accent-color:#f59e0b;width:14px;height:14px;flex-shrink:0">
+          <span>↳ ${tName}${tPrice ? ` (+₪${tPrice.toFixed(0)})` : ''}</span>
+        </label>`;
+    }).join('');
+
+    return `
+      <div style="background:var(--bg);border-radius:12px;overflow:hidden">
+        <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;font-weight:600;font-size:.85rem">
+          <input type="checkbox" data-item="${i}" data-topping=""
+            onchange="updateDisputePreview()"
+            style="accent-color:#f59e0b;width:16px;height:16px;flex-shrink:0">
+          <span>${name}${qty > 1 ? ` ×${qty}` : ''}</span>
+          ${price ? `<span style="margin-right:auto;color:var(--text-muted);font-weight:400;font-size:.78rem">₪${(price*qty).toFixed(0)}</span>` : ''}
+        </label>
+        ${toppingRows}
+      </div>`;
+  }).join('') || '<div style="color:var(--text-muted);font-size:.84rem;padding:8px">אין פריטים בהזמנה</div>';
 
   updateDisputePreview();
   openModal('disputeModal');
 }
 
-function updateDisputePreview() {
-  const o = currentOrders.find(x => x.id === _disputeOrderId);
-  if (!o) return;
-  const items  = Array.isArray(o.items) ? o.items : [];
-  const idx    = parseInt(document.getElementById('disputeItemSelect').value);
-  const item   = items[idx];
-  const el     = document.getElementById('disputePreview');
-  if (!item) { el.textContent = ''; return; }
+function getCheckedDisputes() {
+  const checked = document.querySelectorAll('#disputeItemList input[type=checkbox]:checked');
+  const o       = currentOrders.find(x => x.id === _disputeOrderId);
+  if (!o) return [];
+  const items   = Array.isArray(o.items) ? o.items : [];
+  const result  = [];
 
-  const name     = item.name || item.name_he || 'פריט';
-  const price    = parseFloat(item.price) || 0;
-  const qty      = item.quantity || item.qty || 1;
-  const priceStr = price > 0 ? ` (החזר של ₪${(price * qty).toFixed(0)})` : '';
-  const greeting = o.customer_name ? `שלום ${o.customer_name}! 🙏` : `שלום! 🙏`;
+  checked.forEach(cb => {
+    const itemIdx    = parseInt(cb.dataset.item);
+    const toppingIdx = cb.dataset.topping !== '' ? parseInt(cb.dataset.topping) : null;
+    const item       = items[itemIdx];
+    if (!item) return;
+
+    if (toppingIdx === null) {
+      // Full item missing
+      result.push({
+        type:  'item',
+        name:  item.name || item.name_he || 'פריט',
+        price: parseFloat(item.price) || 0,
+        qty:   item.quantity || item.qty || 1,
+      });
+    } else {
+      // Topping missing
+      const top = (item.toppings || [])[toppingIdx];
+      if (!top) return;
+      result.push({
+        type:      'topping',
+        name:      top.name || top.name_he || 'תוספת',
+        price:     parseFloat(top.price) || 0,
+        qty:       1,
+        item_name: item.name || item.name_he || 'פריט',
+      });
+    }
+  });
+  return result;
+}
+
+function updateDisputePreview() {
+  const o       = currentOrders.find(x => x.id === _disputeOrderId);
+  const el      = document.getElementById('disputePreview');
+  const disputes = getCheckedDisputes();
+
+  if (!o || !disputes.length) {
+    el.textContent = 'יש לסמן לפחות פריט אחד כדי לראות תצוגה מקדימה.';
+    return;
+  }
+
+  const greeting  = o.customer_name ? `שלום ${o.customer_name}! 🙏` : `שלום! 🙏`;
+  const isSingle  = disputes.length === 1;
+  const refund    = disputes.reduce((s, d) => s + d.price * (d.qty || 1), 0);
+  const refundStr = refund > 0 ? ` (זיכוי של ₪${refund.toFixed(0)})` : '';
+
+  const listStr = disputes.map(d =>
+    d.type === 'item'
+      ? `• *${d.name}*${d.qty > 1 ? ` ×${d.qty}` : ''}`
+      : `• תוספת *${d.name}* (ב${d.item_name})`
+  ).join('\n');
 
   el.textContent =
-    `${greeting}\n\nלצערנו, הפריט "${name}" אזל במלאי ואינו זמין להזמנה מספר ${o.order_number}.\n\nבחר אחת מהאפשרויות הבאות:\n1 — לבטל את ההזמנה לגמרי\n2 — להמשיך ללא "${name}"${priceStr}\n3 — להמשיך עם ההזמנה כפי שהיא\n\nשלח את המספר המתאים 👆`;
+    `${greeting}\n\n` +
+    `לצערנו, ${isSingle ? 'הפריט הבא' : 'הפריטים הבאים'} אזל${isSingle ? '' : 'ו'} במלאי:\n` +
+    `${listStr}\n\n` +
+    `(הזמנה מספר *${o.order_number}*)\n\n` +
+    `מה תרצה לעשות?\n` +
+    `*1* — לבטל את ההזמנה לגמרי\n` +
+    `*2* — להמשיך ללא ${isSingle ? disputes[0].name : 'הפריטים החסרים'}${refundStr}\n` +
+    `*3* — להחליף בפריט אחר (כתוב מה תרצה)\n\n` +
+    `שלח את המספר המתאים 👆`;
 }
 
 async function confirmDispute() {
-  const o = currentOrders.find(x => x.id === _disputeOrderId);
-  if (!o) return;
-  const items = Array.isArray(o.items) ? o.items : [];
-  const idx   = parseInt(document.getElementById('disputeItemSelect').value);
-  const item  = items[idx];
-  if (!item) return;
+  const disputes = getCheckedDisputes();
+  if (!disputes.length) { alert('יש לסמן לפחות פריט אחד'); return; }
 
-  const name  = item.name || item.name_he || 'פריט';
-  const price = parseFloat(item.price) || 0;
-  const btn   = document.getElementById('disputeConfirmBtn');
-
-  btn.disabled    = true;
-  btn.textContent = 'שולח...';
+  const btn = document.getElementById('disputeConfirmBtn');
+  btn.disabled = true; btn.textContent = 'שולח...';
 
   try {
-    await api('POST', `/orders/${_disputeOrderId}/item-dispute`, { item_name: name, item_price: price });
+    await api('POST', `/orders/${_disputeOrderId}/item-dispute`, { disputes });
     closeModal('disputeModal');
     const ord = currentOrders.find(x => x.id === _disputeOrderId);
-    if (ord) { ord.dispute_status = 'pending'; ord.dispute_item = name; }
-    renderOrdersTable(currentOrders);
-    showToast(`הודעה נשלחה ללקוח בנוגע ל"${name}"`);
+    if (ord) { ord.dispute_status = 'pending'; ord.dispute_items = disputes; }
+    filterOrders();
+    showToast(`הודעה נשלחה ללקוח — ${disputes.length} ${disputes.length === 1 ? 'פריט' : 'פריטים'} חסרים`);
   } catch (err) {
-    showToast(err.message || 'שגיאה בשליחת המחלוקת', 'error');
+    alert(err.message || 'שגיאה בשליחת המחלוקת');
   } finally {
-    btn.disabled    = false;
-    btn.textContent = 'שלח ללקוח';
+    btn.disabled = false; btn.textContent = 'שלח ללקוח';
   }
 }
 

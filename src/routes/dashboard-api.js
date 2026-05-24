@@ -211,8 +211,12 @@ router.post('/orders/:id/cancel-refund', requireAdmin, async (req, res) => {
 // ─── Item Dispute ─────────────────────────────────────────────────────────────
 
 router.post('/orders/:id/item-dispute', requireAdmin, async (req, res) => {
-  const { item_name, item_price = 0 } = req.body;
-  if (!item_name) return res.status(400).json({ error: 'item_name required' });
+  // disputes = [{ type:'item'|'topping', name, price, qty, item_name? }]
+  const { disputes, item_name, item_price } = req.body;
+
+  // Support both old single-item and new multi format
+  const items = disputes && disputes.length ? disputes : (item_name ? [{ type: 'item', name: item_name, price: parseFloat(item_price) || 0, qty: 1 }] : []);
+  if (!items.length) return res.status(400).json({ error: 'יש לבחור לפחות פריט אחד' });
 
   const order = await getOrderById(req.params.id);
   if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
@@ -221,45 +225,54 @@ router.post('/orders/:id/item-dispute', requireAdmin, async (req, res) => {
   if (order.dispute_status === 'pending')
     return res.status(400).json({ error: 'כבר קיימת מחלוקת פתוחה להזמנה זו' });
 
-  // Mark order as having a pending dispute
+  const isSingle = items.length === 1;
+  const refund   = items.reduce((s, d) => s + (d.price || 0) * (d.qty || 1), 0);
+
+  // Mark order
   const { error: orderErr } = await supabase.from('orders').update({
     dispute_status: 'pending',
-    dispute_item:   item_name,
+    dispute_item:   items.map(d => d.name).join(', '),
     updated_at:     new Date().toISOString(),
   }).eq('id', order.id);
   if (orderErr) return res.status(500).json({ error: orderErr.message });
 
-  // Store dispute context in customer's session so the bot can handle the reply
+  // Store full context in session for bot to resolve
   await updateSession(order.phone, {
     pending_dispute: {
       order_id:     order.id,
       order_number: order.order_number,
-      item_name,
-      item_price:   parseFloat(item_price) || 0,
+      items,
+      refund:       Math.round(refund * 100) / 100,
       created_at:   new Date().toISOString(),
     },
   });
 
-  // Build and send WhatsApp message to customer
-  const greeting = order.customer_name ? `שלום ${order.customer_name}! 🙏` : `שלום! 🙏`;
-  const priceStr = parseFloat(item_price) > 0
-    ? ` (החזר של ₪${parseFloat(item_price).toFixed(0)})` : '';
+  // Build WhatsApp message
+  const greeting  = order.customer_name ? `שלום ${order.customer_name}! 🙏` : `שלום! 🙏`;
+  const refundStr = refund > 0 ? ` (זיכוי של ₪${refund.toFixed(0)})` : '';
+  const listStr   = items.map(d =>
+    d.type === 'topping'
+      ? `• תוספת *${d.name}* (ב${d.item_name})`
+      : `• *${d.name}*${d.qty > 1 ? ` ×${d.qty}` : ''}`
+  ).join('\n');
 
   const msg =
     `${greeting}\n\n` +
-    `לצערנו, הפריט *${item_name}* אזל במלאי ואינו זמין להזמנה מספר *${order.order_number}*.\n\n` +
-    `בחר אחת מהאפשרויות הבאות:\n` +
+    `לצערנו, ${isSingle ? 'הפריט הבא' : 'הפריטים הבאים'} אזל${isSingle ? '' : 'ו'} במלאי:\n` +
+    `${listStr}\n\n` +
+    `(הזמנה מספר *${order.order_number}*)\n\n` +
+    `מה תרצה לעשות?\n` +
     `*1* — לבטל את ההזמנה לגמרי\n` +
-    `*2* — להמשיך ללא *${item_name}*${priceStr}\n` +
-    `*3* — להמשיך עם ההזמנה כפי שהיא\n\n` +
+    `*2* — להמשיך ללא ${isSingle ? `*${items[0].name}*` : 'הפריטים החסרים'}${refundStr}\n` +
+    `*3* — להחליף בפריט אחר (כתוב מה תרצה)\n\n` +
     `שלח את המספר המתאים 👆`;
 
-  await sendMessage(order.phone, msg).catch((err) =>
-    console.error('[dispute] WhatsApp notify failed:', err.message)
+  await sendMessage(order.phone, msg).catch(err =>
+    console.error('[dispute] WhatsApp failed:', err.message)
   );
 
-  console.log(`[dispute] Opened for order #${order.order_number}, item="${item_name}"`);
-  res.json({ success: true, orderNumber: order.order_number });
+  console.log(`[dispute] Order #${order.order_number} — ${items.length} missing: ${items.map(d=>d.name).join(', ')}`);
+  res.json({ success: true });
 });
 
 // ─── Stats (admin only) ───────────────────────────────────────────────────────

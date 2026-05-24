@@ -47,63 +47,115 @@ function makeReturnValue() {
 
 async function handleDisputeResponse(phone, userMessage, session) {
   const dispute = session.pending_dispute;
-  const choice  = userMessage.trim().replace(/\s+/g, '');
+  const msg     = userMessage.trim();
 
-  const priceStr = (dispute.item_price || 0) > 0
-    ? ` (החזר של ₪${parseFloat(dispute.item_price).toFixed(0)})` : '';
+  // Normalise: support both new (items[]) and old (item_name) format
+  const missingItems = dispute.items && dispute.items.length
+    ? dispute.items
+    : [{ type: 'item', name: dispute.item_name || '?', price: dispute.item_price || 0, qty: 1 }];
+
+  const totalRefund = missingItems.reduce((s, d) => s + (d.price || 0) * (d.qty || 1), 0);
+  const isSingle    = missingItems.length === 1;
+  const namesStr    = isSingle ? `*${missingItems[0].name}*` : 'הפריטים החסרים';
+  const refundStr   = totalRefund > 0 ? ` (זיכוי של ₪${totalRefund.toFixed(0)})` : '';
+
+  const choice = msg.replace(/\s+/g, '');
+
+  // ── If waiting for replacement text (choice already was '3') ────────────────
+  if (dispute.awaiting_replacement) {
+    const order = await getOrderById(dispute.order_id);
+    if (!order || ['cancelled', 'done'].includes(order.status)) {
+      await updateSession(phone, { pending_dispute: null });
+      await reply(phone, 'ההזמנה כבר אינה פעילה. 🙏');
+      return;
+    }
+    // Mark dispute resolved, add replacement note, pass to Claude to process
+    await updateOrder(order.id, { dispute_status: 'resolved', dispute_resolution: 'replaced' });
+    await updateSession(phone, {
+      pending_dispute: null,
+      // Inject context so Claude knows what happened
+    });
+    // Let Claude handle the replacement naturally with context
+    const systemContext = `הלקוח ביקש להחליף את ${namesStr} ב: "${msg}". עדכן את העגלה בהתאם, אשר את השינוי ועבור לסיכום.`;
+    await reply(phone, `מעולה! בודקים אפשרות להחלפה — ${msg}. נחזור אליך מיד.`);
+    // Continue with Claude to handle replacement
+    await handleMessage(phone, `רוצה לשנות ${missingItems.map(d=>d.name).join(' ו')} ל: ${msg}`);
+    return;
+  }
 
   if (!['1', '2', '3'].includes(choice)) {
-    await reply(phone,
-      `אנא שלח *1*, *2* או *3* לפי בחירתך:\n*1* — לבטל את ההזמנה\n*2* — להמשיך ללא *${dispute.item_name}*${priceStr}\n*3* — להמשיך עם ההזמנה כפי שהיא`
-    );
+    const hint = `אנא שלח:\n*1* — לבטל את ההזמנה\n*2* — להמשיך ללא ${namesStr}${refundStr}\n*3* — להחליף בפריט אחר`;
+    await reply(phone, hint);
     return;
   }
 
   const order = await getOrderById(dispute.order_id);
-
   if (!order || ['cancelled', 'done'].includes(order.status)) {
     await updateSession(phone, { pending_dispute: null });
     await reply(phone, 'ההזמנה כבר אינה פעילה. תודה! 🙏');
     return;
   }
 
+  // ── 1: Cancel ──
   if (choice === '1') {
     await updateOrderStatus(order.id, 'cancelled');
-    await updateOrder(order.id, { dispute_status: 'resolved', dispute_resolution: 'cancelled' });
+    await updateOrder(order.id, { dispute_status: 'resolved', dispute_resolution: 'cancelled', cancelled_by: 'customer' });
     await updateSession(phone, { pending_dispute: null, conversation_history: [], pending_order: {} });
     const refundNote = order.payment_method === 'credit'
-      ? '\nנחזור אליך בנוגע להחזר התשלום.' : '';
+      ? '\nהתשלום יזוכה לכרטיסך תוך 3-5 ימי עסקים.' : '';
     await reply(phone, `✅ הזמנה מספר *${dispute.order_number}* בוטלה.${refundNote}\n\nמצטערים על אי הנוחות 🙏`);
+    return;
+  }
 
-  } else if (choice === '2') {
-    const existing = (order.items || []).find(
-      (it) => (it.name || it.name_he) === dispute.item_name
-    );
-    const itemQty  = existing ? (existing.quantity || existing.qty || 1) : 1;
-    const removed  = (parseFloat(dispute.item_price) || 0) * itemQty;
-    const newItems = (order.items || []).filter(
-      (it) => (it.name || it.name_he) !== dispute.item_name
-    );
+  // ── 2: Continue without missing items ──
+  if (choice === '2') {
+    let orderItems = [...(order.items || [])];
+    let removed    = 0;
+
+    for (const d of missingItems) {
+      if (d.type === 'topping') {
+        // Remove topping from all items that have it
+        orderItems = orderItems.map(it => ({
+          ...it,
+          toppings: (it.toppings || []).filter(t => (t.name || t.name_he) !== d.name),
+        }));
+      } else {
+        // Remove item entirely
+        const before = orderItems.length;
+        orderItems   = orderItems.filter(it => (it.name || it.name_he) !== d.name);
+        const qty    = d.qty || 1;
+        if (orderItems.length < before) removed += (d.price || 0) * qty;
+      }
+    }
+
     const newTotal = Math.max(0, (parseFloat(order.total_price) || 0) - removed);
     await updateOrder(order.id, {
-      items:              newItems,
+      items:              orderItems,
       total_price:        newTotal,
       dispute_status:     'resolved',
-      dispute_resolution: 'removed_item',
+      dispute_resolution: 'removed',
     });
     await updateSession(phone, { pending_dispute: null });
+
+    const removedList = missingItems.map(d =>
+      d.type === 'topping' ? `תוספת ${d.name}` : d.name).join(', ');
     const refundNote = order.payment_method === 'credit' && removed > 0
       ? `\nהחזר של ₪${removed.toFixed(0)} יזוכה לכרטיסך.` : '';
-    await reply(phone,
-      `✅ הפריט *${dispute.item_name}* הוסר מהזמנתך.\nהסכום המעודכן: ₪${newTotal.toFixed(0)}.${refundNote}\nתודה על ההבנה! 🙏`
-    );
 
-  } else {
-    // choice === '3' — continue as-is
-    await updateOrder(order.id, { dispute_status: 'resolved', dispute_resolution: 'continued' });
-    await updateSession(phone, { pending_dispute: null });
-    await reply(phone, `✅ מעולה! נמשיך עם הזמנתך מספר *${dispute.order_number}* כפי שהיא.\nתודה על ההבנה! 🙏`);
+    await reply(phone,
+      `✅ ההזמנה עודכנה — הוסרו: *${removedList}*.\n` +
+      `סכום מעודכן: ₪${newTotal.toFixed(0)}.${refundNote}\nתודה על ההבנה! 🙏`
+    );
+    return;
   }
+
+  // ── 3: Replace with something else ──
+  await updateSession(phone, {
+    pending_dispute: { ...dispute, awaiting_replacement: true },
+  });
+  await reply(phone,
+    `מה תרצה במקום ${namesStr}? 😊\n\nכתוב מה תרצה להחליף ואנחנו נבדוק שיש לנו.`
+  );
 }
 
 // ─── Main handler ────────────────────────────────────────────────────────────

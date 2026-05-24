@@ -791,27 +791,36 @@ input[type=time] { direction: ltr; }
 
 <!-- ── Item Dispute Modal ── -->
 <div id="disputeModal" class="modal-overlay">
-  <div class="modal" style="max-width:440px">
+  <div class="modal" style="max-width:500px">
     <div class="modal-header">
-      <div class="modal-title">פריט חסר בהזמנה</div>
+      <div class="modal-title">
+        <span id="disputeOrderNum" style="color:var(--primary)"></span> — פריטים חסרים
+      </div>
       <button onclick="closeModal('disputeModal')" class="modal-close">&times;</button>
     </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:var(--bg);border-radius:12px;margin-bottom:18px">
-      <span style="color:var(--text-muted);font-size:.85rem">הזמנה</span>
-      <span style="font-weight:800;color:var(--primary);font-size:1rem" id="disputeOrderNum">#—</span>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+
+      <!-- Item/topping checklist -->
+      <div>
+        <div style="font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">
+          סמן את הפריטים/תוספות שנגמרו במלאי
+        </div>
+        <div id="disputeItemList" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto"></div>
+      </div>
+
+      <!-- Preview -->
+      <div style="border-radius:12px;border:1.5px solid #fcd34d;overflow:hidden">
+        <div style="background:#fffbeb;padding:8px 12px;font-size:.72rem;font-weight:700;color:#d97706">
+          הודעה שתישלח ללקוח ב-WhatsApp
+        </div>
+        <div id="disputePreview" style="padding:12px;font-size:.82rem;line-height:1.7;white-space:pre-line;color:var(--text);background:#fefce8"></div>
+      </div>
+
     </div>
-    <div class="form-group" style="margin-bottom:14px">
-      <label class="form-label">בחר את הפריט החסר:</label>
-      <select id="disputeItemSelect" class="form-input" onchange="updateDisputePreview()" style="width:100%"></select>
-    </div>
-    <div style="background:var(--bg);border-radius:12px;padding:14px;margin-bottom:20px">
-      <div style="font-size:.74rem;font-weight:700;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">הודעה שתישלח ללקוח</div>
-      <div id="disputePreview" style="font-size:.82rem;line-height:1.6;white-space:pre-line;direction:rtl;color:var(--text)"></div>
-    </div>
-    <div style="display:flex;gap:10px">
-      <button onclick="closeModal('disputeModal')" class="btn btn-ghost" style="flex:1">ביטול</button>
+    <div class="modal-footer">
+      <button onclick="closeModal('disputeModal')" class="btn btn-ghost">ביטול</button>
       <button onclick="confirmDispute()" id="disputeConfirmBtn"
-        class="btn" style="flex:2;background:#f59e0b;color:#fff;border-color:#f59e0b">שלח ללקוח</button>
+        class="btn" style="background:#f59e0b;color:#fff">שלח ללקוח</button>
     </div>
   </div>
 </div>
