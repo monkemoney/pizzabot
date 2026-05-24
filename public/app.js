@@ -82,7 +82,7 @@ function showTab(name) {
   if (name === 'orders')    loadOrders();
   if (name === 'products')  loadProducts();
   if (name === 'customers') loadCustomers();
-  if (name === 'settings')  loadSettings();
+  if (name === 'settings')  { loadSettings(); loadAdminUsers(); }
   if (name === 'stats')     setPeriod(currentPeriod);
 }
 
@@ -2244,3 +2244,101 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 initPush();
+
+// ─── Admin Users ──────────────────────────────────────────────────────────────
+
+let _adminUsers = [];
+
+async function loadAdminUsers() {
+  const el = document.getElementById('adminUsersTable');
+  if (!el) return;
+  try {
+    _adminUsers = await api('GET', '/admin-users');
+    renderAdminUsers();
+  } catch (err) {
+    el.innerHTML = `<div style="color:red;font-size:.84rem">${err.message}</div>`;
+  }
+}
+
+function renderAdminUsers() {
+  const el = document.getElementById('adminUsersTable');
+  if (!el) return;
+
+  if (!_adminUsers.length) {
+    el.innerHTML = `<div style="color:var(--text-muted);font-size:.84rem;padding:12px 0;text-align:center">
+      אין מנהלים עדיין — לחץ "+ הוסף מנהל" כדי להתחיל
+    </div>`;
+    return;
+  }
+
+  const roleLabel = { admin: 'מנהל', manager: 'מנג׳ר' };
+
+  el.innerHTML = `
+    <table>
+      <thead><tr>
+        <th>שם</th>
+        <th>טלפון</th>
+        <th>תפקיד</th>
+        <th>נוסף</th>
+        <th></th>
+      </tr></thead>
+      <tbody>
+        ${_adminUsers.map(u => `
+          <tr>
+            <td style="font-weight:700">${u.name}</td>
+            <td style="font-family:monospace;direction:ltr;font-size:.84rem;color:var(--text-muted)">${u.phone}</td>
+            <td>
+              <span class="badge ${u.role === 'admin' ? 'badge-new' : 'badge-done'}">
+                ${roleLabel[u.role] || u.role}
+              </span>
+            </td>
+            <td style="font-size:.78rem;color:var(--text-muted)">${formatDate(u.created_at)}</td>
+            <td>
+              <button onclick="deleteAdminUser('${u.id}','${u.name}')"
+                class="btn-danger" style="font-size:.76rem;padding:4px 10px">מחק</button>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function openAddAdminModal() {
+  document.getElementById('adminName').value  = '';
+  document.getElementById('adminPhone').value = '';
+  document.getElementById('adminRole').value  = 'admin';
+  openModal('addAdminModal');
+  setTimeout(() => document.getElementById('adminName').focus(), 100);
+}
+
+async function submitAddAdmin(e) {
+  e.preventDefault();
+  const name  = document.getElementById('adminName').value.trim();
+  const phone = document.getElementById('adminPhone').value.trim();
+  const role  = document.getElementById('adminRole').value;
+  const btn   = e.target.querySelector('[type=submit]');
+  btn.disabled = true; btn.textContent = 'שומר...';
+
+  try {
+    const user = await api('POST', '/admin-users', { name, phone, role });
+    _adminUsers.push(user);
+    renderAdminUsers();
+    closeModal('addAdminModal');
+    showToast(`✅ ${name} נוסף כמנהל`);
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'הוסף';
+  }
+}
+
+async function deleteAdminUser(id, name) {
+  if (!confirm(`למחוק את "${name}" מרשימת המנהלים?`)) return;
+  try {
+    await api('DELETE', `/admin-users/${id}`);
+    _adminUsers = _adminUsers.filter(u => u.id !== id);
+    renderAdminUsers();
+    showToast(`${name} הוסר`);
+  } catch (err) {
+    alert(err.message);
+  }
+}

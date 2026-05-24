@@ -713,4 +713,53 @@ router.patch('/settings', requireAdmin, async (req, res) => {
   }
 });
 
+// ─── Admin Users ─────────────────────────────────────────────────────────────
+
+// Ensure table exists on first use (idempotent)
+async function ensureAdminUsersTable() {
+  await supabase.rpc('exec_ddl', {
+    sql: `CREATE TABLE IF NOT EXISTS admin_users (
+      id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      phone      TEXT NOT NULL UNIQUE,
+      name       TEXT NOT NULL,
+      role       TEXT NOT NULL DEFAULT 'admin',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`
+  }).catch(() => {}); // rpc may not exist — table created via schema.sql migration
+}
+
+router.get('/admin-users', requireAdmin, async (_req, res) => {
+  await ensureAdminUsersTable();
+  const { data, error } = await supabase
+    .from('admin_users').select('*').order('created_at');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+router.post('/admin-users', requireAdmin, async (req, res) => {
+  const { phone, name, role = 'admin' } = req.body;
+  if (!phone || !name) return res.status(400).json({ error: 'phone ו-name הם שדות חובה' });
+
+  // Normalise phone: strip non-digits, ensure no leading +
+  const normalised = phone.replace(/\D/g, '');
+  if (normalised.length < 9) return res.status(400).json({ error: 'מספר טלפון לא תקין' });
+
+  const { data, error } = await supabase
+    .from('admin_users')
+    .insert({ phone: normalised, name: name.trim(), role })
+    .select().single();
+  if (error) {
+    const msg = error.code === '23505' ? 'מספר טלפון זה כבר קיים' : error.message;
+    return res.status(400).json({ error: msg });
+  }
+  res.status(201).json(data);
+});
+
+router.delete('/admin-users/:id', requireAdmin, async (req, res) => {
+  const { error } = await supabase
+    .from('admin_users').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
 module.exports = router;

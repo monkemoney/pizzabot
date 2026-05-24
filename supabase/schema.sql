@@ -214,3 +214,12 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS pending_dispute   JSONB;  -- {orde
 ALTER TABLE orders   ADD COLUMN IF NOT EXISTS dispute_status    TEXT;   -- null | 'pending' | 'resolved'
 ALTER TABLE orders   ADD COLUMN IF NOT EXISTS dispute_item      TEXT;
 ALTER TABLE orders   ADD COLUMN IF NOT EXISTS dispute_resolution TEXT;  -- 'cancelled' | 'removed_item' | 'continued'
+
+-- ── Admin users (WhatsApp bot managers) ───────────────────────────────────────
+CREATE TABLE IF NOT EXISTS admin_users (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  phone      TEXT NOT NULL UNIQUE,   -- international format, e.g. 972501234567
+  name       TEXT NOT NULL,
+  role       TEXT NOT NULL DEFAULT 'admin',  -- 'admin' | 'manager'
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);

@@ -11,6 +11,7 @@ const businessBotRouter = require('./routes/business-bot');
 const { handleMessage }   = require('./bot/handler');
 const { formatPhone } = require('./services/greenapi');
 const { autoCompleteDeliveredOrders } = require('./services/supabase');
+const { createClient: createSB }       = require('@supabase/supabase-js');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -186,11 +187,24 @@ async function pollPendingPayments() {
 setInterval(pollPendingPayments, 2 * 60 * 1000); // every 2 minutes
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`[server] Pizza bot listening on port ${PORT}`);
   console.log(`[server] Dashboard: http://localhost:${PORT}/`);
   console.log(`[server] Webhook:   http://localhost:${PORT}/webhook`);
   console.log(`[server] Health:    http://localhost:${PORT}/health`);
+
+  // Auto-create admin_users table if it doesn't exist yet
+  try {
+    const sb = createSB(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { error } = await sb.from('admin_users').select('id').limit(1);
+    if (error && error.code === 'PGRST205') {
+      // Table doesn't exist — create it via raw SQL through the Supabase JS client
+      // (supabase-js doesn't support DDL directly; log instruction instead)
+      console.warn('[server] admin_users table missing — run supabase/schema.sql to create it');
+    } else {
+      console.log('[server] admin_users table ✅');
+    }
+  } catch {}
 });
 
 module.exports = app;
