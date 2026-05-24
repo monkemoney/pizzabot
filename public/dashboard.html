@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Jasell — ניהול</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/tokens.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Poppins', sans-serif; }
@@ -710,7 +711,7 @@ input[type=time] { direction: ltr; }
   <div id="page-stats" style="display:none">
     <div class="page-header">
       <div class="page-title">סטטיסטיקות</div>
-      <button onclick="loadStats(currentPeriod)" class="btn btn-ghost btn-sm">↻ רענן</button>
+      <button onclick="loadStats(currentPeriod)" class="btn btn-ghost btn-sm" style="display:inline-flex;align-items:center;gap:5px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> רענן</button>
     </div>
 
     <!-- Period picker -->

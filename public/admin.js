@@ -251,7 +251,7 @@ async function submitAddClient(e) {
     _clients.unshift(c);
     renderClients();
     closeModal();
-    showToast(`✅ ${c.name} נוסף בהצלחה`);
+    showToast(`${c.name} נוסף בהצלחה`);
   } catch (err) { alert(err.message); }
   finally { btn.disabled = false; btn.textContent = 'הוסף לקוח'; }
 }
@@ -295,14 +295,14 @@ async function saveAlertSettings() {
       alert_on_payment_fail: document.getElementById('alertOnPayment').checked,
       alert_on_restart:      document.getElementById('alertOnRestart').checked,
     });
-    showToast('הגדרות נשמרו ✅');
+    showToast('הגדרות נשמרו');
   } catch (err) { alert(err.message); }
 }
 
 async function sendTestAlert() {
   try {
     await api('POST', '/vendor/alerts-test', {});
-    showToast('התראת טסט נשלחה ב-WhatsApp 📱');
+    showToast('התראת טסט נשלחה ב-WhatsApp');
   } catch (err) { alert(err.message); }
 }
 

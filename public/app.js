@@ -26,7 +26,7 @@ function logout() {
 
 // ─── SVG icon helpers ─────────────────────────────────────────────────────────
 
-const S = (d, w=14) => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;flex-shrink:0">${d}</svg>`;
+const S = (d, w=14) => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;flex-shrink:0">${d}</svg>`;
 
 const SVG = {
   search:    S('<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>'),
@@ -46,6 +46,9 @@ const SVG = {
   notes:     S('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>', 13),
   xCircle:       S('<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>'),
   alertTriangle: S('<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>'),
+  creditCard:    S('<rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>'),
+  checkCircle:   S('<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>'),
+  refreshCw:     S('<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>', 13),
 };
 
 // ─── API helper ───────────────────────────────────────────────────────────────
@@ -329,7 +332,7 @@ function renderOrderCard(o) {
     ${o.refund_status==='manual'?`
     <a href="https://secure.cardcom.solutions" target="_blank"
       style="display:flex;align-items:center;justify-content:space-between;background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:10px;padding:9px 13px;margin-top:10px;font-size:.78rem;font-weight:700;color:#e0004d;text-decoration:none">
-      <span>💳 נדרש זיכוי ידני בכרטקום</span><span>↗</span>
+      <span style="display:inline-flex;align-items:center;gap:5px">${SVG.creditCard} נדרש זיכוי ידני בכרטקום</span><span>↗</span>
     </a>`:''}
   </div>`;
 }
@@ -391,7 +394,7 @@ function renderOrderRow(o) {
         </span>
         ${o.refund_status==='manual'?`<a href="https://secure.cardcom.solutions" target="_blank" onclick="event.stopPropagation()"
           style="background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:50px;padding:4px 12px;font-size:.72rem;font-weight:700;color:#e0004d;text-decoration:none;white-space:nowrap">
-          💳 זיכוי ידני נדרש ↗</a>`:''}
+          <span style="display:inline-flex;align-items:center;gap:4px">${SVG.creditCard} זיכוי ידני נדרש</span> ↗</a>`:''}
       </div>`}
     </div>`;
 
@@ -436,7 +439,7 @@ function renderOrderRow(o) {
           ${o.refund_status==='manual'?`
           <a href="https://secure.cardcom.solutions" target="_blank" onclick="event.stopPropagation()"
             style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:10px;padding:9px 13px;margin-top:8px;font-size:.78rem;font-weight:700;color:#e0004d;text-decoration:none">
-            <span>💳 נדרש זיכוי ידני בכרטקום</span>
+            <span style="display:inline-flex;align-items:center;gap:5px">${SVG.creditCard} נדרש זיכוי ידני בכרטקום</span>
             <span style="font-size:.72rem;opacity:.8">פתח ↗</span>
           </a>`:''}
         </div>
@@ -466,7 +469,7 @@ function renderOrderRow(o) {
       <div style="font-weight:800;font-size:.95rem">₪${(parseFloat(o.total_price)||0).toFixed(0)}</div>
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">
         ${statusBadge(o.status)}
-        ${o.refund_status==='manual'?`<span style="background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:999px;padding:2px 8px;font-size:.66rem;font-weight:700;color:#e0004d;white-space:nowrap">💳 זיכוי ידני</span>`:''}
+        ${o.refund_status==='manual'?`<span style="background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:999px;padding:2px 8px;font-size:.66rem;font-weight:700;color:#e0004d;white-space:nowrap;display:inline-flex;align-items:center;gap:3px">${SVG.creditCard} זיכוי ידני</span>`:''}
       </div>
       <div style="display:flex;align-items:center;justify-content:flex-end">${chevron}</div>
     </div>`;
@@ -988,11 +991,10 @@ async function confirmCancelRefund() {
     closeModal('cancelRefundModal');
     loadOrders();
 
-    const icon = res.refundStatus === 'refunded' ? '✅' : res.refundStatus === 'manual' ? '⚠️' : '✅';
-    showToast(`${icon} הזמנה בוטלה${res.refundMessage ? ' — ' + res.refundMessage : ''}`);
+    showToast(`הזמנה בוטלה${res.refundMessage ? ' — ' + res.refundMessage : ''}`);
 
     if (res.refundStatus === 'manual') {
-      setTimeout(() => alert(`⚠️ נדרש זיכוי ידני\n\n${res.refundMessage}\n\nבצע זיכוי דרך:\nhttps://secure.cardcom.solutions`), 300);
+      setTimeout(() => alert(`נדרש זיכוי ידני\n\n${res.refundMessage}\n\nבצע זיכוי דרך:\nhttps://secure.cardcom.solutions`), 300);
     }
   } catch (err) {
     alert('שגיאה: ' + err.message);
@@ -1352,7 +1354,7 @@ function renderProductRow(p, cat) {
         </button>`).join('')}
       <button onclick="toggleExpand('${p.id}')"
         style="display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:50px;border:1.5px dashed var(--border);background:none;cursor:pointer;font-family:inherit;font-size:.76rem;color:var(--text-muted)">
-        ${isExpanded ? '▴ פחות' : '✏️ עריכה'}
+        ${isExpanded ? '▴ פחות' : `${SVG.edit} עריכה`}
       </button>
     </div>` : `
     <div style="padding:6px 16px 10px 52px;border-top:1px solid var(--border);background:var(--bg)">
@@ -2421,7 +2423,7 @@ async function submitAddAdmin(e) {
     _adminUsers.push(user);
     renderAdminUsers();
     closeModal('addAdminModal');
-    showToast(`✅ ${name} נוסף כמנהל`);
+    showToast(`${name} נוסף כמנהל`);
   } catch (err) {
     alert(err.message);
   } finally {

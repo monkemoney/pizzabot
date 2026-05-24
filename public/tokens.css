@@ -1,0 +1,100 @@
+/* ============================================================
+   Jasell Design Tokens
+   Philosophy: Confident SaaS — clean, purposeful, with warmth
+   RTL-first. No dark mode (structure ready, not implemented).
+   ============================================================ */
+
+:root {
+
+  /* ── Brand ─────────────────────────────────────────────── */
+  --color-brand:         #5e17eb;
+  --color-brand-dark:    #4a0fd4;
+  --color-brand-soft:    #ede8fd;
+  --color-brand-muted:   #c4b8e0;
+  --color-accent:        #ff66c4;
+
+  /* ── Neutrals ───────────────────────────────────────────── */
+  --color-bg:            #eeede9;
+  --color-surface:       #ffffff;
+  --color-surface-raised:#f8f6ff;
+  --color-border:        #e8e3f2;
+  --color-border-strong: #d0c8ea;
+
+  /* ── Text ───────────────────────────────────────────────── */
+  --color-text:          #1a1028;
+  --color-text-secondary:#7a6f8a;
+  --color-text-disabled: #b8afd0;
+  --color-text-on-brand: #ffffff;
+
+  /* ── Status ─────────────────────────────────────────────── */
+  --color-success:       #16a34a;
+  --color-success-bg:    #e0fbef;
+  --color-warning:       #c07000;
+  --color-warning-bg:    #fff8e0;
+  --color-danger:        #e0004d;
+  --color-danger-bg:     #fff0f5;
+  --color-danger-border: #ffd0e6;
+  --color-info:          #0369a1;
+  --color-info-bg:       #e0f2fe;
+
+  /* ── Sidebar ─────────────────────────────────────────────── */
+  --color-sidebar-bg:    #1a0a3d;
+  --color-sidebar-bg-2:  #2d1260;
+  --color-sidebar-text:  rgba(255,255,255,.65);
+  --color-sidebar-active:rgba(255,255,255,.15);
+  --color-sidebar-border:rgba(255,255,255,.08);
+
+  /* ── Spacing ─────────────────────────────────────────────── */
+  --space-1:   4px;
+  --space-2:   8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-7:  28px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ── Radius ──────────────────────────────────────────────── */
+  --radius-sm:   8px;
+  --radius-md:  12px;
+  --radius-lg:  18px;
+  --radius-xl:  24px;
+  --radius-full:999px;
+
+  /* ── Shadows ─────────────────────────────────────────────── */
+  --shadow-sm:  0 1px 4px rgba(94,23,235,.06);
+  --shadow-md:  0 4px 24px rgba(94,23,235,.08);
+  --shadow-lg:  0 12px 40px rgba(94,23,235,.12);
+  --shadow-modal:0 20px 60px rgba(0,0,0,.18);
+
+  /* ── Typography ──────────────────────────────────────────── */
+  --font-family: 'Poppins', sans-serif;
+  --font-size-xs:  .68rem;
+  --font-size-sm:  .78rem;
+  --font-size-md:  .88rem;
+  --font-size-base: 1rem;
+  --font-size-lg:  1.1rem;
+  --font-size-xl:  1.4rem;
+  --font-size-2xl: 1.9rem;
+  --font-weight-regular: 400;
+  --font-weight-medium:  600;
+  --font-weight-bold:    700;
+  --font-weight-black:   800;
+
+  /* ── Icon ────────────────────────────────────────────────── */
+  --icon-sm:  14px;
+  --icon-md:  16px;
+  --icon-lg:  20px;
+  --icon-stroke: 1.75;
+
+  /* ── Layout ──────────────────────────────────────────────── */
+  --sidebar-width:   240px;
+  --mobile-nav-h:     60px;
+  --mobile-header-h:  56px;
+
+  /* ── Transition ──────────────────────────────────────────── */
+  --transition-fast: .15s ease;
+  --transition-base: .2s ease;
+}
