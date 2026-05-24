@@ -7,21 +7,14 @@ const role     = localStorage.getItem('role');
 const username = localStorage.getItem('username');
 
 if (!token) { window.location.href = '/'; }
+// Vendor belongs at /admin, not here
+if (role === 'vendor') { window.location.href = '/admin'; }
 
 document.getElementById('userDisplayName').textContent = username || '';
-document.getElementById('userRole').textContent =
-  role === 'admin' ? 'מנהל' : role === 'vendor' ? 'ספק' : 'מנג׳ר';
+document.getElementById('userRole').textContent = role === 'admin' ? 'מנהל' : 'מנג׳ר';
 
-// Show admin-only elements (vendor gets full access too)
-if (role === 'admin' || role === 'vendor') {
+if (role === 'admin') {
   document.querySelectorAll('.admin-only').forEach((el) => {
-    el.style.display = el.tagName === 'BUTTON' ? 'flex' : 'block';
-  });
-}
-
-// Show vendor-only elements
-if (role === 'vendor') {
-  document.querySelectorAll('.vendor-only').forEach((el) => {
     el.style.display = el.tagName === 'BUTTON' ? 'flex' : 'block';
   });
 }
@@ -71,7 +64,7 @@ async function api(method, path, body) {
 
 // ─── Tab navigation ───────────────────────────────────────────────────────────
 
-const TABS = ['orders', 'products', 'customers', 'stats', 'settings', 'vendor'];
+const TABS = ['orders', 'products', 'customers', 'stats', 'settings'];
 
 function showTab(name) {
   TABS.forEach((t) => {
@@ -92,7 +85,6 @@ function showTab(name) {
   if (name === 'customers') loadCustomers();
   if (name === 'settings')  { loadSettings(); loadAdminUsers(); }
   if (name === 'stats')     setPeriod(currentPeriod);
-  if (name === 'vendor')    loadVendorPage();
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -2331,166 +2323,6 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 initPush();
-
-// ─── Vendor (ספק) page ────────────────────────────────────────────────────────
-
-let _clients = [];
-
-async function loadVendorPage() {
-  if (role !== 'vendor') return;
-  renderVendorStats();
-  loadClients();
-  loadVendorSettings();
-}
-
-async function renderVendorStats() {
-  const el = document.getElementById('vendorStats');
-  if (!el) return;
-  try {
-    const s = await api('GET', '/vendor/stats');
-    el.innerHTML = [
-      vStatCard('לקוחות פעילים', s.active_clients, '#16a34a'),
-      vStatCard('סה"כ לקוחות',   s.total_clients,  'var(--primary)'),
-      vStatCard('סה"כ הזמנות',   s.total_orders,   '#0369a1'),
-      vStatCard('הכנסות',        `₪${(s.total_revenue||0).toFixed(0)}`, '#7c3aed'),
-      vStatCard('שיחות פתוחות',  s.total_sessions,  'var(--text-muted)'),
-    ].join('');
-  } catch (err) {
-    el.innerHTML = `<div style="color:red;font-size:.84rem">${err.message}</div>`;
-  }
-}
-
-function vStatCard(label, value, color) {
-  return `<div class="stat-card" style="padding:18px 20px">
-    <div style="font-size:1.7rem;font-weight:800;color:${color}">${value}</div>
-    <div class="stat-label">${label}</div>
-  </div>`;
-}
-
-async function loadClients() {
-  const el = document.getElementById('clientsTable');
-  if (!el) return;
-  try {
-    _clients = await api('GET', '/vendor/clients');
-    renderClients();
-  } catch (err) {
-    el.innerHTML = `<div style="color:red;font-size:.84rem">${err.message}</div>`;
-  }
-}
-
-const PLAN_LABELS   = { basic: 'Basic', pro: 'Pro', enterprise: 'Enterprise' };
-const STATUS_COLORS = { active: '#16a34a', inactive: '#e0004d', trial: '#c07000' };
-
-function renderClients() {
-  const el = document.getElementById('clientsTable');
-  if (!el) return;
-  if (!_clients.length) {
-    el.innerHTML = '<div style="color:var(--text-muted);font-size:.84rem;padding:12px 0;text-align:center">אין לקוחות עדיין</div>';
-    return;
-  }
-  el.innerHTML = `<table>
-    <thead><tr>
-      <th>שם עסק</th><th>טלפון</th><th>תוכנית</th><th>סטטוס</th><th>נוסף</th><th></th>
-    </tr></thead>
-    <tbody>
-      ${_clients.map(c => `
-        <tr>
-          <td style="font-weight:700">${c.name}</td>
-          <td style="font-family:monospace;font-size:.82rem;direction:ltr;color:var(--text-muted)">${c.contact_phone||'—'}</td>
-          <td><span class="badge badge-new">${PLAN_LABELS[c.plan]||c.plan}</span></td>
-          <td>
-            <select onchange="updateClientStatus('${c.id}',this.value)"
-              style="padding:4px 8px;border-radius:8px;border:2px solid var(--border);font-family:inherit;font-size:.78rem;color:${STATUS_COLORS[c.status]||'var(--text)'}">
-              <option value="active"   ${c.status==='active'  ?'selected':''}>פעיל</option>
-              <option value="trial"    ${c.status==='trial'   ?'selected':''}>ניסיון</option>
-              <option value="inactive" ${c.status==='inactive'?'selected':''}>מושבת</option>
-            </select>
-          </td>
-          <td style="font-size:.78rem;color:var(--text-muted)">${formatDate(c.created_at)}</td>
-          <td>
-            <button onclick="deleteClient('${c.id}','${c.name}')" class="btn-danger" style="font-size:.76rem;padding:4px 10px">הסר</button>
-          </td>
-        </tr>`).join('')}
-    </tbody>
-  </table>`;
-}
-
-function openAddClientModal() {
-  document.getElementById('clientName').value  = '';
-  document.getElementById('clientPhone').value = '';
-  document.getElementById('clientPlan').value  = 'basic';
-  openModal('addClientModal');
-  setTimeout(() => document.getElementById('clientName').focus(), 100);
-}
-
-async function submitAddClient(e) {
-  e.preventDefault();
-  const btn = e.target.querySelector('[type=submit]');
-  btn.disabled = true; btn.textContent = 'שומר...';
-  try {
-    const c = await api('POST', '/vendor/clients', {
-      name:          document.getElementById('clientName').value.trim(),
-      contact_phone: document.getElementById('clientPhone').value.trim(),
-      plan:          document.getElementById('clientPlan').value,
-    });
-    _clients.unshift(c);
-    renderClients();
-    closeModal('addClientModal');
-    showToast(`✅ ${c.name} נוסף`);
-  } catch (err) { alert(err.message); }
-  finally { btn.disabled = false; btn.textContent = 'הוסף'; }
-}
-
-async function updateClientStatus(id, status) {
-  try {
-    await api('PATCH', `/vendor/clients/${id}`, { status });
-    const c = _clients.find(x => x.id === id);
-    if (c) c.status = status;
-  } catch (err) { alert(err.message); loadClients(); }
-}
-
-async function deleteClient(id, name) {
-  if (!confirm(`להסיר את "${name}" מרשימת הלקוחות?`)) return;
-  try {
-    await api('DELETE', `/vendor/clients/${id}`);
-    _clients = _clients.filter(c => c.id !== id);
-    renderClients();
-    showToast(`${name} הוסר`);
-  } catch (err) { alert(err.message); }
-}
-
-async function loadVendorSettings() {
-  const el = document.getElementById('vendorSettingsForm');
-  if (!el) return;
-  try {
-    const s = await api('GET', '/settings');
-    document.getElementById('vendorPhone').value      = s.vendor_phone   || '';
-    document.getElementById('vendorName').value       = s.vendor_name    || '';
-    document.getElementById('alertOnError').checked   = s.vendor_alert_error   !== false;
-    document.getElementById('alertOnPayment').checked = s.vendor_alert_payment !== false;
-    document.getElementById('alertOnRestart').checked = s.vendor_alert_restart !== false;
-  } catch {}
-}
-
-async function saveVendorSettings() {
-  try {
-    await api('PATCH', '/vendor/settings', {
-      vendor_phone:        document.getElementById('vendorPhone').value.trim(),
-      vendor_name:         document.getElementById('vendorName').value.trim(),
-      alert_on_error:      document.getElementById('alertOnError').checked,
-      alert_on_payment_fail: document.getElementById('alertOnPayment').checked,
-      alert_on_restart:    document.getElementById('alertOnRestart').checked,
-    });
-    showToast('הגדרות ספק נשמרו ✅');
-  } catch (err) { alert(err.message); }
-}
-
-async function sendTestAlert() {
-  try {
-    await api('POST', '/vendor/alerts-test', {});
-    showToast('התראת טסט נשלחה ב-WhatsApp');
-  } catch (err) { alert(err.message); }
-}
 
 // ─── Admin Users ──────────────────────────────────────────────────────────────
 

@@ -27,6 +27,11 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 // ─── Health ───────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ ok: true, time: new Date() }));
 
+// ─── Vendor admin portal (/admin) ────────────────────────────────────────────
+app.get('/admin', (_req, res) =>
+  res.sendFile(path.join(__dirname, '..', 'public', 'admin.html'))
+);
+
 // ─── Dashboard API ────────────────────────────────────────────────────────────
 app.use('/api', dashboardApi);
 
