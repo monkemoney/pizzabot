@@ -715,18 +715,35 @@ router.patch('/settings', requireAdmin, async (req, res) => {
 
 // ─── Admin Users ─────────────────────────────────────────────────────────────
 
-// Ensure table exists on first use (idempotent)
+// Create admin_users table via pg directly (server-side, has IPv6 connectivity)
 async function ensureAdminUsersTable() {
-  await supabase.rpc('exec_ddl', {
-    sql: `CREATE TABLE IF NOT EXISTS admin_users (
-      id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      phone      TEXT NOT NULL UNIQUE,
-      name       TEXT NOT NULL,
-      role       TEXT NOT NULL DEFAULT 'admin',
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )`
-  }).catch(() => {}); // rpc may not exist — table created via schema.sql migration
+  const { Client } = require('pg');
+  const client = new Client({
+    connectionString: `postgresql://postgres:${encodeURIComponent('mUprot-tefno8-zikgak')}@db.umoftdmutxhrbknowbyh.supabase.co:5432/postgres`,
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 8000,
+  });
+  try {
+    await client.connect();
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin_users (
+        id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        phone      TEXT NOT NULL UNIQUE,
+        name       TEXT NOT NULL,
+        role       TEXT NOT NULL DEFAULT 'admin',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    console.log('[migration] admin_users table ensured ✅');
+  } catch (err) {
+    console.error('[migration] admin_users table error:', err.message);
+  } finally {
+    await client.end().catch(() => {});
+  }
 }
+
+// Run migration once at startup
+ensureAdminUsersTable();
 
 router.get('/admin-users', requireAdmin, async (_req, res) => {
   await ensureAdminUsersTable();
