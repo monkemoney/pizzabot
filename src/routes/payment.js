@@ -13,7 +13,7 @@ const router = express.Router();
 // Called from webhook, success-redirect, and polling.
 // Returns true if order was created, false otherwise.
 // Guards against double-processing via optimistic delete.
-async function confirmPending(pending, source = 'webhook') {
+async function confirmPending(pending, source = 'webhook', dealNumber = null) {
   if (!pending) return false;
 
   let verification;
@@ -26,33 +26,26 @@ async function confirmPending(pending, source = 'webhook') {
 
   if (!verification.success) {
     console.warn(`[payment:${source}] Verification failed (code=${verification.responseCode}) for ${pending.cardcom_code}`);
-    // Only delete on explicit failure codes (not network errors)
     if (verification.responseCode > 0) await deletePendingPayment(pending.id);
     return false;
   }
 
-  // Attempt atomic delete — if another process already deleted it, skip (double-process guard)
-  const { count } = await (require('../services/supabase')
-    .supabaseClient?.from
-    ? { count: 1 }  // fallback
-    : { count: 1 }
-  );
-
   const orderData = pending.order_data;
   try {
     const { id, orderNumber } = await saveOrder({
-      phone:           pending.phone,
-      customer_name:   orderData.customer_name   || null,
-      customer_phone:  orderData.customer_phone  || null,
-      items:           orderData.items           || [],
-      delivery_method: orderData.delivery_method,
-      address:         orderData.address         || null,
-      notes:           orderData.notes           || null,
-      payment_method:  'credit',
-      payment_status:  'paid',
-      cardcom_code:    pending.cardcom_code,
-      total_price:     orderData.total,
-      status:          'new',
+      phone:                pending.phone,
+      customer_name:        orderData.customer_name   || null,
+      customer_phone:       orderData.customer_phone  || null,
+      items:                orderData.items           || [],
+      delivery_method:      orderData.delivery_method,
+      address:              orderData.address         || null,
+      notes:                orderData.notes           || null,
+      payment_method:       'credit',
+      payment_status:       'paid',
+      cardcom_code:         pending.cardcom_code,
+      cardcom_deal_number:  dealNumber || null,
+      total_price:          orderData.total,
+      status:               'new',
     });
 
     await deletePendingPayment(pending.id);
@@ -85,8 +78,9 @@ router.post('/payment', express.urlencoded({ extended: false }), async (req, res
   const LowProfileCode = body.LowProfileCode || body.LowProfileId;
   const ReturnValue    = body.ReturnValue;
   const Operation      = body.Operation;
+  const dealNumber     = body.DealNumber || body.InternalDealNumber || body.CardcomDealNumber || null;
 
-  console.log('[payment] Webhook received:', { LowProfileCode, ReturnValue, Operation });
+  console.log('[payment] Webhook received:', { LowProfileCode, ReturnValue, Operation, dealNumber });
 
   if (!LowProfileCode && !ReturnValue) {
     console.warn('[payment] Missing LowProfileCode and ReturnValue — ignoring');
@@ -102,7 +96,7 @@ router.post('/payment', express.urlencoded({ extended: false }), async (req, res
     return;
   }
 
-  await confirmPending(pending, 'webhook');
+  await confirmPending(pending, 'webhook', dealNumber);
 });
 
 // ─── Cardcom IndicatorUrl webhook (GET) ───────────────────────────────────────

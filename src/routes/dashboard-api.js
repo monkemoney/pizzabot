@@ -5,6 +5,7 @@ const multer   = require('multer');
 const path     = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { signDashboard, requireAuth, requireAdmin, requireVendor } = require('../middleware/auth');
+const { cancelDeal } = require('../services/cardcom');
 const { getOrders, getOrderById, updateOrderStatus, updateOrder, updateSession,
         autoCompleteDeliveredOrders }      = require('../services/supabase');
 const { notifyStatusChange }              = require('../services/status-notifier');
@@ -139,39 +140,19 @@ router.post('/orders/:id/cancel-refund', requireAdmin, async (req, res) => {
   let refundMessage = '';
 
   // ── Try Cardcom refund if we have a deal number ──────────────────────────────
-  if (isCreditPaid && order.cardcom_deal_number) {
-    try {
-      const axios   = require('axios');
-      const result  = await axios.post(
-        'https://secure.cardcom.solutions/Interface/CancelDeal.aspx',
-        new URLSearchParams({
-          TerminalNumber:     process.env.CARDCOM_TERMINAL,
-          ApiName:            process.env.CARDCOM_USERNAME,
-          InternalDealNumber: order.cardcom_deal_number,
-          CancelType:         '1',  // full refund
-        }).toString(),
-        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 }
-      );
-      const params  = new URLSearchParams(result.data);
-      const code    = params.get('ResponseCode');
-      if (code === '0') {
-        refundStatus  = 'refunded';
-        refundMessage = `הזיכוי בוצע אוטומטית דרך כרטקום ✅`;
-        console.log(`[refund] Cardcom refund OK for order #${order.order_number}`);
-      } else {
-        refundStatus  = 'manual';
-        refundMessage = `זיכוי Cardcom נכשל (${params.get('Description')}) — נדרש זיכוי ידני`;
-        console.warn(`[refund] Cardcom refund failed: ${params.get('Description')}`);
-      }
-    } catch (err) {
+  if (isCreditPaid) {
+    const { success, message } = await cancelDeal(order.cardcom_deal_number);
+    if (success) {
+      refundStatus  = 'refunded';
+      refundMessage = message;
+      console.log(`[refund] Cardcom refund OK for order #${order.order_number}`);
+    } else {
       refundStatus  = 'manual';
-      refundMessage = `לא ניתן להתחבר ל-Cardcom — נדרש זיכוי ידני של ₪${order.total_price}`;
-      console.error(`[refund] Cardcom error:`, err.message);
+      refundMessage = order.cardcom_deal_number
+        ? `${message} — נדרש זיכוי ידני`
+        : `אין מספר עסקה — נדרש זיכוי ידני דרך לוח Cardcom: ₪${order.total_price}`;
+      console.warn(`[refund] Cardcom refund failed for order #${order.order_number}:`, message);
     }
-  } else if (isCreditPaid) {
-    // Credit paid but no deal number stored — manual refund required
-    refundStatus  = 'manual';
-    refundMessage = `נדרש זיכוי ידני דרך לוח Cardcom: ₪${order.total_price}`;
   }
 
   // ── Cancel order in DB ───────────────────────────────────────────────────────

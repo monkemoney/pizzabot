@@ -72,4 +72,35 @@ async function verifyPayment(lowProfileCode) {
   };
 }
 
-module.exports = { createPaymentPage, verifyPayment };
+/**
+ * Cancel a deal and issue a full refund via Cardcom CancelDeal.aspx.
+ * Requires the InternalDealNumber saved when the original payment was confirmed.
+ * Returns { success: bool, message: string }.
+ */
+async function cancelDeal(dealNumber) {
+  if (!dealNumber) return { success: false, message: 'אין מספר עסקה — זיכוי ידני נדרש' };
+  if (!TERMINAL || !API_NAME) return { success: false, message: 'הגדרות Cardcom חסרות' };
+
+  try {
+    const result = await axios.post(
+      `${BASE_URL}/Interface/CancelDeal.aspx`,
+      new URLSearchParams({
+        TerminalNumber:     TERMINAL,
+        ApiName:            API_NAME,
+        InternalDealNumber: dealNumber,
+        CancelType:         '1',   // full refund
+      }).toString(),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 }
+    );
+    const params = new URLSearchParams(result.data);
+    const code   = params.get('ResponseCode');
+    if (code === '0') {
+      return { success: true, message: 'הזיכוי בוצע אוטומטית דרך כרטקום ✅' };
+    }
+    return { success: false, message: `כרטקום: ${params.get('Description') || `קוד ${code}`}` };
+  } catch (err) {
+    return { success: false, message: `שגיאת תקשורת עם כרטקום: ${err.message}` };
+  }
+}
+
+module.exports = { createPaymentPage, verifyPayment, cancelDeal };
