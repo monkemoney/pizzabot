@@ -737,12 +737,29 @@ async function confirmDispute() {
 
 // ─── Cancel + Refund Modal ────────────────────────────────────────────────────
 
-let _cancelOrderId = null;
+let _cancelOrderId   = null;
+let _previewEdited   = false;  // true once user manually edits the preview textarea
+
+function buildCancelMessage() {
+  const byCustomer     = document.querySelector('input[name="cancelledBy"]:checked')?.value === 'customer';
+  const reason         = document.getElementById('cancelRefundReason')?.value.trim() || '';
+  const sendToCustomer = document.getElementById('cancelSendToCustomer')?.checked;
+  const o              = _cancelOrderId ? currentOrders.find(x => x.id === _cancelOrderId) : null;
+  const orderNum       = o?.order_number || '—';
+  const isCreditPaid   = o?.payment_method === 'credit' && o?.payment_status === 'paid';
+
+  const byLine     = byCustomer ? 'בוטלה לפי בקשתך.' : 'בוטלה על ידי העסק.';
+  const reasonLine = reason && sendToCustomer ? `\nסיבה: ${reason}` : '';
+  const refundLine = isCreditPaid ? '\nהתשלום יזוכה לכרטיסך תוך 3-5 ימי עסקים.' : '';
+
+  return `❌ הזמנה מספר *${orderNum}* ${byLine}${reasonLine}${refundLine}\n\nמצטערים על אי הנוחות 🙏`;
+}
 
 function openCancelRefundModal(orderId) {
   const o = currentOrders.find(x => x.id === orderId);
   if (!o) return;
   _cancelOrderId = orderId;
+  _previewEdited = false;
 
   const isCreditPaid = o.payment_method === 'credit' && o.payment_status === 'paid';
 
@@ -753,7 +770,6 @@ function openCancelRefundModal(orderId) {
   document.getElementById('cancelRefundReason').value        = '';
   document.getElementById('cancelSendToCustomer').checked    = true;
 
-  // Reset radio to "business"
   document.querySelectorAll('input[name="cancelledBy"]').forEach(r => { r.checked = r.value === 'business'; });
 
   updateCancelUI();
@@ -761,32 +777,30 @@ function openCancelRefundModal(orderId) {
 }
 
 function updateCancelUI() {
-  const byCustomer  = document.querySelector('input[name="cancelledBy"]:checked')?.value === 'customer';
-  const reason      = document.getElementById('cancelRefundReason')?.value.trim() || '';
+  const byCustomer     = document.querySelector('input[name="cancelledBy"]:checked')?.value === 'customer';
   const sendToCustomer = document.getElementById('cancelSendToCustomer')?.checked;
 
-  // Highlight active radio label
   document.getElementById('cancelByBusinessLabel').style.borderColor = !byCustomer ? '#e0004d' : 'var(--border)';
   document.getElementById('cancelByCustomerLabel').style.borderColor  =  byCustomer ? '#e0004d' : 'var(--border)';
 
-  // Update preview
-  const orderId = _cancelOrderId;
-  const o = orderId ? currentOrders.find(x => x.id === orderId) : null;
-  const orderNum = o?.order_number || '—';
-  const isCreditPaid = o?.payment_method === 'credit' && o?.payment_status === 'paid';
+  // Only auto-update preview if user hasn't manually edited it
+  if (!_previewEdited) {
+    document.getElementById('cancelPreview').value = buildCancelMessage();
+  }
 
-  const refundLine = isCreditPaid ? '\nהתשלום יזוכה לכרטיסך תוך 3-5 ימי עסקים.' : '';
-  const reasonLine = reason && sendToCustomer ? `\nסיבה: ${reason}` : '';
-  const byLine     = byCustomer ? 'בוטלה לפי בקשתך.' : 'בוטלה על ידי העסק.';
-
-  document.getElementById('cancelPreview').textContent =
-    `❌ הזמנה מספר *${orderNum}* ${byLine}${reasonLine}${refundLine}\n\nמצטערים על אי הנוחות 🙏`;
-
-  // Hint text
   const hint = document.getElementById('cancelSendHint');
   if (hint) hint.textContent = sendToCustomer
     ? 'ההערה תצורף להודעת הביטול ב-WhatsApp'
     : 'ההערה תישמר פנימית בלבד — לא תישלח ללקוח';
+}
+
+function onPreviewEdit() {
+  _previewEdited = true;
+}
+
+function resetCancelPreview() {
+  _previewEdited = false;
+  document.getElementById('cancelPreview').value = buildCancelMessage();
 }
 
 async function confirmCancelRefund() {
@@ -794,6 +808,8 @@ async function confirmCancelRefund() {
   const reason         = document.getElementById('cancelRefundReason').value.trim();
   const cancelledBy    = document.querySelector('input[name="cancelledBy"]:checked')?.value || 'business';
   const sendToCustomer = document.getElementById('cancelSendToCustomer').checked;
+  // Use the (possibly edited) preview as the actual customer message
+  const customMessage  = document.getElementById('cancelPreview').value.trim();
   const btn            = document.getElementById('cancelRefundBtn');
 
   btn.textContent = 'מבטל...';
@@ -802,8 +818,9 @@ async function confirmCancelRefund() {
   try {
     const res = await api('POST', `/orders/${_cancelOrderId}/cancel-refund`, {
       reason,
-      cancelled_by:     cancelledBy,
-      send_to_customer: sendToCustomer,
+      cancelled_by:      cancelledBy,
+      send_to_customer:  sendToCustomer,
+      custom_message:    customMessage,
     });
     closeModal('cancelRefundModal');
     loadOrders();

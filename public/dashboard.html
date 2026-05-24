@@ -767,10 +767,17 @@ input[type=time] { direction: ltr; }
         </label>
       </div>
 
-      <!-- Preview -->
-      <div style="font-size:.76rem;color:var(--text-muted);padding:10px 12px;background:#faf8ff;border-radius:10px;border:1px solid var(--border)">
-        <div style="font-weight:700;margin-bottom:4px;color:var(--primary)">תצוגה מקדימה — WhatsApp ללקוח:</div>
-        <div id="cancelPreview" style="white-space:pre-line;line-height:1.5"></div>
+      <!-- Preview (editable) -->
+      <div style="font-size:.76rem;border-radius:10px;border:1.5px solid var(--primary-soft);overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--primary-soft)">
+          <span style="font-weight:700;color:var(--primary)">הודעה ללקוח — ניתן לעריכה</span>
+          <button type="button" onclick="resetCancelPreview()"
+            style="font-size:.72rem;font-weight:700;color:var(--primary);background:none;border:none;cursor:pointer;padding:2px 6px;border-radius:6px;opacity:.8"
+            title="אפס לברירת מחדל">↺ אפס</button>
+        </div>
+        <textarea id="cancelPreview" rows="4"
+          style="width:100%;border:none;border-radius:0;padding:10px 12px;font-size:.82rem;line-height:1.6;resize:vertical;background:#faf8ff;direction:rtl"
+          oninput="onPreviewEdit()"></textarea>
       </div>
 
     </div>

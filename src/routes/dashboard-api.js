@@ -116,7 +116,7 @@ router.put('/orders/:id', requireAdmin, async (req, res) => {
 // ─── Cancel + Refund (dispute) ───────────────────────────────────────────────
 
 router.post('/orders/:id/cancel-refund', requireAdmin, async (req, res) => {
-  const { reason = '', cancelled_by = 'business', send_to_customer = true } = req.body;
+  const { reason = '', cancelled_by = 'business', send_to_customer = true, custom_message = '' } = req.body;
 
   const order = await getOrderById(req.params.id);
   if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
@@ -180,14 +180,19 @@ router.post('/orders/:id/cancel-refund', requireAdmin, async (req, res) => {
         : '\nנחזור אליך בנוגע להחזר התשלום.')
     : '';
 
-  const byLine     = cancelled_by === 'customer' ? 'בוטלה לפי בקשתך.' : 'בוטלה על ידי העסק.';
-  const reasonLine = (reason && send_to_customer) ? `\nסיבה: ${reason}` : '';
-
-  const customerMsg =
-    `❌ הזמנה מספר *${order.order_number}* ${byLine}` +
-    reasonLine +
-    refundLine +
-    `\n\nמצטערים על אי הנוחות 🙏`;
+  // Use custom_message if the business owner edited the preview, otherwise build default
+  let customerMsg;
+  if (custom_message) {
+    customerMsg = custom_message;
+  } else {
+    const byLine     = cancelled_by === 'customer' ? 'בוטלה לפי בקשתך.' : 'בוטלה על ידי העסק.';
+    const reasonLine = (reason && send_to_customer) ? `\nסיבה: ${reason}` : '';
+    customerMsg =
+      `❌ הזמנה מספר *${order.order_number}* ${byLine}` +
+      reasonLine +
+      refundLine +
+      `\n\nמצטערים על אי הנוחות 🙏`;
+  }
 
   await sendMessage(order.phone, customerMsg).catch((err) =>
     console.error('[refund] WhatsApp notify failed:', err.message)
