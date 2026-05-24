@@ -745,12 +745,35 @@ router.delete('/admin-users/:id', requireAdmin, async (req, res) => {
 
 // ─── Vendor routes (platform owner) ──────────────────────────────────────────
 
-// GET /vendor/clients — all client businesses
+// GET /vendor/clients — all client businesses, with current-month API usage
 router.get('/vendor/clients', requireVendor, async (_req, res) => {
-  const { data, error } = await supabase
-    .from('clients').select('*').order('created_at', { ascending: false });
+  const monthStart = new Date();
+  monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+
+  const [{ data: clients, error }, { data: usage }] = await Promise.all([
+    supabase.from('clients').select('*').order('created_at', { ascending: false }),
+    supabase.from('api_usage')
+      .select('tenant_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens')
+      .gte('created_at', monthStart.toISOString()),
+  ]);
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
+
+  const P = { input: 15/1e6, output: 75/1e6, cache_read: 1.5/1e6, cache_write: 18.75/1e6 };
+  const byTenant = {};
+  for (const r of usage || []) {
+    if (!r.tenant_id) continue;
+    if (!byTenant[r.tenant_id]) byTenant[r.tenant_id] = { calls: 0, cost: 0 };
+    byTenant[r.tenant_id].calls++;
+    byTenant[r.tenant_id].cost +=
+      (r.input_tokens||0)*P.input + (r.output_tokens||0)*P.output +
+      (r.cache_read_tokens||0)*P.cache_read + (r.cache_write_tokens||0)*P.cache_write;
+  }
+
+  res.json((clients || []).map(c => ({
+    ...c,
+    month_calls: byTenant[c.tenant_id]?.calls || 0,
+    month_cost:  byTenant[c.tenant_id]?.cost  || 0,
+  })));
 });
 
 // POST /vendor/clients — add a client
@@ -765,9 +788,9 @@ router.post('/vendor/clients', requireVendor, async (req, res) => {
   res.status(201).json(data);
 });
 
-// PATCH /vendor/clients/:id — update status / plan / notes
+// PATCH /vendor/clients/:id — update status / plan / notes / tenant_id
 router.patch('/vendor/clients/:id', requireVendor, async (req, res) => {
-  const allowed = ['status','plan','notes','contact_phone','name'];
+  const allowed = ['status','plan','notes','contact_phone','name','tenant_id'];
   const updates = Object.fromEntries(Object.entries(req.body).filter(([k]) => allowed.includes(k)));
   updates.updated_at = new Date().toISOString();
   const { data, error } = await supabase

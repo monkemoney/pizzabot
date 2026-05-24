@@ -201,14 +201,19 @@ function renderClients() {
 
   const PLAN_LABELS = { basic:'Basic', pro:'Pro', enterprise:'Enterprise', trial:'Trial' };
 
+  const fmtCost = n => n <= 0 ? '—' : n < 0.01 ? '<$0.01' : `$${n.toFixed(2)}`;
+
   el.innerHTML = `<table>
     <thead><tr>
-      <th>שם עסק</th><th>טלפון</th><th>תוכנית</th><th>סטטוס</th><th>הערות</th><th>נוסף</th><th></th>
+      <th>שם עסק</th><th>טלפון</th><th>תוכנית</th><th>סטטוס</th><th>צריכה החודש</th><th>נוסף</th><th></th>
     </tr></thead>
     <tbody>
       ${list.map(c => `
         <tr>
-          <td style="font-weight:700">${c.name}</td>
+          <td>
+            <div style="font-weight:700">${c.name}</div>
+            ${c.tenant_id ? `<div style="font-family:monospace;font-size:.68rem;color:#c4b8e0;direction:ltr;margin-top:2px">${c.tenant_id.slice(0,8)}…</div>` : ''}
+          </td>
           <td style="font-family:monospace;direction:ltr;font-size:.82rem;color:#9b8fc0">${c.contact_phone||'—'}</td>
           <td><span class="badge" style="background:#f0ebff;color:#5e17eb">${PLAN_LABELS[c.plan]||c.plan}</span></td>
           <td>
@@ -219,7 +224,10 @@ function renderClients() {
               <option value="inactive" ${c.status==='inactive'?'selected':''}>מושבת</option>
             </select>
           </td>
-          <td style="color:#9b8fc0;font-size:.78rem;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.notes||'—'}</td>
+          <td>
+            <div style="font-weight:700;color:${c.month_cost>0?'#5e17eb':'#c4b8e0'};font-size:.85rem">${fmtCost(c.month_cost)}</div>
+            ${c.month_calls>0 ? `<div style="font-size:.7rem;color:#9b8fc0">${c.month_calls} קריאות</div>` : ''}
+          </td>
           <td style="font-size:.78rem;color:#9b8fc0">${new Date(c.created_at).toLocaleDateString('he-IL')}</td>
           <td>
             <button onclick="deleteClient('${c.id}','${c.name}')" class="btn-danger">הסר</button>
