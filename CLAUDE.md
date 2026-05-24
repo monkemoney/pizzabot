@@ -6,19 +6,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**פיצה דליבריס (Jasell)** — a WhatsApp pizza ordering bot with a web management dashboard.
+**פיצה דליבריס (Jasell)** — a WhatsApp pizza ordering bot with a web management dashboard. Built as a platform (Jasell) that can serve multiple restaurant businesses (tenants).
 
 - **Customer bot:** AI-powered WhatsApp conversation (Claude) acts as a waiter → deal-breakers first (delivery/payment) → takes order → Cardcom payment → confirms
 - **Admin bot:** Same WhatsApp instance — if sender phone is in `admin_users` table, routed to `admin-handler.js` instead of customer bot
 - **Public menu page:** `/menu.html` — mobile-first customer-facing menu with photos, toppings, WhatsApp CTA
-- **Dashboard:** Web SPA for the business owner — orders, products, customers, settings, stats
+- **Business dashboard:** `/dashboard.html` — SPA for admin/manager roles — orders, products, customers, settings, stats
+- **Vendor portal:** `/admin` — separate SPA for the platform owner (vendor role) — client management, KPIs, alert settings
 - **Courier notifications:** Auto-WhatsApp to courier(s) when order reaches configured status
+- **Vendor alerts:** Real-time WhatsApp alerts to vendor on server errors, payment failures, restarts
 
 **Stack:** Node.js + Express · Supabase (PostgreSQL) · Render (hosting) · Green API (WhatsApp) · Anthropic Claude `claude-opus-4-7` · Cardcom (Israeli payment processor)
 
 **Live:**
 - Dashboard + bot: `https://www.jasell.com` (jasell.com → 301 → www)
 - Public menu: `https://www.jasell.com/menu.html`
+- Vendor portal: `https://www.jasell.com/admin`
 - Webhook: `https://www.jasell.com/webhook`
 - GitHub: `git@github.com:monkemoney/pizzabot.git`
 - Render service ID: `srv-d831jc8js32c73ef8mng`
@@ -42,6 +45,7 @@ GREEN_API_BASE_URL=https://api.green-api.com
 # Supabase
 SUPABASE_URL=https://umoftdmutxhrbknowbyh.supabase.co
 SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVtb2Z0ZG11dHhocmJrbm93YnloIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODc1NDUyMSwiZXhwIjoyMDk0MzMwNTIxfQ.N0hk2fdeRJQC0yGWehAuSRqFv4Oluu-N19zzcorm_wk
+SUPABASE_DB_PASSWORD=mUprot-tefno8-zikgak   # direct pg access (Render only — IPv6)
 
 # Anthropic  (real value in .env.production — never commit the actual key)
 ANTHROPIC_API_KEY=sk-ant-api03-...  # get from .env.production or Render dashboard
@@ -56,19 +60,24 @@ VAPID_PUBLIC_KEY=BM-j1EvpL7QoX1HcNaYpWDaHdjIQsNtEwwGbBdhFFd_a2FIlEOVtDAyxm8SN-8y
 VAPID_PRIVATE_KEY=A5G6P2JTHYA77V85yrbqVJ_t1V_MvJceyQx_rJ36wDY
 VAPID_EMAIL=mailto:admin@jasell.com
 
-# Dashboard auth
+# Dashboard auth — three roles
 ADMIN_SECRET=jasell-admin-2026
 DASHBOARD_ADMIN_PASSWORD=admin2026
 DASHBOARD_MANAGER_PASSWORD=manager2026
+DASHBOARD_VENDOR_PASSWORD=jasell-vendor-2026   # platform owner
 JWT_SECRET=pizzabot-jwt-secret-2026-change-in-prod
+
+# Tenant isolation
+TENANT_ID=aaaaaaaa-0000-0000-0000-000000000001  # default; override per deployment for multi-tenant
 ```
 
-**Supabase DB credentials (psql — IPv6 only, use SQL editor in browser instead):**
+**Supabase DB credentials:**
 ```
-Host:     db.umoftdmutxhrbknowbyh.supabase.co:5432  ← IPv6 only, psql times out locally
-User:     postgres
-Password: mUprot-tefno8-zikgak
-SQL Editor: https://supabase.com/dashboard/project/umoftdmutxhrbknowbyh/sql/new
+Host:         db.umoftdmutxhrbknowbyh.supabase.co:5432  ← IPv6 only
+User:         postgres
+Password:     mUprot-tefno8-zikgak
+SQL Editor:   https://supabase.com/dashboard/project/umoftdmutxhrbknowbyh/sql/new
+Direct pg:    works on Render (IPv6); times out locally
 ```
 
 **Cardcom test login:** `https://secure.cardcom.solutions/LogInNew.aspx`
@@ -85,8 +94,9 @@ SQL Editor: https://supabase.com/dashboard/project/umoftdmutxhrbknowbyh/sql/new
 npm start        # production
 npm run dev      # nodemon watch
 
-# Schema changes — paste into Supabase SQL Editor (psql has IPv6-only issue locally)
-# https://supabase.com/dashboard/project/umoftdmutxhrbknowbyh/sql/new
+# Schema changes — two options:
+#   A) Supabase SQL Editor (always works): https://supabase.com/dashboard/project/umoftdmutxhrbknowbyh/sql/new
+#   B) startup migration in index.js via pg (runs on Render, not locally — IPv6 only)
 
 # Env var backup/restore (ALWAYS before infra changes)
 node scripts/backup-render-env.js   # pulls from Render → .env.production
@@ -100,8 +110,9 @@ logs=data if isinstance(data,list) else data.get('logs',data.get('data',[]))
 [print(l.get('timestamp','')[-12:], l.get('message','')) for l in logs]
 " | tail -100
 
-# Syntax check before every push
+# Syntax check before every push (MANDATORY)
 node --check public/app.js
+node --check public/admin.js
 
 # Deploy (auto on push)
 git push origin main
@@ -114,7 +125,7 @@ git push origin main
 ```
 pizza-bot/
 ├── src/
-│   ├── index.js                  # Express server, webhook entry; routes to admin or customer handler
+│   ├── index.js                  # Express server, webhook entry, startup migrations
 │   ├── bot/
 │   │   ├── handler.js            # Thin re-export of ai-handler
 │   │   ├── ai-handler.js         # Customer bot: dispute handler, stale-session guard, Claude, ACTIONs
@@ -129,18 +140,21 @@ pizza-bot/
 │   │   ├── push-notifier.js      # Web Push (VAPID) — saveSubscription, notifyNewOrder
 │   │   ├── settings.js           # Live settings from DB with 60s cache; isOpen() uses Asia/Jerusalem TZ
 │   │   ├── menu-service.js       # Live products from DB with 60s cache
-│   │   └── status-notifier.js    # Customer + courier WhatsApp notifications on status change
+│   │   ├── status-notifier.js    # Customer + courier WhatsApp notifications on status change
+│   │   └── vendor-alerts.js      # Throttled WhatsApp alerts to vendor (errors, payments, restart)
 │   ├── routes/
-│   │   ├── dashboard-api.js      # All /api/* endpoints incl. admin-users, courier, cancel-refund, dispute
+│   │   ├── dashboard-api.js      # All /api/* endpoints — tenant-scoped orders, vendor routes, etc.
 │   │   ├── payment.js            # POST /webhook/payment + GET /payment/success (embeds rv= in URL)
 │   │   ├── admin.js              # Legacy /admin/orders (backwards compat)
 │   │   └── business-bot.js       # POST /webhook/business (not yet active)
 │   └── middleware/
-│       └── auth.js               # HMAC-SHA256 token sign/verify, requireAuth, requireAdmin
+│       └── auth.js               # HMAC-SHA256 sign/verify, signDashboard(), requireAuth/Admin/Vendor
 ├── public/
-│   ├── index.html                # Dashboard login page
-│   ├── dashboard.html            # Dashboard SPA (Poppins, brand colors, dark mode, Chart.js)
-│   ├── app.js                    # All dashboard JS
+│   ├── index.html                # Login page — routes vendor→/admin, others→/dashboard.html
+│   ├── dashboard.html            # Business dashboard SPA (admin + manager roles)
+│   ├── app.js                    # Business dashboard JS
+│   ├── admin.html                # Vendor portal SPA (vendor role only)
+│   ├── admin.js                  # Vendor portal JS
 │   ├── menu.html                 # Public customer menu
 │   └── sw.js                     # Service Worker for push notifications
 ├── supabase/
@@ -157,6 +171,40 @@ pizza-bot/
 ---
 
 ## Architecture
+
+### URL Routing
+
+```
+GET  /              → index.html (login page)
+GET  /dashboard.html → business SPA (admin/manager); vendor role redirected to /admin
+GET  /admin         → admin.html (vendor-only SPA); non-vendor redirected to /
+GET  /menu.html     → public menu (no auth)
+POST /webhook       → WhatsApp webhook (customer + admin bot)
+/api/*              → dashboard-api.js (auth required)
+```
+
+**Login redirect logic (index.html → app.js):**
+```
+POST /api/auth/login → { token, role }
+  role === 'vendor'  → /admin
+  role === 'admin' | 'manager' → /dashboard.html
+```
+
+### Auth & Tenant Isolation (auth.js)
+
+```
+signDashboard(username, role):
+  → sign({ username, role, tenant_id: DEFAULT_TENANT_ID, exp: +24h })
+
+requireAuth: verifies HMAC token, attaches req.user (incl. tenant_id fallback)
+requireAdmin: requireAuth + role ∈ {admin, vendor}
+requireVendor: requireAuth + role === 'vendor'
+
+DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001'
+```
+
+All order queries in dashboard-api.js are scoped with `.eq('tenant_id', tid(req))`.
+All order mutations use `assertTenant(row, req)` before writing.
 
 ### Webhook Routing (index.js)
 
@@ -207,19 +255,67 @@ Triggered when sender phone is in `admin_users` table. Same Green API instance.
 
 `reset` / `אפס` clears admin session history.
 
+### Vendor Portal (/admin — admin.html + admin.js)
+
+Separate SPA for the platform owner. Auth guard: `role !== 'vendor'` → redirect to `/`.
+
+**Pages:**
+- **סקירה כללית:** KPI cards (active clients, total clients, total orders, total revenue, sessions) + recent clients table. Pulls from `GET /api/vendor/stats` and `GET /api/vendor/clients`.
+- **לקוחות:** Full CRUD table — add client (name/phone/plan/notes), update status inline via `<select>`, delete. Uses `GET/POST/PATCH/DELETE /api/vendor/clients`.
+- **התראות:** WhatsApp phone input, alert toggle checkboxes (errors/payments/restarts), test alert button. Uses `PATCH /api/vendor/settings` and `POST /api/vendor/alerts-test`.
+
+**Vendor API routes (all require `requireVendor`):**
+```
+GET    /api/vendor/clients        → all clients
+POST   /api/vendor/clients        → create client
+PATCH  /api/vendor/clients/:id    → update status/plan/notes
+DELETE /api/vendor/clients/:id    → remove client
+GET    /api/vendor/stats          → cross-client KPIs
+PATCH  /api/vendor/settings       → vendor_phone, alert prefs
+POST   /api/vendor/alerts-test    → send test WhatsApp
+```
+
+### Vendor Alerts (vendor-alerts.js)
+
+Real-time WhatsApp alerts to vendor on system events.
+
+- **Throttle:** max one alert per type per 5 minutes
+- **Phone source:** `settings` table key `vendor_phone` (cached, invalidated on PATCH /vendor/settings)
+- **Hooks:** `uncaughtException`, `unhandledRejection`, Express error middleware, `ai-handler.js` Claude errors
+
+| Alert type | Trigger |
+|-----------|---------|
+| `server_error` | uncaughtException / unhandledRejection / Express 500 |
+| `bot_error` | Claude API failure per customer |
+| `payment_failed` | Cardcom verification failure |
+| `restart` | Server startup (every deploy) |
+| `low_balance` | Green API balance warning |
+
+### Startup Migrations (index.js)
+
+On every server start, `index.js` runs idempotent DDL via `pg` (direct IPv6 connection — works on Render, not locally):
+
+```javascript
+// Current migrations:
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS tenant_id UUID DEFAULT 'aaaaaaaa-...'
+UPDATE orders SET tenant_id = 'aaaaaaaa-...' WHERE tenant_id IS NULL
+CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id)
+```
+
+Uses `SUPABASE_DB_PASSWORD` env var. Safe to run on every deploy (`IF NOT EXISTS`).
+
 ### Courier Notification Flow
 
 ```
 PATCH /orders/:id/status
+  → assertTenant(order, req)
   → updateOrderStatus()
   → notifyStatusChange(phone, status, lang, orderNumber, order)
       → sends customer WhatsApp (status message)
       → loads settings: courier_notify_enabled, courier_notify_on_status, couriers[]
       → if status === courier_notify_on_status:
           for each courier in couriers[]:
-            sends WhatsApp with full order details:
-              order#, customer name+phone, address, courier_notes,
-              items list with toppings, total, payment method
+            sends WhatsApp with full order details
 ```
 
 **Settings keys for couriers:**
@@ -256,6 +352,7 @@ Dashboard: ✕ button → modal:
   - custom_message sent if preview was edited
 
 POST /api/orders/:id/cancel-refund:
+  - assertTenant check first
   - Tries Cardcom CancelDeal.aspx if cardcom_deal_number stored
   - Falls back to manual-refund alert with Cardcom portal link
   - Always sends WhatsApp to customer
@@ -285,7 +382,8 @@ All loaded from `settings` table (key/value JSONB). Keys:
 `delivery_price`, `delivery_cities`, `delivery_zones[]`, `business_hours`,
 `pickup_address`, `business_name`, `bot_url`,
 `couriers[]`, `courier_notify_enabled`, `courier_notify_on_status`,
-`allow_order_edits`, `edit_time_limit`
+`allow_order_edits`, `edit_time_limit`,
+`vendor_phone`, `vendor_name`, `vendor_alert_error`, `vendor_alert_payment`, `vendor_alert_restart`
 
 **`delivery_zones` vs `delivery_cities`:** Bot reads `delivery_zones` first. `saveZones()` auto-syncs `delivery_cities`.
 
@@ -297,18 +395,21 @@ All loaded from `settings` table (key/value JSONB). Keys:
 categories         -- emoji, name_he, name_en, is_topping_addon, has_toppings, sort_order
 products           -- name_he, name_en, price, description, image_url, category_id, is_available
 product_additions  -- per-product toppings, FK → products CASCADE, is_available
-settings           -- key/value JSONB
+settings           -- key/value JSONB (all app + vendor settings)
 sessions           -- per-phone (customer: phone, admin: 'admin:phone'):
                    --   conversation_history, pending_order, pending_dispute, customer_profile
 pending_payments   -- Cardcom: phone, cardcom_code, return_value, order_data, expires_at
 push_subscriptions -- endpoint, p256dh, auth, user_agent
 admin_users        -- phone (unique, normalised), name, role ('admin'|'manager'), created_at
-                   -- Created manually via Supabase SQL editor (psql IPv6-only issue)
 orders             -- order_number (seq 1000+), items JSONB, status, payment_method, payment_status,
                    -- cardcom_code, cardcom_deal_number, refund_status,
                    -- cancelled_by, cancel_reason, dispute_status, dispute_item,
-                   -- destination_type, courier_notes
+                   -- destination_type, courier_notes,
+                   -- tenant_id UUID (DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001')
 customers          -- VIEW over orders
+clients            -- platform clients: name, contact_phone, plan, status, notes
+                   -- plan: 'trial'|'basic'|'pro'|'enterprise'
+                   -- status: 'active'|'trial'|'inactive'
 ```
 
 **Order status:** `new → preparing → out_for_delivery → delivered → done` (auto 1h) | `cancelled`
@@ -336,6 +437,9 @@ customers          -- VIEW over orders
 - Receipt popup
 - Mobile: burger menu, order cards, responsive modals
 - Public menu `/menu.html`
+- **Vendor portal** `/admin`: isolated SPA for platform owner — client CRUD, KPI dashboard, alert settings
+- **Vendor alerts**: real-time throttled WhatsApp alerts for errors/payments/restarts
+- **Tenant isolation**: orders filtered/guarded by `tenant_id` on all read + write endpoints
 
 ### ❌ Missing / needs work
 | Item | Notes |
@@ -344,31 +448,53 @@ customers          -- VIEW over orders
 | Cardcom auto-refund | `CancelDeal.aspx` needs `InternalDealNumber` — not stored yet |
 | No test suite | Zero automated tests |
 | Bit / Paybox | Settings toggles only |
+| Multi-tenant full isolation | categories/products/settings not yet per-tenant (single deployment per business) |
 
 ---
 
 ## Operational Rules
 
 1. **Backup before infra change:** `node scripts/backup-render-env.js`
-2. **Schema changes:** Use Supabase SQL editor (`https://supabase.com/dashboard/project/umoftdmutxhrbknowbyh/sql/new`) — psql doesn't work locally (IPv6-only DB host)
-3. **Always run** `node --check public/app.js` before committing
+2. **Schema changes (two options):**
+   - Supabase SQL editor — always works: `https://supabase.com/dashboard/project/umoftdmutxhrbknowbyh/sql/new`
+   - Startup migration in `index.js` via `pg` — runs automatically on next Render deploy (IPv6 works on Render, not locally)
+3. **Always run** `node --check public/app.js && node --check public/admin.js` before committing
 4. **Every desktop UI change must include mobile** — check `window.innerWidth <= 768` branches
 5. **delivery_zones** is authoritative; `saveZones()` syncs `delivery_cities`; bot reads zones first
 6. **Admin users added via dashboard Settings** → "מנהלי וואצפ" section, stored in `admin_users` table
-7. **Always update CLAUDE.md** when architecture changes
+7. **Vendor portal** is at `/admin` (admin.html + admin.js) — completely separate from business dashboard; any change to one does NOT affect the other
+8. **Always update CLAUDE.md** when architecture changes
 
 ---
 
 ## Known Issues & Lessons Learned
 
-### Supabase DB is IPv6-only — psql times out locally
-`db.umoftdmutxhrbknowbyh.supabase.co` resolves only to an IPv6 address. Both local machine and Render servers can't reach port 5432 directly. **Fix: always use the Supabase SQL editor in the browser** for schema changes. Render's `supabase-js` client uses the REST/PostgREST API (not direct pg) and works fine.
+### Supabase DB is IPv6-only — psql times out locally, works on Render
+`db.umoftdmutxhrbknowbyh.supabase.co` resolves to an IPv6 address only. Local machine times out (ETIMEDOUT). Render servers have IPv6 and can connect via direct `pg`. Use the startup migration pattern in `index.js` for DDL, or the Supabase SQL editor in the browser.
 
-### admin_users table must be created manually
-Since psql is unavailable, the table was created via the Supabase SQL editor. Any new tables must be created the same way. The `pg` npm package + direct connection also fails (ENETUNREACH on IPv6).
+### Supabase pooler (Supavisor) — credentials don't work locally either
+`aws-0-[region].pooler.supabase.com` returns "Tenant or user not found" for this project. Don't try the pooler. Use the SQL editor or the Render startup migration.
+
+### admin_users table must be created via SQL editor
+No pg access locally. Created via Supabase SQL editor. All new tables must be created the same way (or via startup migration).
 
 ### Admin bot routing — same instance, no second Green API needed
 `getAdminUser(phone)` checks `admin_users` table. If found, routes to `admin-handler.js`. Admin sessions use `admin:` prefix in the sessions table so they don't mix with customer sessions. The check is non-blocking (Promise chain after `res.sendStatus(200)`).
+
+### Vendor portal is fully isolated from business dashboard
+- `admin.html` + `admin.js` are vendor-only. No shared JS with `app.js`.
+- Login page routes: `role === 'vendor'` → `/admin`; others → `/dashboard.html`.
+- `app.js` has a guard: if `role === 'vendor'` on load → redirect to `/admin`.
+- vendor tab was removed from dashboard.html entirely.
+
+### requireAdmin also passes vendor role
+`requireAdmin` allows both `admin` and `vendor` roles (vendor is a superset). This lets the vendor portal call most business endpoints. `requireVendor` is strictly vendor-only.
+
+### tenant_id on orders — startup migration pattern
+Startup migration in `index.js` uses `pg` to run `ALTER TABLE orders ADD COLUMN IF NOT EXISTS tenant_id ...`. This is idempotent and runs safely on every Render deploy. Required env var: `SUPABASE_DB_PASSWORD`.
+
+### assertTenant() is a soft check — only enforces when column exists
+`assertTenant(row, req)` returns `true` if `row.tenant_id` is null/undefined. Designed for forward compatibility: works before migration (passes everything) and after (enforces isolation).
 
 ### notifyStatusChange() needs full order object for courier messages
 The function signature is `notifyStatusChange(phone, status, lang, orderNumber, order)`. The 5th param `order` is needed to build the courier WhatsApp message. Dashboard API's `PATCH /orders/:id/status` passes the full order object. Other callers (admin-handler, payment.js) should also pass it when available.
@@ -392,7 +518,7 @@ Iron rule in `prompts.js`: any topping keyword in the *current message* → skip
 Sessions > 3h old or containing old-flow markers reset via stale-session guard in `ai-handler.js`.
 
 ### page-stats outside .main — invisible
-All `page-*` divs must be inside `.main`. `display:none` + JS toggling only works inside the layout wrapper.
+All `page-*` divs must be inside `.main`. `display:none` + JS toggling only works inside the layout wrapper. Applies to both dashboard.html and admin.html.
 
 ### Cancel button hidden — order was "done"
 Button hidden for `['cancelled','done']` — intentional. Shows for `new`, `preparing`, `out_for_delivery`, `delivered`.
@@ -401,7 +527,7 @@ Button hidden for `['cancelled','done']` — intentional. Shows for `new`, `prep
 Test instance limited to 3 whitelisted numbers. HTTP 466 for others. Fix: upgrade to Business at console.green-api.com.
 
 ### Missing backtick crashes dashboard silently
-Run `node --check public/app.js` before every push. All tabs stay `display:none` if JS fails to load.
+Run `node --check public/app.js` and `node --check public/admin.js` before every push. All tabs stay `display:none` if JS fails to load.
 
 ### SVG doesn't print in popup windows
 Receipt HTML uses plain-text characters (₪, →), never SVG.
@@ -420,3 +546,6 @@ Always `backup-render-env.js` first. render-guard hook enforces.
 
 ### Poll webhook fires on every vote change
 Filter: process only when `✅ confirm` is voted. Intermediate votes ignored.
+
+### Vendor alerts throttle — 5 min cooldown per type
+`_alertCooldowns` is in-memory. Resets on server restart. On deploy, restart alert fires immediately; subsequent error alerts within 5 min are suppressed.
