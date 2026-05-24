@@ -7,6 +7,7 @@
 
 const { sendMessage } = require('./greenapi');
 const { createClient } = require('@supabase/supabase-js');
+const settings = require('./settings');
 
 let _vendorPhone = null;
 let _alertCooldowns = {};   // key → last alert timestamp (throttle)
@@ -37,7 +38,22 @@ function invalidateVendorPhone() { _vendorPhone = null; }
  * @param {string} title  short title
  * @param {string} detail optional detail text
  */
+// Map alert type → settings key (undefined = always send)
+const ALERT_SETTING = {
+  server_error:   'vendor_alert_error',
+  bot_error:      'vendor_alert_error',
+  payment_failed: 'vendor_alert_payment',
+  restart:        'vendor_alert_restart',
+};
+
 async function alert(type, emoji, title, detail = '') {
+  // Check if this alert type is enabled in settings
+  const settingKey = ALERT_SETTING[type];
+  if (settingKey) {
+    const enabled = await settings.get(settingKey).catch(() => true);
+    if (enabled === false || enabled === 'false') return;
+  }
+
   // Throttle: skip if same type was sent within COOLDOWN_MS
   const last = _alertCooldowns[type] || 0;
   if (Date.now() - last < COOLDOWN_MS) return;
