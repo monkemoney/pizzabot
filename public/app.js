@@ -1781,6 +1781,7 @@ async function loadSettings() {
   try {
     _currentSettings = await api('GET', '/settings');
     _deliveryZones   = Array.isArray(_currentSettings.delivery_zones) ? _currentSettings.delivery_zones : [];
+    _couriers        = Array.isArray(_currentSettings.couriers)        ? _currentSettings.couriers        : [];
     renderSettingsForm(_currentSettings);
   } catch (err) {
     container.innerHTML = `<div style="color:red">${err.message}</div>`;
@@ -1928,9 +1929,30 @@ function renderSettingsForm(s) {
       </div>
       ${saveBtn('saveZones')}
     `)}
+
+    ${sCard(`${ICONS.truck} שליחים`, `
+      ${sToggle('courier_notify_enabled', 'שלח פרטי הזמנה לשליח אוטומטית', !!s.courier_notify_enabled, 'courier_notify_enabled')}
+      <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <label style="font-size:.84rem;font-weight:600;color:var(--text);min-width:120px">שלח בסטטוס:</label>
+        <select id="courier_notify_on_status"
+          style="padding:8px 14px;border-radius:10px;border:2px solid var(--border);font-family:inherit;font-size:.84rem;flex:1;min-width:160px">
+          <option value="preparing"        ${(s.courier_notify_on_status||'out_for_delivery')==='preparing'        ?'selected':''}>בהכנה</option>
+          <option value="out_for_delivery" ${(s.courier_notify_on_status||'out_for_delivery')==='out_for_delivery' ?'selected':''}>יצא למשלוח</option>
+          <option value="new"              ${(s.courier_notify_on_status||'out_for_delivery')==='new'              ?'selected':''}>חדשה</option>
+        </select>
+      </div>
+
+      <div style="margin-top:18px">
+        <div style="font-size:.8rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">שליחים</div>
+        <div id="couriersTable"></div>
+        <button onclick="addCourierRow()" class="btn btn-outline btn-sm" style="margin-top:10px">+ הוסף שליח</button>
+      </div>
+      ${saveBtn('saveCouriers')}
+    `)}
   `;
 
   renderZonesTable();
+  renderCouriersTable();
 
   // Sync hours-active toggle → enable/disable time inputs
   document.querySelectorAll('.hours-active').forEach((cb) => {
@@ -2062,9 +2084,65 @@ function removeZone(i) {
 }
 
 async function saveZones() {
-  // Sync delivery_cities from zones so the bot always has the current city list
   const cities = [...new Set(_deliveryZones.map(z => (z.city || '').trim()).filter(Boolean))];
   await saveSection({ delivery_zones: _deliveryZones, delivery_cities: cities });
+}
+
+// ─── Couriers settings ────────────────────────────────────────────────────────
+
+let _couriers = [];
+
+function renderCouriersTable() {
+  const t = document.getElementById('couriersTable');
+  if (!t) return;
+  if (!_couriers.length) {
+    t.innerHTML = '<div style="color:var(--text-muted);font-size:.84rem;padding:6px 0">אין שליחים — הוסף שליח ראשון</div>';
+    return;
+  }
+  t.innerHTML = _couriers.map((c, i) => `
+    <div style="display:grid;grid-template-columns:1fr 1fr 36px;gap:10px;align-items:center;margin-bottom:8px">
+      <input type="text"
+        value="${c.name || ''}"
+        placeholder="שם השליח"
+        oninput="_couriers[${i}].name=this.value"
+        style="border-radius:10px;padding:8px 12px;border:2px solid var(--border);font-family:inherit;font-size:.84rem">
+      <input type="tel" dir="ltr"
+        value="${c.phone || ''}"
+        placeholder="972501234567"
+        oninput="_couriers[${i}].phone=this.value.replace(/\\D/g,'')"
+        style="border-radius:10px;padding:8px 12px;border:2px solid var(--border);font-family:inherit;font-size:.84rem;letter-spacing:.04em">
+      <button onclick="removeCourier(${i})"
+        style="width:32px;height:32px;border-radius:8px;border:none;background:#fff0f6;color:#e0004d;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center">✕</button>
+    </div>`).join('');
+}
+
+function addCourierRow() {
+  _couriers.push({ name: '', phone: '' });
+  renderCouriersTable();
+}
+
+function removeCourier(i) {
+  _couriers.splice(i, 1);
+  renderCouriersTable();
+}
+
+async function saveCouriers() {
+  // Collect current values from DOM inputs before saving
+  const nameInputs  = document.querySelectorAll('#couriersTable input[type=text]');
+  const phoneInputs = document.querySelectorAll('#couriersTable input[type=tel]');
+  _couriers = [...nameInputs].map((inp, i) => ({
+    name:  inp.value.trim(),
+    phone: (phoneInputs[i]?.value || '').replace(/\D/g, ''),
+  })).filter(c => c.phone);
+
+  const notifyStatus = document.getElementById('courier_notify_on_status')?.value || 'out_for_delivery';
+  const notifyEnabled = !!document.querySelector('.setting-toggle[data-key="courier_notify_enabled"]')?.checked;
+
+  await saveSection({
+    couriers:                 _couriers,
+    courier_notify_on_status: notifyStatus,
+    courier_notify_enabled:   notifyEnabled,
+  });
 }
 
 // ─── Mobile burger menu ───────────────────────────────────────────────────────

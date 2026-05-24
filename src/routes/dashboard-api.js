@@ -90,7 +90,7 @@ router.patch('/orders/:id/status', requireAuth, async (req, res) => {
   }
   try {
     const order = await updateOrderStatus(req.params.id, status);
-    await notifyStatusChange(order.phone, status, 'he', order.order_number);
+    await notifyStatusChange(order.phone, status, 'he', order.order_number, order);
     res.json({ success: true, order });
   } catch (err) {
     res.status(500).json({ error: err.message });
