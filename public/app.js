@@ -326,6 +326,11 @@ function renderOrderCard(o) {
         : `<button onclick="openDisputeModal('${o.id}')" title="פריט חסר" style="background:#fffbeb;border:none;border-radius:10px;padding:8px 12px;cursor:pointer;color:#d97706;display:flex;align-items:center">${SVG.alertTriangle}</button>`}
       <button onclick="openCancelRefundModal('${o.id}')" title="ביטול" style="background:#fff0f6;border:none;border-radius:10px;padding:8px 12px;cursor:pointer;color:#e0004d;display:flex;align-items:center">${SVG.xCircle}</button>` : ''}
     </div>
+    ${o.refund_status==='manual'?`
+    <a href="https://secure.cardcom.solutions" target="_blank"
+      style="display:flex;align-items:center;justify-content:space-between;background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:10px;padding:9px 13px;margin-top:10px;font-size:.78rem;font-weight:700;color:#e0004d;text-decoration:none">
+      <span>💳 נדרש זיכוי ידני בכרטקום</span><span>↗</span>
+    </a>`:''}
   </div>`;
 }
 
@@ -379,10 +384,15 @@ function renderOrderRow(o) {
               class="btn btn-sm" style="background:#fffbeb;border-color:#fcd34d;color:#d97706;gap:5px">${SVG.alertTriangle} פריט חסר</button>`}
         <button onclick="event.stopPropagation();openCancelRefundModal('${o.id}')"
           class="btn btn-sm" style="background:#fff0f6;border-color:#ffd0e6;color:#e0004d;gap:5px">${SVG.xCircle} ביטול</button>
-      ` : `<span class="badge badge-cancelled" style="font-size:.78rem">
-        ${o.cancelled_by==='customer'?'בוטל ע"י לקוח':'בוטל ע"י העסק'}
-        ${o.cancel_reason?`— ${o.cancel_reason}`:''}
-      </span>`}
+      ` : `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+        <span class="badge badge-cancelled" style="font-size:.78rem">
+          ${o.cancelled_by==='customer'?'בוטל ע"י לקוח':'בוטל ע"י העסק'}
+          ${o.cancel_reason?`— ${o.cancel_reason}`:''}
+        </span>
+        ${o.refund_status==='manual'?`<a href="https://secure.cardcom.solutions" target="_blank" onclick="event.stopPropagation()"
+          style="background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:50px;padding:4px 12px;font-size:.72rem;font-weight:700;color:#e0004d;text-decoration:none;white-space:nowrap">
+          💳 זיכוי ידני נדרש ↗</a>`:''}
+      </div>`}
     </div>`;
 
   // ── Expanded panel ──
@@ -423,6 +433,12 @@ function renderOrderRow(o) {
             <span>${o.payment_method==='cash'?'מזומן':'אשראי'}</span>
             <span class="badge ${o.payment_status==='paid'?'badge-paid':'badge-pending-pay'}">${o.payment_status==='paid'?'שולם':'ממתין'}</span>
           </div>
+          ${o.refund_status==='manual'?`
+          <a href="https://secure.cardcom.solutions" target="_blank" onclick="event.stopPropagation()"
+            style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:10px;padding:9px 13px;margin-top:8px;font-size:.78rem;font-weight:700;color:#e0004d;text-decoration:none">
+            <span>💳 נדרש זיכוי ידני בכרטקום</span>
+            <span style="font-size:.72rem;opacity:.8">פתח ↗</span>
+          </a>`:''}
         </div>
         ${actions}
       </div>
@@ -448,7 +464,10 @@ function renderOrderRow(o) {
         ${o.payment_status==='paid'?`${SVG.check} שולם`:`${SVG.clock} ממתין`}
       </span>
       <div style="font-weight:800;font-size:.95rem">₪${(parseFloat(o.total_price)||0).toFixed(0)}</div>
-      ${statusBadge(o.status)}
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">
+        ${statusBadge(o.status)}
+        ${o.refund_status==='manual'?`<span style="background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:999px;padding:2px 8px;font-size:.66rem;font-weight:700;color:#e0004d;white-space:nowrap">💳 זיכוי ידני</span>`:''}
+      </div>
       <div style="display:flex;align-items:center;justify-content:flex-end">${chevron}</div>
     </div>`;
 
