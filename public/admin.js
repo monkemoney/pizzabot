@@ -49,11 +49,13 @@ function showPage(name) {
 function showToast(msg) {
   const t = document.createElement('div');
   t.textContent = msg;
-  t.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#1a0a3d;color:#fff;padding:10px 24px;border-radius:50px;font-weight:700;font-size:.88rem;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.3)';
+  const bottomOffset = window.innerWidth <= 768 ? '80px' : '28px';
+  t.style.cssText = `position:fixed;bottom:${bottomOffset};left:50%;transform:translateX(-50%);background:#1a0a3d;color:#fff;padding:10px 24px;border-radius:50px;font-weight:700;font-size:.88rem;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.3)`;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 2500);
 }
 
+function openAddClientModal() { openModal(); }
 function openModal() {
   const m = document.getElementById('addClientModal');
   m.style.display = 'flex'; m.classList.add('open');
