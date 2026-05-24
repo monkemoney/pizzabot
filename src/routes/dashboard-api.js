@@ -63,7 +63,6 @@ router.get('/orders', requireAuth, async (req, res) => {
     await autoCompleteDeliveredOrders();
 
     let query = supabase.from('orders').select('*')
-      .eq('tenant_id', tid(req))
       .order('created_at', { ascending: false });
 
     const { status, date_from, date_to } = req.query;
@@ -327,7 +326,6 @@ router.get('/stats', requireAdmin, async (req, res) => {
     const { data: dayOrders } = await supabase
       .from('orders')
       .select('total_price, items, status, created_at, updated_at, delivery_method, payment_status')
-      .eq('tenant_id', tid(req))
       .gte('created_at', start)
       .lt('created_at', end);
 
