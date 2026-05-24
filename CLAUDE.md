@@ -260,17 +260,19 @@ Triggered when sender phone is in `admin_users` table. Same Green API instance.
 Separate SPA for the platform owner. Auth guard: `role !== 'vendor'` → redirect to `/`.
 
 **Pages:**
-- **סקירה כללית:** KPI cards (active clients, total clients, total orders, total revenue, sessions) + recent clients table. Pulls from `GET /api/vendor/stats` and `GET /api/vendor/clients`.
-- **לקוחות:** Full CRUD table — add client (name/phone/plan/notes), update status inline via `<select>`, delete. Uses `GET/POST/PATCH/DELETE /api/vendor/clients`.
+- **סקירה כללית:** KPI cards + recent clients table + Claude API cost table (last 6 months). Pulls from `GET /api/vendor/stats`, `GET /api/vendor/clients`, `GET /api/vendor/usage`.
+- **לקוחות:** Full CRUD table with live search (name/phone/notes). Each row shows monthly API cost + call count from `api_usage` joined by `tenant_id`. Uses `GET/POST/PATCH/DELETE /api/vendor/clients`.
 - **התראות:** WhatsApp phone input, alert toggle checkboxes (errors/payments/restarts), test alert button. Uses `PATCH /api/vendor/settings` and `POST /api/vendor/alerts-test`.
+- **Mobile:** fully responsive — sidebar hidden on ≤768px, bottom nav + fixed header shown.
 
 **Vendor API routes (all require `requireVendor`):**
 ```
-GET    /api/vendor/clients        → all clients
-POST   /api/vendor/clients        → create client
-PATCH  /api/vendor/clients/:id    → update status/plan/notes
+GET    /api/vendor/clients        → all clients + current-month usage (month_calls, month_cost)
+POST   /api/vendor/clients        → create client (tenant_id auto-generated)
+PATCH  /api/vendor/clients/:id    → update status/plan/notes/tenant_id
 DELETE /api/vendor/clients/:id    → remove client
 GET    /api/vendor/stats          → cross-client KPIs
+GET    /api/vendor/usage          → Claude API usage + cost per tenant per month (last 6 months)
 PATCH  /api/vendor/settings       → vendor_phone, alert prefs
 POST   /api/vendor/alerts-test    → send test WhatsApp
 ```
@@ -282,14 +284,15 @@ Real-time WhatsApp alerts to vendor on system events.
 - **Throttle:** max one alert per type per 5 minutes
 - **Phone source:** `settings` table key `vendor_phone` (cached, invalidated on PATCH /vendor/settings)
 - **Hooks:** `uncaughtException`, `unhandledRejection`, Express error middleware, `ai-handler.js` Claude errors
+- **Settings check:** before each alert, reads `vendor_alert_error` / `vendor_alert_payment` / `vendor_alert_restart` from DB — if `false`, alert is suppressed
 
-| Alert type | Trigger |
-|-----------|---------|
-| `server_error` | uncaughtException / unhandledRejection / Express 500 |
-| `bot_error` | Claude API failure per customer |
-| `payment_failed` | Cardcom verification failure |
-| `restart` | Server startup (every deploy) |
-| `low_balance` | Green API balance warning |
+| Alert type | Settings key | Trigger |
+|-----------|-------------|---------|
+| `server_error` | `vendor_alert_error` | uncaughtException / unhandledRejection / Express 500 |
+| `bot_error` | `vendor_alert_error` | Claude API failure per customer |
+| `payment_failed` | `vendor_alert_payment` | Cardcom verification failure |
+| `restart` | `vendor_alert_restart` | Server startup (every deploy) |
+| `low_balance` | — (always) | Green API balance warning |
 
 ### Courier Notification Flow
 
@@ -407,9 +410,14 @@ orders             -- order_number (seq 1000+), items JSONB, status, payment_met
                    -- destination_type, courier_notes,
                    -- tenant_id UUID (DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001')
 customers          -- VIEW over orders
-clients            -- platform clients: name, contact_phone, plan, status, notes
+clients            -- platform clients: name, contact_phone, plan, status, notes, tenant_id
                    -- plan: 'trial'|'basic'|'pro'|'enterprise'
                    -- status: 'active'|'trial'|'inactive'
+                   -- tenant_id: links to api_usage for cost tracking; auto-generated UUID per client
+api_usage          -- Claude API token logging per call:
+                   -- tenant_id, created_at, input_tokens, output_tokens,
+                   -- cache_read_tokens, cache_write_tokens
+                   -- Pricing (claude-opus-4-7): input=$15/MTok, output=$75/MTok, cache_read=$1.50/MTok
 ```
 
 **Order status:** `new → preparing → out_for_delivery → delivered → done` (auto 1h) | `cancelled`
@@ -440,7 +448,12 @@ clients            -- platform clients: name, contact_phone, plan, status, notes
 - Mobile: burger menu, order cards, responsive modals
 - Public menu `/menu.html`
 - **Vendor portal** `/admin`: isolated SPA for platform owner — client CRUD, KPI dashboard, alert settings
-- **Vendor alerts**: real-time throttled WhatsApp alerts for errors/payments/restarts
+- **Vendor portal mobile:** fully responsive — bottom nav, fixed header, single-column layout on ≤768px
+- **Vendor alerts**: real-time throttled WhatsApp alerts — now respects DB settings (error/payment/restart toggles)
+- **Client search:** live search in clients page (name, phone, notes)
+- **Claude API usage tracking:** every `callClaude()` logs tokens to `api_usage` table (fire-and-forget)
+- **Cost per client:** vendor dashboard shows monthly Claude cost + call count per client (joined by `tenant_id`)
+- **API cost dashboard:** 6-month history table in vendor סקירה כללית (claude-opus-4-7 pricing)
 - `assertTenant()` soft guard on all order mutation endpoints
 
 ### ❌ Missing / needs work
@@ -563,3 +576,15 @@ Filter: process only when `✅ confirm` is voted. Intermediate votes ignored.
 
 ### Vendor alerts throttle — 5 min cooldown per type
 `_alertCooldowns` is in-memory. Resets on server restart. On deploy, restart alert fires immediately; subsequent error alerts within 5 min are suppressed.
+
+### Vendor alerts were firing regardless of settings
+Bug: `alert()` in `vendor-alerts.js` never read the DB settings — sent unconditionally. Fixed: before sending, reads `vendor_alert_error` / `vendor_alert_payment` / `vendor_alert_restart` from `settings` table via `settings.get()`. If value is `false` or `'false'`, alert is suppressed.
+
+### Supabase SQL editor 08P01 error on mobile
+Running SQL from mobile browser gives `ERROR: 08P01: invalid message format` — protocol issue with mobile browsers. Always run schema migrations from a desktop browser. Running statements one at a time also helps avoid this error.
+
+### api_usage logging — claude.js uses its own Supabase client
+`claude.js` creates its own Supabase client (not importing `supabase.js`) to avoid circular dependencies. Usage is logged fire-and-forget after each `client.messages.create()` call using `response.usage` fields: `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`.
+
+### clients.tenant_id links to api_usage for cost display
+`GET /vendor/clients` joins current-month `api_usage` by `tenant_id` and returns `month_calls` + `month_cost` per client. The `tenant_id` in each client row matches the `TENANT_ID` env var of that client's Render deployment. New clients get a UUID auto-generated by Postgres `DEFAULT gen_random_uuid()`.
