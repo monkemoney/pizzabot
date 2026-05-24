@@ -80,6 +80,7 @@ async function refreshDashboard() {
       api('GET', '/vendor/stats'),
       api('GET', '/vendor/clients'),
     ]);
+    loadUsage();
 
     const card = (label, value, color) =>
       `<div class="stat-card">
@@ -114,6 +115,52 @@ async function refreshDashboard() {
     }
   } catch (err) {
     grid.innerHTML = `<div style="color:red;font-size:.84rem">${err.message}</div>`;
+  }
+}
+
+// ─── Usage / Cost ─────────────────────────────────────────────────────────────
+
+const MONTH_HE = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+
+async function loadUsage() {
+  const el = document.getElementById('usageTable');
+  if (!el) return;
+  try {
+    const rows = await api('GET', '/vendor/usage');
+    if (!rows || !rows.length) {
+      el.innerHTML = '<div style="color:#9b8fc0;font-size:.84rem;padding:8px 0">אין נתונים עדיין</div>';
+      return;
+    }
+
+    const fmt = n => n >= 1000000 ? (n/1000000).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(0)+'K' : String(n);
+    const fmtMonth = s => { const [y,m] = s.split('-'); return `${MONTH_HE[+m-1]} ${y}`; };
+    const fmtCost  = n => n < 0.01 ? '<$0.01' : `$${n.toFixed(2)}`;
+
+    el.innerHTML = `<table>
+      <thead><tr>
+        <th>חודש</th>
+        <th style="text-align:left">Tenant</th>
+        <th>קריאות</th>
+        <th>Input</th>
+        <th>Output</th>
+        <th>Cache</th>
+        <th style="color:#5e17eb">עלות</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => `<tr>
+          <td style="font-weight:700">${fmtMonth(r.month)}</td>
+          <td style="font-family:monospace;font-size:.75rem;direction:ltr;color:#9b8fc0">${r.tenant_id.slice(0,8)}…</td>
+          <td>${r.calls}</td>
+          <td style="font-size:.82rem;color:#555">${fmt(r.input)}</td>
+          <td style="font-size:.82rem;color:#555">${fmt(r.output)}</td>
+          <td style="font-size:.82rem;color:#555">${fmt(r.cache_read)}</td>
+          <td style="font-weight:700;color:#5e17eb">${fmtCost(r.cost_usd)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+  } catch (err) {
+    const el2 = document.getElementById('usageTable');
+    if (el2) el2.innerHTML = `<div style="color:red;font-size:.84rem">${err.message}</div>`;
   }
 }
 

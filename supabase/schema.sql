@@ -242,3 +242,18 @@ CREATE TABLE IF NOT EXISTS clients (
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   updated_at    TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ── API Usage tracking ────────────────────────────────────────────────────────
+-- Logs every Claude API call with token counts for cost analysis.
+-- Cost (claude-opus-4-7): input=$15/MTok, output=$75/MTok, cache_read=$1.50/MTok
+CREATE TABLE IF NOT EXISTS api_usage (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id           UUID NOT NULL DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001',
+  created_at          TIMESTAMPTZ DEFAULT NOW(),
+  input_tokens        INT NOT NULL DEFAULT 0,
+  output_tokens       INT NOT NULL DEFAULT 0,
+  cache_read_tokens   INT NOT NULL DEFAULT 0,
+  cache_write_tokens  INT NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_api_usage_tenant  ON api_usage(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_api_usage_created ON api_usage(created_at);

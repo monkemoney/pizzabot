@@ -810,6 +810,49 @@ router.post('/vendor/alerts-test', requireVendor, async (_req, res) => {
   res.json({ sent: true });
 });
 
+// GET /api/vendor/usage — Claude API usage + cost per tenant per month (last 6 months)
+router.get('/vendor/usage', requireVendor, async (_req, res) => {
+  const since = new Date();
+  since.setMonth(since.getMonth() - 6);
+
+  const { data, error } = await supabase
+    .from('api_usage')
+    .select('tenant_id, created_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens')
+    .gte('created_at', since.toISOString())
+    .order('created_at', { ascending: false });
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  // Pricing per token (claude-opus-4-7)
+  const P = { input: 15 / 1e6, output: 75 / 1e6, cache_read: 1.5 / 1e6, cache_write: 18.75 / 1e6 };
+
+  const byKey = {};
+  for (const row of data) {
+    const month = row.created_at.slice(0, 7); // YYYY-MM
+    const key   = `${row.tenant_id}::${month}`;
+    if (!byKey[key]) byKey[key] = { tenant_id: row.tenant_id, month, calls: 0, input: 0, output: 0, cache_read: 0, cache_write: 0 };
+    byKey[key].calls++;
+    byKey[key].input       += row.input_tokens       || 0;
+    byKey[key].output      += row.output_tokens      || 0;
+    byKey[key].cache_read  += row.cache_read_tokens  || 0;
+    byKey[key].cache_write += row.cache_write_tokens || 0;
+  }
+
+  const rows = Object.values(byKey)
+    .map(r => ({
+      tenant_id:  r.tenant_id,
+      month:      r.month,
+      calls:      r.calls,
+      input:      r.input,
+      output:     r.output,
+      cache_read: r.cache_read,
+      cost_usd:   r.input * P.input + r.output * P.output + r.cache_read * P.cache_read + r.cache_write * P.cache_write,
+    }))
+    .sort((a, b) => b.month.localeCompare(a.month));
+
+  res.json(rows);
+});
+
 // PATCH /vendor/settings — update vendor_phone and alert preferences
 router.patch('/vendor/settings', requireVendor, async (req, res) => {
   const { vendor_phone, vendor_name, alert_on_error, alert_on_payment_fail, alert_on_restart } = req.body;
