@@ -8,7 +8,8 @@ const adminRouter      = require('./routes/admin');
 const dashboardApi     = require('./routes/dashboard-api');
 const paymentRouter    = require('./routes/payment');
 const businessBotRouter = require('./routes/business-bot');
-const { handleMessage }   = require('./bot/handler');
+const { handleMessage }                      = require('./bot/handler');
+const { handleAdminMessage, getAdminUser }   = require('./bot/admin-handler');
 const { formatPhone } = require('./services/greenapi');
 const { autoCompleteDeliveredOrders } = require('./services/supabase');
 const { createClient: createSB }       = require('@supabase/supabase-js');
@@ -114,8 +115,14 @@ app.post('/webhook', (req, res) => {
 
   if (!textMessage) return;
 
-  handleMessage(phone, textMessage).catch((err) =>
-    console.error(`[webhook] handleMessage error for ${phone}:`, err.message)
+  // Check if sender is an admin user → route to admin handler
+  getAdminUser(phone).then(adminUser => {
+    if (adminUser) {
+      return handleAdminMessage(phone, textMessage, adminUser);
+    }
+    return handleMessage(phone, textMessage);
+  }).catch((err) =>
+    console.error(`[webhook] handler error for ${phone}:`, err.message)
   );
 });
 
