@@ -77,7 +77,7 @@ Host:         db.umoftdmutxhrbknowbyh.supabase.co:5432  ← IPv6 only
 User:         postgres
 Password:     mUprot-tefno8-zikgak
 SQL Editor:   https://supabase.com/dashboard/project/umoftdmutxhrbknowbyh/sql/new
-Direct pg:    works on Render (IPv6); times out locally
+Direct pg:    DOES NOT WORK — both local and Render (free tier) get ENETUNREACH on IPv6
 ```
 
 **Cardcom test login:** `https://secure.cardcom.solutions/LogInNew.aspx`
@@ -291,19 +291,6 @@ Real-time WhatsApp alerts to vendor on system events.
 | `restart` | Server startup (every deploy) |
 | `low_balance` | Green API balance warning |
 
-### Startup Migrations (index.js)
-
-On every server start, `index.js` runs idempotent DDL via `pg` (direct IPv6 connection — works on Render, not locally):
-
-```javascript
-// Current migrations:
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS tenant_id UUID DEFAULT 'aaaaaaaa-...'
-UPDATE orders SET tenant_id = 'aaaaaaaa-...' WHERE tenant_id IS NULL
-CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id)
-```
-
-Uses `SUPABASE_DB_PASSWORD` env var. Safe to run on every deploy (`IF NOT EXISTS`).
-
 ### Courier Notification Flow
 
 ```
@@ -455,9 +442,9 @@ clients            -- platform clients: name, contact_phone, plan, status, notes
 ## Operational Rules
 
 1. **Backup before infra change:** `node scripts/backup-render-env.js`
-2. **Schema changes (two options):**
-   - Supabase SQL editor — always works: `https://supabase.com/dashboard/project/umoftdmutxhrbknowbyh/sql/new`
-   - Startup migration in `index.js` via `pg` — runs automatically on next Render deploy (IPv6 works on Render, not locally)
+2. **Schema changes — only one option that works:**
+   - Supabase SQL editor: `https://supabase.com/dashboard/project/umoftdmutxhrbknowbyh/sql/new`
+   - Direct `pg` connection fails everywhere (local and Render free tier both get ENETUNREACH on IPv6)
 3. **Always run** `node --check public/app.js && node --check public/admin.js` before committing
 4. **Every desktop UI change must include mobile** — check `window.innerWidth <= 768` branches
 5. **delivery_zones** is authoritative; `saveZones()` syncs `delivery_cities`; bot reads zones first
@@ -469,8 +456,8 @@ clients            -- platform clients: name, contact_phone, plan, status, notes
 
 ## Known Issues & Lessons Learned
 
-### Supabase DB is IPv6-only — psql times out locally, works on Render
-`db.umoftdmutxhrbknowbyh.supabase.co` resolves to an IPv6 address only. Local machine times out (ETIMEDOUT). Render servers have IPv6 and can connect via direct `pg`. Use the startup migration pattern in `index.js` for DDL, or the Supabase SQL editor in the browser.
+### Supabase DB is IPv6-only — pg fails everywhere (local AND Render)
+`db.umoftdmutxhrbknowbyh.supabase.co` resolves to IPv6 only. Local machine times out. Render free tier also gets `ENETUNREACH` — it has no outbound IPv6 route. **The only working option for schema changes is the Supabase SQL editor in the browser.**
 
 ### Supabase pooler (Supavisor) — credentials don't work locally either
 `aws-0-[region].pooler.supabase.com` returns "Tenant or user not found" for this project. Don't try the pooler. Use the SQL editor or the Render startup migration.
@@ -490,8 +477,14 @@ No pg access locally. Created via Supabase SQL editor. All new tables must be cr
 ### requireAdmin also passes vendor role
 `requireAdmin` allows both `admin` and `vendor` roles (vendor is a superset). This lets the vendor portal call most business endpoints. `requireVendor` is strictly vendor-only.
 
-### tenant_id on orders — startup migration pattern
-Startup migration in `index.js` uses `pg` to run `ALTER TABLE orders ADD COLUMN IF NOT EXISTS tenant_id ...`. This is idempotent and runs safely on every Render deploy. Required env var: `SUPABASE_DB_PASSWORD`.
+### tenant_id on orders — must be added via Supabase SQL editor
+Startup migration via `pg` in `index.js` was tried but fails — Render free tier has no IPv6 outbound. Run this once in the SQL editor:
+```sql
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS tenant_id UUID DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001';
+UPDATE orders SET tenant_id = 'aaaaaaaa-0000-0000-0000-000000000001' WHERE tenant_id IS NULL;
+CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id);
+```
+Until this runs, all order API calls return empty (`.eq('tenant_id', ...)` on a missing column → error).
 
 ### assertTenant() is a soft check — only enforces when column exists
 `assertTenant(row, req)` returns `true` if `row.tenant_id` is null/undefined. Designed for forward compatibility: works before migration (passes everything) and after (enforces isolation).

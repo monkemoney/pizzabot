@@ -217,28 +217,6 @@ app.listen(PORT, async () => {
     }
   } catch {}
 
-  // Schema migration: add tenant_id to orders (idempotent — safe on every deploy)
-  try {
-    const { Client: PgClient } = require('pg');
-    const pg = new PgClient({
-      host:     'db.umoftdmutxhrbknowbyh.supabase.co',
-      port:     5432,
-      user:     'postgres',
-      password: process.env.SUPABASE_DB_PASSWORD,
-      database: 'postgres',
-      ssl:      { rejectUnauthorized: false },
-      connectionTimeoutMillis: 10000,
-    });
-    await pg.connect();
-    await pg.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS tenant_id UUID DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001'`);
-    await pg.query(`UPDATE orders SET tenant_id = 'aaaaaaaa-0000-0000-0000-000000000001' WHERE tenant_id IS NULL`);
-    await pg.query(`CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id)`);
-    await pg.end();
-    console.log('[migration] tenant_id on orders ✅');
-  } catch (e) {
-    console.error('[migration] tenant_id failed:', e.message);
-  }
-
   // Notify vendor on restart
   vendorAlerts.alerts.serverRestart().catch(() => {});
 });
