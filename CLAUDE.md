@@ -546,13 +546,14 @@ api_usage          -- Claude API token logging per call:
 - **Design token system:** `public/tokens.css` — single source of truth for all colors, spacing, radius, shadows, typography, icon sizes, layout constants, transitions
 - **Icon system:** all UI emoji replaced with Lucide inline SVGs (`currentColor`, `stroke-width:1.75`). `SVG` object in `app.js` holds all icons; `S(path, size)` helper builds them. WhatsApp message emoji kept intentionally.
 - **CSS variable aliasing:** old names (`--primary`, `--bg`, `--text-muted`, etc.) are aliases to new tokens — `var(--color-brand)`, `var(--color-bg)`, `var(--color-text-secondary)`. Change values only in `tokens.css`.
+- **Bit payment flow:** bot emits `SAVE_ORDER` with `payment_method='bit'`, `payment_status='pending'`; sends customer Bit phone + amount; dashboard shows teal "ממתין לBit" badge + "אשר קבלת תשלום Bit" button → `POST /api/orders/:id/confirm-payment` sets `payment_status='paid'`. `bit_phone` stored in settings, shown/hidden in Settings page when Bit toggle is on.
 
 ### ❌ Missing / needs work
 | Item | Notes |
 |------|-------|
 | Cardcom production | Test terminal 1000 — switch to prod terminal before go-live |
 | Cardcom auto-refund blind spot | Orders confirmed via success-redirect or polling have no `cardcom_deal_number` → manual refund |
-| Bit / Paybox | Settings toggles only |
+| Paybox | Settings toggle only — no payment flow yet |
 
 ---
 
@@ -747,3 +748,17 @@ If `select()` returns a bare `async` function (resolves immediately), calling `.
 4. Vendor enters them in Step 2 of the onboarding wizard (`cardcom_terminal`, `cardcom_username`).
 5. Approve seeds these into the tenant's `settings` table — bot uses them for all Cardcom calls.
 Env var name: `CARDCOM_USERNAME` = ApiName (not a human username). Don't confuse with dashboard login.
+
+### Bot isolation — three layers prevent data leakage between concurrent conversations
+No cross-customer data leakage is possible because the system is fully stateless at the handler level:
+1. **Tenant isolation:** each tenant has its own webhook URL (`/webhook/:tenantId`); Green API is configured to that URL on approval. All DB queries filter by `.eq('tenant_id', tenantId)`.
+2. **Admin vs customer routing:** `getAdminUser(phone, tenantId)` checks `admin_users` filtered by tenant. If found → `admin-handler.js`. Sessions use different keys: admin = `admin:052xxx`, customer = `052xxx` — cannot collide in DB (UNIQUE on `tenant_id,phone`).
+3. **Stateless handlers:** `ai-handler.js` and `admin-handler.js` have zero module-level mutable state. All conversation state is loaded fresh from DB per message (`getSession`) and written back atomically (`updateSession` UPSERT). Concurrent calls from different phones load independent rows and never share memory.
+
+The only race condition possible is the same customer sending two messages within ~500ms: both load the same session history, both call Claude, last write wins (one message lost from history). This causes a bad UX for that customer but is not a data leak.
+
+### No vendor WhatsApp bot — vendor interacts via web only
+There is no interactive WhatsApp bot for the platform vendor. Vendor interaction is exclusively through `/admin` (admin.html + admin.js). `vendor-alerts.js` sends one-way alerts TO the vendor's phone, but the vendor cannot send commands back via WhatsApp. Do not implement vendor bot logic in the webhook handler.
+
+### Admin phone in admin_users loses customer bot access
+If a business owner adds their own phone to `admin_users`, they will always be routed to the admin bot — they cannot order pizza as a customer through the same number. The routing decision at `getAdminUser()` is binary with no override. This is by design but worth knowing when onboarding admins.
