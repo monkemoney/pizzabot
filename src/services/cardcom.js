@@ -13,7 +13,7 @@ const API_NAME = process.env.CARDCOM_USERNAME;    // CardTest1994
  * Key: ReturnValue is embedded in SuccessRedirectUrl so we can always
  * identify which pending order was paid — even if Cardcom doesn't pass params back.
  */
-async function createPaymentPage({ amount, returnValue, productName }) {
+async function createPaymentPage({ amount, returnValue, productName, maxPayments }) {
   if (!TERMINAL || !API_NAME) {
     throw new Error('CARDCOM_TERMINAL and CARDCOM_USERNAME must be set');
   }
@@ -32,6 +32,9 @@ async function createPaymentPage({ amount, returnValue, productName }) {
     FailedRedirectUrl: `${PUBLIC_URL}/payment/failed`,
     IndicatorUrl:      `${PUBLIC_URL}/webhook/payment`,
     ProductName:       productName || 'פיצה דליבריס',
+    // Installment configuration (Bit/Paybox visibility is terminal-level, not per-call)
+    MaxPayments:       maxPayments  || 1,
+    MinPayments:       1,
   };
 
   const response = await axios.post(

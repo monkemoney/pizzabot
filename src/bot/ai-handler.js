@@ -312,12 +312,14 @@ async function handleMessage(phone, userMessage, tenantId = null) {
 
     const returnValue = makeReturnValue();
     try {
+      const maxPayments = await settings.get('max_payments', tid).catch(() => 1);
       const { lowProfileCode, paymentUrl } = await createPaymentPage({
         amount:      payload.total,
         returnValue,
         productName: `הזמנה`,
         phone,
         tenantId:    tid,
+        maxPayments: parseInt(maxPayments, 10) || 1,
       });
 
       await savePendingPayment({
