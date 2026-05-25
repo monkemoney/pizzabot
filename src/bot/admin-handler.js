@@ -45,9 +45,10 @@ async function buildAdminPrompt(adminUser, tenantId = DEFAULT_TENANT_ID) {
     return `• ${p.name_he} — ₪${p.price} [${p.is_available ? '✅ זמין' : '❌ לא זמין'}]${tops ? '\n' + tops : ''}`;
   }).join('\n');
 
-  const orderList = activeOrders.map(o =>
-    `• #${o.order_number} — ${o.customer_name || '—'} — ${o.status} — ₪${o.total_price}`
-  ).join('\n') || 'אין הזמנות פעילות';
+  const orderList = activeOrders.map(o => {
+    const bitPending = o.payment_method === 'bit' && o.payment_status !== 'paid' ? ' 💳 ממתין לBit' : '';
+    return `• #${o.order_number} — ${o.customer_name || '—'} — ${o.status} — ₪${o.total_price}${bitPending}`;
+  }).join('\n') || 'אין הזמנות פעילות';
 
   const STATUS_MAP = { new:'חדשה', preparing:'בהכנה', out_for_delivery:'יצא למשלוח', delivered:'נמסרה', done:'הסתיימה', cancelled:'בוטלה' };
 
@@ -97,6 +98,9 @@ ${orderList}
 **צפה בהזמנות:**
 <!--ADMIN:LIST_ORDERS:{"status":"all|new|preparing|out_for_delivery"}-->
 
+**אישור תשלום Bit:**
+<!--ADMIN:CONFIRM_PAYMENT:{"order_number":<מספר>}-->
+
 ══════════════════════════
 כללים
 ══════════════════════════
@@ -107,6 +111,7 @@ ${orderList}
 • "חזרה X" / "יש X" = SET_AVAILABLE available:true
 • "סגור" / "צאו" = SET is_open:false
 • "פתח" = SET is_open:true
+• "קיבלתי Bit" / "שילמו" / "אשר תשלום" + מספר הזמנה = CONFIRM_PAYMENT
 `;
 }
 
@@ -227,6 +232,24 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
             `• *#${o.order_number}* ${o.customer_name || '—'} — ${STATUS_L[o.status] || o.status} — ₪${o.total_price}`
           ).join('\n');
           results.push(`📋 *הזמנות פעילות (${active.length}):*\n${list}`);
+          break;
+        }
+
+        case 'CONFIRM_PAYMENT': {
+          const { order_number } = payload;
+          const { data: ord } = await supabase
+            .from('orders').select('*').eq('order_number', order_number).single();
+          if (!ord) { results.push(`❌ הזמנה #${order_number} לא נמצאה`); break; }
+          if (ord.payment_status === 'paid') { results.push(`⚠️ הזמנה #${order_number} כבר שולמה`); break; }
+          await supabase.from('orders').update({
+            payment_status: 'paid', updated_at: new Date().toISOString(),
+          }).eq('id', ord.id);
+          const method = ord.payment_method === 'bit' ? 'Bit' : 'מזומן';
+          await sendMessage(ord.phone,
+            `✅ קיבלנו את התשלום ב${method}! הזמנה מספר *${order_number}* אושרה — מתחילים להכין 🍕`,
+            tenantId
+          ).catch(() => {});
+          results.push(`✅ תשלום ${method} אושר להזמנה #${order_number} — הלקוח עודכן`);
           break;
         }
 
