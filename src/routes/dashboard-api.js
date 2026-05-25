@@ -882,7 +882,7 @@ router.get('/vendor/usage', requireVendor, async (_req, res) => {
 router.get('/onboarding/:token', async (req, res) => {
   const { data } = await supabase
     .from('onboarding_sessions')
-    .select('id,status,business_name,bot_whatsapp,business_hours,delivery_zones,payment_cash,payment_credit,pickup_address,admin_phones,expires_at')
+    .select('id,status,business_name,bot_whatsapp,business_address,business_hours,delivery_zones,payment_cash,payment_credit,payment_bit,payment_paybox,delivery_enabled,pickup_enabled,pickup_address,admin_phones,expires_at')
     .eq('token', req.params.token)
     .single();
   if (!data) return res.status(404).json({ error: 'לינק לא נמצא' });
