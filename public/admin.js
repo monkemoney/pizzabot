@@ -553,8 +553,9 @@ function _renderStep2(s, step1Done, step2Done) {
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px" id="techFields">
       ${techInput('green_api_instance', 'Green API Instance ID *', s.green_api_instance || '', 'ltr')}
       ${techInput('green_api_token',    'Green API Token *',       s.green_api_token    || '', 'ltr')}
-      ${techInput('cardcom_terminal',   'Cardcom Terminal',        s.cardcom_terminal   || '', 'ltr')}
-      ${techInput('cardcom_username',   'Cardcom Username',        s.cardcom_username   || '', 'ltr')}
+      <div style="font-size:.72rem;color:var(--text-muted);padding:6px 0 2px;border-top:1px solid var(--border);margin-top:4px">Cardcom — מתקבל מנציג Cardcom לאחר הרשמת הלקוח</div>
+      ${techInput('cardcom_terminal',   'Cardcom Terminal Number',  s.cardcom_terminal   || '', 'ltr')}
+      ${techInput('cardcom_username',   'Cardcom Secret (ApiName)', s.cardcom_username   || '', 'ltr')}
       <div>
         <div style="font-size:.78rem;font-weight:600;color:var(--text-muted);margin-bottom:4px">Tenant ID</div>
         <div style="display:flex;align-items:center;gap:8px">
