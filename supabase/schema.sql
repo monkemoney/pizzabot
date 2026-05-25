@@ -292,6 +292,13 @@ CREATE TABLE IF NOT EXISTS onboarding_sessions (
   created_at  TIMESTAMPTZ DEFAULT NOW(),
   expires_at  TIMESTAMPTZ DEFAULT NOW() + INTERVAL '30 days'
 );
+
+-- Extra columns added in second pass (safe to re-run)
+ALTER TABLE onboarding_sessions ADD COLUMN IF NOT EXISTS business_address  TEXT;
+ALTER TABLE onboarding_sessions ADD COLUMN IF NOT EXISTS delivery_enabled  BOOLEAN DEFAULT true;
+ALTER TABLE onboarding_sessions ADD COLUMN IF NOT EXISTS pickup_enabled    BOOLEAN DEFAULT true;
+ALTER TABLE onboarding_sessions ADD COLUMN IF NOT EXISTS payment_bit       BOOLEAN DEFAULT false;
+ALTER TABLE onboarding_sessions ADD COLUMN IF NOT EXISTS payment_paybox    BOOLEAN DEFAULT false;
 CREATE INDEX IF NOT EXISTS idx_onboarding_token  ON onboarding_sessions(token);
 CREATE INDEX IF NOT EXISTS idx_onboarding_client ON onboarding_sessions(client_id);
 CREATE INDEX IF NOT EXISTS idx_onboarding_status ON onboarding_sessions(status);

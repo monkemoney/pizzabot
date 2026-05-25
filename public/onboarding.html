@@ -10,7 +10,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Poppins', sans-serif; }
 body { background: var(--color-bg); color: var(--color-text); min-height: 100vh; padding: 32px 16px 64px; }
 
-.shell { max-width: 600px; margin: 0 auto; }
+.shell { max-width: 620px; margin: 0 auto; }
 
 .header { text-align: center; margin-bottom: 36px; }
 .header .brand { font-size: 1.8rem; font-weight: 800; color: var(--color-brand); letter-spacing: -.5px; }
@@ -28,7 +28,7 @@ body { background: var(--color-bg); color: var(--color-text); min-height: 100vh;
 .form-group:last-child { margin-bottom: 0; }
 label { font-size: .84rem; font-weight: 600; color: var(--color-text); }
 .hint { font-size: .74rem; color: var(--color-text-secondary); margin-top: 2px; }
-input[type=text], input[type=tel], input[type=time], select {
+input[type=text], input[type=tel], input[type=number], input[type=time], select {
   border: 1.5px solid var(--color-border); border-radius: var(--radius-sm);
   padding: 10px 13px; font-size: .88rem; font-family: inherit; color: var(--color-text);
   background: var(--color-surface); transition: border-color var(--transition-fast);
@@ -36,41 +36,67 @@ input[type=text], input[type=tel], input[type=time], select {
 }
 input:focus, select:focus { outline: none; border-color: var(--color-brand); }
 
-/* Hours grid */
-.hours-row { display: grid; grid-template-columns: 56px 44px 1fr; align-items: center;
+/* Two-column form row */
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.form-row:last-child { margin-bottom: 0; }
+@media (max-width: 480px) { .form-row { grid-template-columns: 1fr; } }
+
+/* Toggle rows (payment, order types) */
+.toggle-row { display: flex; align-items: center; gap: 12px; padding: 10px 0;
+              border-bottom: 1px solid var(--color-border); font-size: .86rem; }
+.toggle-row:last-child { border-bottom: none; }
+.toggle-row input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--color-brand); cursor: pointer; flex-shrink: 0; }
+.toggle-row label { cursor: pointer; font-weight: 500; }
+.toggle-row .sub { font-size: .76rem; color: var(--color-text-secondary); }
+
+/* Inline toggle switch (business hours) */
+.hours-row { display: grid; grid-template-columns: 60px 44px 1fr; align-items: center;
              gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--color-border); }
 .hours-row:last-child { border-bottom: none; }
 .day-name { font-size: .84rem; font-weight: 600; }
-.toggle { position: relative; width: 36px; height: 20px; }
-.toggle input { opacity: 0; width: 0; height: 0; }
-.toggle-track { position: absolute; inset: 0; background: var(--color-border); border-radius: 20px;
-                cursor: pointer; transition: background var(--transition-fast); }
-.toggle input:checked + .toggle-track { background: var(--color-brand); }
-.toggle-track::after { content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%;
-                        background: #fff; top: 3px; right: 3px; transition: transform var(--transition-fast); }
-.toggle input:checked + .toggle-track::after { transform: translateX(-16px); }
+.sw { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+.sw input { opacity: 0; width: 0; height: 0; }
+.sw-track { position: absolute; inset: 0; background: var(--color-border); border-radius: 20px;
+            cursor: pointer; transition: background var(--transition-fast); }
+.sw input:checked + .sw-track { background: var(--color-brand); }
+.sw-track::after { content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%;
+                   background: #fff; top: 3px; right: 3px; transition: transform var(--transition-fast); }
+.sw input:checked + .sw-track::after { transform: translateX(-16px); }
 .hours-times { display: flex; align-items: center; gap: 8px; }
 .hours-times input { flex: 1; padding: 6px 10px; font-size: .82rem; }
 .hours-times span { font-size: .78rem; color: var(--color-text-secondary); white-space: nowrap; }
 .hours-closed { font-size: .82rem; color: var(--color-text-disabled); }
 
-/* Dynamic lists */
+/* Delivery zone cards */
+.zone-card { border: 1.5px solid var(--color-border); border-radius: var(--radius-md);
+             padding: 14px; margin-bottom: 10px; background: var(--color-bg); position: relative; }
+.zone-card-top { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.zone-card-bottom { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.zone-field { display: flex; flex-direction: column; gap: 4px; }
+.zone-field label { font-size: .74rem; color: var(--color-text-secondary); font-weight: 500; }
+.zone-field input { padding: 7px 10px; font-size: .82rem; }
+.zone-remove { width: 100%; border: none; background: var(--color-danger-bg); color: var(--color-danger);
+               border-radius: var(--radius-sm); padding: 7px; cursor: pointer; font-size: .78rem;
+               font-family: inherit; font-weight: 600; }
+@media (max-width: 480px) {
+  .zone-card-top    { grid-template-columns: 1fr; }
+  .zone-card-bottom { grid-template-columns: 1fr 1fr; }
+  .hours-row { grid-template-columns: 52px 40px 1fr; gap: 8px; }
+  .hours-times { flex-wrap: wrap; gap: 6px; }
+}
+
+/* Admin phones */
 .list-item { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .list-item input { flex: 1; }
 .list-item .remove-btn { border: none; background: var(--color-danger-bg); color: var(--color-danger);
                           border-radius: var(--radius-sm); padding: 8px 10px; cursor: pointer;
                           font-size: .8rem; white-space: nowrap; flex-shrink: 0; }
+
 .add-btn { border: 1.5px dashed var(--color-border); background: none; color: var(--color-brand);
            border-radius: var(--radius-sm); padding: 9px 14px; cursor: pointer;
            font-family: inherit; font-size: .84rem; font-weight: 600; margin-top: 4px;
-           transition: border-color var(--transition-fast); }
+           transition: border-color var(--transition-fast); width: 100%; text-align: center; }
 .add-btn:hover { border-color: var(--color-brand); background: var(--color-brand-soft); }
-
-/* Payment toggles */
-.pay-row { display: flex; align-items: center; gap: 12px; padding: 10px 0;
-           border-bottom: 1px solid var(--color-border); font-size: .86rem; }
-.pay-row:last-child { border-bottom: none; }
-.pay-row input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--color-brand); cursor: pointer; }
 
 /* Submit */
 .submit-btn { width: 100%; background: var(--color-brand); color: #fff; border: none;
@@ -80,9 +106,8 @@ input:focus, select:focus { outline: none; border-color: var(--color-brand); }
 .submit-btn:disabled { opacity: .6; cursor: default; }
 
 /* States */
-#stateLoading, #stateSuccess, #stateError, #stateExpired { display: none; text-align: center; padding: 60px 24px; }
-#stateLoading.active, #stateSuccess.active, #stateError.active, #stateExpired.active, #stateForm.active { display: block; }
-#stateForm { display: none; }
+#stateLoading, #stateSuccess, #stateError, #stateExpired,
+#stateApproved, #stateForm { display: none; }
 .state-icon { font-size: 3rem; margin-bottom: 16px; }
 .state-title { font-size: 1.3rem; font-weight: 800; margin-bottom: 8px; }
 .state-sub { font-size: .9rem; color: var(--color-text-secondary); }
@@ -90,11 +115,7 @@ input:focus, select:focus { outline: none; border-color: var(--color-brand); }
            border-top-color: var(--color-brand); border-radius: 50%;
            animation: spin .7s linear infinite; margin: 0 auto 16px; }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-@media (max-width: 480px) {
-  .hours-row { grid-template-columns: 52px 40px 1fr; gap: 8px; }
-  .hours-times { flex-wrap: wrap; gap: 6px; }
-}
+.state-center { text-align: center; padding: 60px 24px; }
 </style>
 </head>
 <body>
@@ -107,23 +128,29 @@ input:focus, select:focus { outline: none; border-color: var(--color-brand); }
   </div>
 
   <!-- Loading -->
-  <div id="stateLoading" class="active">
+  <div id="stateLoading" class="state-center">
     <div class="spinner"></div>
     <div style="color:var(--color-text-secondary);font-size:.9rem">טוען...</div>
   </div>
 
   <!-- Error -->
-  <div id="stateError">
+  <div id="stateError" class="state-center">
     <div class="state-icon">⚠</div>
     <div class="state-title">לינק לא תקין</div>
     <div class="state-sub">הלינק שקיבלת אינו תקין. פנה ל-Jasell לקבלת לינק חדש.</div>
   </div>
 
   <!-- Expired -->
-  <div id="stateExpired">
+  <div id="stateExpired" class="state-center">
     <div class="state-icon" style="color:var(--color-warning)">⏱</div>
     <div class="state-title">הלינק פג תוקף</div>
     <div class="state-sub">הלינק תקף ל-30 יום. פנה ל-Jasell לקבלת לינק חדש.</div>
+  </div>
+
+  <!-- Already approved -->
+  <div id="stateApproved" class="state-center">
+    <div class="state-title" style="color:var(--color-success)">העסק שלך כבר פעיל!</div>
+    <div class="state-sub" style="margin-top:8px">המערכת הוגדרה בהצלחה.</div>
   </div>
 
   <!-- Success -->
@@ -137,17 +164,11 @@ input:focus, select:focus { outline: none; border-color: var(--color-brand); }
     </div>
   </div>
 
-  <!-- Already approved -->
-  <div id="stateApproved" style="display:none;text-align:center;padding:60px 24px">
-    <div class="state-title" style="color:var(--color-success)">העסק שלך כבר פעיל!</div>
-    <div class="state-sub" style="margin-top:8px">המערכת הוגדרה בהצלחה.</div>
-  </div>
-
   <!-- Form -->
   <div id="stateForm">
     <form id="onboardingForm" onsubmit="submitForm(event)" novalidate>
 
-      <!-- Business basics -->
+      <!-- Business details -->
       <div class="card">
         <div class="section-title">פרטי העסק</div>
         <div class="form-group">
@@ -159,22 +180,58 @@ input:focus, select:focus { outline: none; border-color: var(--color-brand); }
           <input type="tel" id="botWhatsapp" dir="ltr" required placeholder="972501234567">
           <div class="hint">המספר שממנו הלקוחות יקבלו הודעות — ללא + או רווחים</div>
         </div>
-        <div class="form-group" style="margin-bottom:0">
-          <label>כתובת לאיסוף עצמי</label>
-          <input type="text" id="pickupAddress" placeholder="רחוב הרצל 1, תל אביב (אופציונלי)">
+        <div class="form-row">
+          <div class="form-group" style="margin-bottom:0">
+            <label>כתובת הסניף</label>
+            <input type="text" id="businessAddress" placeholder="רחוב הרצל 1, תל אביב">
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label>כתובת לאיסוף עצמי</label>
+            <input type="text" id="pickupAddress" placeholder="כמו כתובת הסניף (אם שונה)">
+          </div>
         </div>
       </div>
 
-      <!-- Payment -->
+      <!-- Order types -->
+      <div class="card">
+        <div class="section-title">סוגי הזמנה</div>
+        <div class="toggle-row">
+          <input type="checkbox" id="deliveryEnabled" checked>
+          <div>
+            <label for="deliveryEnabled">משלוח</label>
+            <div class="sub">הלקוח מקבל את ההזמנה לבית</div>
+          </div>
+        </div>
+        <div class="toggle-row">
+          <input type="checkbox" id="pickupEnabled" checked>
+          <div>
+            <label for="pickupEnabled">איסוף עצמי</label>
+            <div class="sub">הלקוח אוסף מהסניף</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Payment methods -->
       <div class="card">
         <div class="section-title">שיטות תשלום</div>
-        <div class="pay-row">
+        <div class="toggle-row">
           <input type="checkbox" id="payCash" checked>
-          <label for="payCash" style="cursor:pointer">מזומן</label>
+          <label for="payCash">מזומן</label>
         </div>
-        <div class="pay-row">
+        <div class="toggle-row">
           <input type="checkbox" id="payCredit">
-          <label for="payCredit" style="cursor:pointer">אשראי (Cardcom)</label>
+          <div>
+            <label for="payCredit">אשראי (Cardcom)</label>
+            <div class="sub">נדרש חשבון Cardcom — Jasell תסייע בפתיחה</div>
+          </div>
+        </div>
+        <div class="toggle-row">
+          <input type="checkbox" id="payBit">
+          <label for="payBit">Bit</label>
+        </div>
+        <div class="toggle-row">
+          <input type="checkbox" id="payPaybox">
+          <label for="payPaybox">Paybox</label>
         </div>
       </div>
 
@@ -187,14 +244,15 @@ input:focus, select:focus { outline: none; border-color: var(--color-brand); }
       <!-- Delivery zones -->
       <div class="card">
         <div class="section-title">אזורי משלוח</div>
+        <div style="font-size:.8rem;color:var(--color-text-secondary);margin-bottom:14px">הגדר לכל עיר / אזור את מחיר המשלוח, מינימום הזמנה וזמן משוער להגעה.</div>
         <div id="zonesContainer"></div>
-        <button type="button" class="add-btn" onclick="addZone()">+ הוסף אזור</button>
+        <button type="button" class="add-btn" onclick="addZone()">+ הוסף אזור משלוח</button>
       </div>
 
-      <!-- Admin WhatsApp numbers -->
+      <!-- Admin WhatsApp managers -->
       <div class="card">
         <div class="section-title">מנהלי WhatsApp</div>
-        <div style="font-size:.82rem;color:var(--color-text-secondary);margin-bottom:14px">מספרים שיוכלו לנהל את הבוט דרך WhatsApp (להוסיף הזמנות, לשנות זמינות מוצרים וכד')</div>
+        <div style="font-size:.82rem;color:var(--color-text-secondary);margin-bottom:14px">מספרים שיוכלו לנהל את הבוט דרך WhatsApp — לשנות זמינות מוצרים, לעדכן סטטוס הזמנות וכד׳</div>
         <div id="adminsContainer"></div>
         <button type="button" class="add-btn" onclick="addAdmin()">+ הוסף מנהל</button>
       </div>
@@ -222,7 +280,7 @@ const DAYS = [
 const token = location.pathname.split('/').pop();
 let sessionId = null;
 
-// ── States ────────────────────────────────────────────────────────────────────
+// ── State display ──────────────────────────────────────────────────────────────
 function show(id) {
   ['stateLoading','stateError','stateExpired','stateSuccess','stateApproved','stateForm']
     .forEach(s => { const el = document.getElementById(s); if (el) el.style.display = 'none'; });
@@ -251,11 +309,18 @@ async function init() {
 }
 
 function prefill(data) {
-  if (data.business_name) document.getElementById('businessName').value = data.business_name;
-  if (data.bot_whatsapp)  document.getElementById('botWhatsapp').value  = data.bot_whatsapp;
-  if (data.pickup_address) document.getElementById('pickupAddress').value = data.pickup_address;
-  document.getElementById('payCash').checked   = data.payment_cash   !== false;
-  document.getElementById('payCredit').checked = data.payment_credit === true;
+  if (data.business_name)    document.getElementById('businessName').value    = data.business_name;
+  if (data.bot_whatsapp)     document.getElementById('botWhatsapp').value     = data.bot_whatsapp;
+  if (data.business_address) document.getElementById('businessAddress').value = data.business_address;
+  if (data.pickup_address)   document.getElementById('pickupAddress').value   = data.pickup_address;
+
+  document.getElementById('deliveryEnabled').checked = data.delivery_enabled !== false;
+  document.getElementById('pickupEnabled').checked   = data.pickup_enabled   !== false;
+
+  document.getElementById('payCash').checked   = data.payment_cash    !== false;
+  document.getElementById('payCredit').checked = data.payment_credit  === true;
+  document.getElementById('payBit').checked    = data.payment_bit     === true;
+  document.getElementById('payPaybox').checked = data.payment_paybox  === true;
 }
 
 // ── Business hours ─────────────────────────────────────────────────────────────
@@ -263,15 +328,15 @@ function buildHoursGrid(saved) {
   const grid = document.getElementById('hoursGrid');
   grid.innerHTML = DAYS.map(d => {
     const h = (saved || {})[d.key] || {};
-    const isOpen  = !h.closed;
-    const fromVal = h.open  || '09:00';
+    const isOpen  = h.is_open !== false;   // default open; matches settings schema
+    const fromVal = h.open  || '10:00';
     const toVal   = h.close || '22:00';
     return `
     <div class="hours-row" id="row-${d.key}">
       <span class="day-name">${d.label}</span>
-      <label class="toggle">
+      <label class="sw">
         <input type="checkbox" id="open-${d.key}" ${isOpen?'checked':''} onchange="toggleDay('${d.key}')">
-        <span class="toggle-track"></span>
+        <span class="sw-track"></span>
       </label>
       <div class="hours-times" id="times-${d.key}" style="${isOpen?'':'display:none'}">
         <input type="time" id="from-${d.key}" value="${fromVal}">
@@ -292,44 +357,69 @@ function toggleDay(key) {
 function getHours() {
   const h = {};
   DAYS.forEach(d => {
-    const open = document.getElementById(`open-${d.key}`).checked;
-    h[d.key] = open
-      ? { closed: false, open: document.getElementById(`from-${d.key}`).value, close: document.getElementById(`to-${d.key}`).value }
-      : { closed: true };
+    const is_open = document.getElementById(`open-${d.key}`).checked;
+    h[d.key] = is_open
+      ? { is_open: true,  open: document.getElementById(`from-${d.key}`).value, close: document.getElementById(`to-${d.key}`).value }
+      : { is_open: false, open: '10:00', close: '22:00' };
   });
   return h;
 }
 
 // ── Delivery zones ─────────────────────────────────────────────────────────────
 function buildZones(zones) {
-  const c = document.getElementById('zonesContainer');
-  c.innerHTML = '';
-  zones.forEach((z, i) => addZoneRow(z.city || '', z.price || '', i));
-  if (!zones.length) addZoneRow('', '', 0);
+  document.getElementById('zonesContainer').innerHTML = '';
+  if (!zones.length) { addZone(); return; }
+  zones.forEach(z => addZoneCard(z));
 }
 
-function addZone() {
-  const c = document.getElementById('zonesContainer');
-  addZoneRow('', '', c.children.length);
-}
+function addZone() { addZoneCard({}); }
 
-function addZoneRow(city, price, idx) {
+function addZoneCard(z) {
   const c = document.getElementById('zonesContainer');
   const div = document.createElement('div');
-  div.className = 'list-item';
-  div.dataset.idx = idx;
+  div.className = 'zone-card';
   div.innerHTML = `
-    <input type="text" placeholder="עיר / אזור" value="${city}" style="flex:2" oninput="syncZoneIdx(this)">
-    <input type="text" placeholder="₪ מחיר" value="${price}" style="flex:1;max-width:90px" dir="ltr" oninput="syncZoneIdx(this)">
-    <button type="button" class="remove-btn" onclick="this.parentElement.remove()">הסר</button>`;
+    <div class="zone-card-top">
+      <div class="zone-field">
+        <label>עיר / מיקום *</label>
+        <input type="text" placeholder="תל אביב" value="${z.city||''}" data-zf="city">
+      </div>
+      <div class="zone-field">
+        <label>שם האזור (אופציונלי)</label>
+        <input type="text" placeholder="מרכז העיר" value="${z.area||''}" data-zf="area">
+      </div>
+    </div>
+    <div class="zone-card-bottom">
+      <div class="zone-field">
+        <label>מחיר משלוח (₪)</label>
+        <input type="number" placeholder="30" value="${z.fee??30}" min="0" dir="ltr" data-zf="fee">
+      </div>
+      <div class="zone-field">
+        <label>מינימום הזמנה (₪)</label>
+        <input type="number" placeholder="0" value="${z.min_order??0}" min="0" dir="ltr" data-zf="min_order">
+      </div>
+      <div class="zone-field">
+        <label>זמן משוער (דק׳)</label>
+        <input type="number" placeholder="45" value="${z.eta_minutes??45}" min="1" dir="ltr" data-zf="eta_minutes">
+      </div>
+    </div>
+    <button type="button" class="zone-remove" onclick="this.closest('.zone-card').remove()">הסר אזור</button>`;
   c.appendChild(div);
 }
 
 function getZones() {
-  return [...document.getElementById('zonesContainer').querySelectorAll('.list-item')].map(row => {
-    const inputs = row.querySelectorAll('input');
-    return { city: inputs[0].value.trim(), price: parseFloat(inputs[1].value) || 0 };
-  }).filter(z => z.city);
+  return [...document.getElementById('zonesContainer').querySelectorAll('.zone-card')].map(card => {
+    const get = (f) => card.querySelector(`[data-zf="${f}"]`)?.value ?? '';
+    const city = get('city').trim();
+    if (!city) return null;
+    return {
+      city,
+      area:        get('area').trim(),
+      fee:         parseFloat(get('fee'))         || 0,
+      min_order:   parseFloat(get('min_order'))   || 0,
+      eta_minutes: parseFloat(get('eta_minutes')) || 45,
+    };
+  }).filter(Boolean);
 }
 
 // ── Admin phones ───────────────────────────────────────────────────────────────
@@ -374,14 +464,19 @@ async function submitForm(e) {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        business_name:  name,
-        bot_whatsapp:   wa,
-        pickup_address: document.getElementById('pickupAddress').value.trim(),
-        payment_cash:   document.getElementById('payCash').checked,
-        payment_credit: document.getElementById('payCredit').checked,
-        business_hours: getHours(),
-        delivery_zones: getZones(),
-        admin_phones:   getAdmins(),
+        business_name:    name,
+        bot_whatsapp:     wa,
+        business_address: document.getElementById('businessAddress').value.trim(),
+        pickup_address:   document.getElementById('pickupAddress').value.trim(),
+        delivery_enabled: document.getElementById('deliveryEnabled').checked,
+        pickup_enabled:   document.getElementById('pickupEnabled').checked,
+        payment_cash:     document.getElementById('payCash').checked,
+        payment_credit:   document.getElementById('payCredit').checked,
+        payment_bit:      document.getElementById('payBit').checked,
+        payment_paybox:   document.getElementById('payPaybox').checked,
+        business_hours:   getHours(),
+        delivery_zones:   getZones(),
+        admin_phones:     getAdmins(),
       }),
     });
     if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'שגיאה'); }

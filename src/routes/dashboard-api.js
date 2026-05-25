@@ -902,8 +902,12 @@ router.patch('/onboarding/:token', async (req, res) => {
   if (session.status === 'approved')           return res.status(409).json({ error: 'האונבורדינג הסתיים' });
   if (new Date(session.expires_at) < new Date()) return res.status(410).json({ error: 'הלינק פג תוקף' });
 
-  const { business_name, bot_whatsapp, business_hours, delivery_zones,
-          payment_cash, payment_credit, pickup_address, admin_phones } = req.body;
+  const {
+    business_name, bot_whatsapp, business_hours, delivery_zones,
+    payment_cash, payment_credit, payment_bit, payment_paybox,
+    pickup_address, business_address, delivery_enabled, pickup_enabled,
+    admin_phones,
+  } = req.body;
 
   const checklist = (session.checklist || []).map(i =>
     i.key === 'client_info' ? { ...i, done: true } : i
@@ -911,14 +915,19 @@ router.patch('/onboarding/:token', async (req, res) => {
 
   await supabase.from('onboarding_sessions').update({
     business_name,
-    bot_whatsapp:   bot_whatsapp ? bot_whatsapp.replace(/\D/g, '') : null,
+    bot_whatsapp:     bot_whatsapp ? bot_whatsapp.replace(/\D/g, '') : null,
+    business_address: business_address || null,
     business_hours,
-    delivery_zones: delivery_zones || [],
-    payment_cash:   payment_cash  !== undefined ? payment_cash  : true,
-    payment_credit: payment_credit !== undefined ? payment_credit : false,
+    delivery_zones:   delivery_zones || [],
+    payment_cash:     payment_cash     !== undefined ? payment_cash     : true,
+    payment_credit:   payment_credit   !== undefined ? payment_credit   : false,
+    payment_bit:      payment_bit      !== undefined ? payment_bit      : false,
+    payment_paybox:   payment_paybox   !== undefined ? payment_paybox   : false,
+    delivery_enabled: delivery_enabled !== undefined ? delivery_enabled : true,
+    pickup_enabled:   pickup_enabled   !== undefined ? pickup_enabled   : true,
     pickup_address,
-    admin_phones:   admin_phones || [],
-    status:         'pending_vendor',
+    admin_phones:     admin_phones || [],
+    status:           'pending_vendor',
     checklist,
   }).eq('id', session.id);
 
