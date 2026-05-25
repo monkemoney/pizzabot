@@ -41,9 +41,10 @@ function showPage(name) {
   const mb = document.getElementById('mnav-' + name);
   if (mb) mb.classList.add('active');
 
-  if (name === 'dashboard') refreshDashboard();
-  if (name === 'clients')   loadClients();
-  if (name === 'alerts')    loadAlertSettings();
+  if (name === 'dashboard')   refreshDashboard();
+  if (name === 'clients')     loadClients();
+  if (name === 'alerts')      loadAlertSettings();
+  if (name === 'onboarding')  loadOnboarding();
 }
 
 function showToast(msg) {
@@ -303,6 +304,251 @@ async function sendTestAlert() {
   try {
     await api('POST', '/vendor/alerts-test', {});
     showToast('התראת טסט נשלחה ב-WhatsApp');
+  } catch (err) { alert(err.message); }
+}
+
+// ─── Onboarding ───────────────────────────────────────────────────────────────
+
+const STATUS_LABEL = {
+  pending_client: 'ממתין ללקוח',
+  pending_vendor: 'ממתין לספק',
+  approved:       'מאושר',
+};
+const STATUS_COLOR = {
+  pending_client: { bg:'#fff8e0', color:'#c07000', border:'#fcd34d' },
+  pending_vendor: { bg:'#ede8fd', color:'#5e17eb', border:'#c4b8e0' },
+  approved:       { bg:'#e0fbef', color:'#16a34a', border:'#86efac' },
+};
+
+async function loadOnboarding() {
+  const list  = document.getElementById('onboardingList');
+  const stats = document.getElementById('onboardingStats');
+  list.innerHTML  = '<div style="color:var(--text-muted);font-size:.84rem;padding:8px 0">טוען...</div>';
+  stats.innerHTML = '';
+  try {
+    const sessions = await api('GET', '/vendor/onboarding');
+    const pc = sessions.filter(s => s.status === 'pending_client').length;
+    const pv = sessions.filter(s => s.status === 'pending_vendor').length;
+    stats.innerHTML = [
+      pc ? `<span style="background:#fff8e0;border:1px solid #fcd34d;color:#c07000;border-radius:50px;padding:4px 14px;font-size:.78rem;font-weight:700">${pc} ממתין ללקוח</span>` : '',
+      pv ? `<span style="background:#ede8fd;border:1px solid #c4b8e0;color:#5e17eb;border-radius:50px;padding:4px 14px;font-size:.78rem;font-weight:700">${pv} ממתין לספק</span>` : '',
+    ].join('');
+
+    if (!sessions.length) {
+      list.innerHTML = '<div class="card" style="padding:32px;text-align:center;color:var(--text-muted);font-size:.84rem">אין תהליכי אונבורדינג פתוחים</div>';
+      return;
+    }
+
+    list.innerHTML = sessions.map(s => {
+      const sc = STATUS_COLOR[s.status] || STATUS_COLOR.pending_client;
+      const done = (s.checklist || []).filter(i => i.done).length;
+      const total = (s.checklist || []).length;
+      const pct   = total ? Math.round(done / total * 100) : 0;
+      return `
+      <div class="card" style="padding:18px 20px;margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:160px">
+          <div style="font-weight:700;font-size:.95rem">${s.clients?.name || s.business_name || '—'}</div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-top:2px">${s.clients?.contact_phone || ''}</div>
+        </div>
+        <div>
+          <span style="background:${sc.bg};border:1px solid ${sc.border};color:${sc.color};border-radius:50px;padding:3px 12px;font-size:.75rem;font-weight:700">
+            ${STATUS_LABEL[s.status] || s.status}
+          </span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:80px">
+          <div style="font-size:.72rem;color:var(--text-muted)">${done}/${total} צעדים</div>
+          <div style="height:4px;background:var(--border);border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:${pct===100?'#16a34a':'var(--primary)'};transition:width .3s"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <button onclick="copyLink('${s.token}')" class="btn btn-ghost btn-sm" title="העתק לינק ללקוח">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            לינק
+          </button>
+          <button onclick="openSessionModal('${s.id}')" class="btn btn-primary btn-sm">פרטים</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (err) {
+    list.innerHTML = `<div style="color:red;font-size:.84rem">${err.message}</div>`;
+  }
+}
+
+// ── New onboarding modal ──────────────────────────────────────────────────────
+
+function openNewOnboardingModal() {
+  document.getElementById('obName').value  = '';
+  document.getElementById('obPhone').value = '';
+  document.getElementById('obPlan').value  = 'trial';
+  document.getElementById('obLinkBox').style.display = 'none';
+  document.getElementById('obSubmitBtn').style.display = '';
+  document.getElementById('newOnboardingModal').style.display = 'flex';
+}
+function closeNewOnboardingModal() {
+  document.getElementById('newOnboardingModal').style.display = 'none';
+  loadOnboarding();
+}
+
+async function submitNewOnboarding(e) {
+  e.preventDefault();
+  const btn = document.getElementById('obSubmitBtn');
+  btn.disabled = true; btn.textContent = 'יוצר...';
+  try {
+    const data = await api('POST', '/vendor/onboarding', {
+      name:          document.getElementById('obName').value.trim(),
+      contact_phone: document.getElementById('obPhone').value.trim(),
+      plan:          document.getElementById('obPlan').value,
+    });
+    document.getElementById('obLinkInput').value = data.link;
+    document.getElementById('obLinkBox').style.display = '';
+    btn.style.display = 'none';
+    showToast('לקוח נוצר — שלח את הלינק ללקוח');
+  } catch (err) {
+    alert(err.message);
+    btn.disabled = false; btn.textContent = 'צור לקוח ויצר לינק';
+  }
+}
+
+function copyOnboardingLink() {
+  const val = document.getElementById('obLinkInput').value;
+  navigator.clipboard.writeText(val).then(() => showToast('לינק הועתק'));
+}
+
+function copyLink(token) {
+  const link = `${location.origin}/onboarding/${token}`;
+  navigator.clipboard.writeText(link).then(() => showToast('לינק הועתק'));
+}
+
+// ── Session details modal ─────────────────────────────────────────────────────
+
+let _currentSession = null;
+
+async function openSessionModal(id) {
+  const modal = document.getElementById('sessionModal');
+  const body  = document.getElementById('sessionModalBody');
+  modal.style.display = 'flex';
+  body.innerHTML = '<div style="color:var(--text-muted);font-size:.84rem;padding:20px 0">טוען...</div>';
+
+  try {
+    const sessions = await api('GET', '/vendor/onboarding');
+    _currentSession = sessions.find(s => s.id === id);
+    if (!_currentSession) { body.innerHTML = '<div style="color:red">לא נמצא</div>'; return; }
+    document.getElementById('sessionModalTitle').textContent = _currentSession.clients?.name || _currentSession.business_name || 'אונבורדינג';
+    renderSessionModal();
+  } catch (err) {
+    body.innerHTML = `<div style="color:red">${err.message}</div>`;
+  }
+}
+
+function closeSessionModal() {
+  document.getElementById('sessionModal').style.display = 'none';
+  _currentSession = null;
+  loadOnboarding();
+}
+
+function renderSessionModal() {
+  const s = _currentSession;
+  const body = document.getElementById('sessionModalBody');
+
+  const row = (label, val) => val
+    ? `<div style="display:flex;gap:8px;font-size:.84rem;padding:6px 0;border-bottom:1px solid var(--border)">
+        <span style="color:var(--text-muted);flex-shrink:0;min-width:130px">${label}</span>
+        <span style="font-weight:600;direction:ltr;text-align:right;flex:1">${val}</span>
+       </div>`
+    : '';
+
+  const zonesSummary = (s.delivery_zones || []).map(z => `${z.city} ₪${z.price}`).join(' · ') || '—';
+  const adminsSummary = (s.admin_phones || []).map(a => a.name || a.phone).join(', ') || '—';
+  const hoursSummary = s.business_hours
+    ? Object.entries(s.business_hours).filter(([,h]) => !h.closed).length + ' ימים פתוחים'
+    : '—';
+
+  const checklistHtml = (s.checklist || []).map(item => `
+    <label style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;font-size:.86rem">
+      <input type="checkbox" ${item.done?'checked':''} style="width:16px;height:16px;accent-color:var(--primary);cursor:pointer;flex-shrink:0"
+        onchange="toggleChecklist('${s.id}','${item.key}',this.checked)">
+      <span style="${item.done?'text-decoration:line-through;color:var(--text-muted)':''}">${item.label}</span>
+    </label>`).join('');
+
+  const isApproved = s.status === 'approved';
+
+  body.innerHTML = `
+    <!-- Client info -->
+    <div style="font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">פרטי עסק (מהלקוח)</div>
+    <div style="margin-bottom:20px">
+      ${row('שם עסק', s.business_name)}
+      ${row('WhatsApp בוט', s.bot_whatsapp)}
+      ${row('כתובת איסוף', s.pickup_address)}
+      ${row('שעות פעילות', hoursSummary)}
+      ${row('אזורי משלוח', zonesSummary)}
+      ${row('תשלום', [s.payment_cash&&'מזומן', s.payment_credit&&'אשראי'].filter(Boolean).join(', ') || '—')}
+      ${row('מנהלי WhatsApp', adminsSummary)}
+    </div>
+
+    <!-- Technical fields -->
+    <div style="font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">הגדרות טכניות (ספק)</div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px" id="techFields">
+      ${techInput('cardcom_terminal',   'Cardcom Terminal', s.cardcom_terminal   || '', 'ltr')}
+      ${techInput('cardcom_username',   'Cardcom Username', s.cardcom_username   || '', 'ltr')}
+      ${techInput('green_api_instance', 'Green API Instance ID', s.green_api_instance || '', 'ltr')}
+      ${techInput('green_api_token',    'Green API Token',  s.green_api_token    || '', 'ltr')}
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:24px">
+      <button onclick="saveTechFields('${s.id}')" class="btn btn-ghost btn-sm">שמור הגדרות טכניות</button>
+    </div>
+
+    <!-- Checklist -->
+    <div style="font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">צ'קליסט</div>
+    <div style="margin-bottom:24px">${checklistHtml}</div>
+
+    <!-- Approve -->
+    ${!isApproved ? `
+    <div style="background:var(--color-success-bg,#e0fbef);border-radius:12px;padding:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div style="font-size:.84rem;font-weight:600;color:#16a34a">לאחר השלמת כל הצעדים — אשר את הלקוח</div>
+      <button onclick="approveOnboarding('${s.id}')" class="btn btn-primary btn-sm" style="background:#16a34a;border-color:#16a34a">אשר לקוח</button>
+    </div>` : `
+    <div style="background:#e0fbef;border-radius:12px;padding:14px;text-align:center;font-size:.84rem;font-weight:700;color:#16a34a">הלקוח מאושר ופעיל</div>`}
+  `;
+}
+
+function techInput(id, label, val, dir='rtl') {
+  return `<div>
+    <div style="font-size:.78rem;font-weight:600;color:var(--text-muted);margin-bottom:4px">${label}</div>
+    <input id="tech_${id}" type="text" value="${val}" dir="${dir}" placeholder="${label}"
+      style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 12px;font-family:monospace;font-size:.82rem">
+  </div>`;
+}
+
+async function saveTechFields(id) {
+  try {
+    await api('PATCH', `/vendor/onboarding/${id}`, {
+      cardcom_terminal:   document.getElementById('tech_cardcom_terminal').value.trim(),
+      cardcom_username:   document.getElementById('tech_cardcom_username').value.trim(),
+      green_api_instance: document.getElementById('tech_green_api_instance').value.trim(),
+      green_api_token:    document.getElementById('tech_green_api_token').value.trim(),
+    });
+    showToast('הגדרות טכניות נשמרו');
+  } catch (err) { alert(err.message); }
+}
+
+async function toggleChecklist(id, key, done) {
+  try {
+    await api('PATCH', `/vendor/onboarding/${id}/checklist`, { key, done });
+    if (_currentSession) {
+      _currentSession.checklist = (_currentSession.checklist || []).map(i =>
+        i.key === key ? { ...i, done } : i
+      );
+    }
+  } catch (err) { alert(err.message); }
+}
+
+async function approveOnboarding(id) {
+  if (!confirm('לאשר את הלקוח ולסמן אותו כפעיל?')) return;
+  try {
+    await api('POST', `/vendor/onboarding/${id}/approve`);
+    showToast('הלקוח אושר ומסומן כפעיל');
+    closeSessionModal();
   } catch (err) { alert(err.message); }
 }
 

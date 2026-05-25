@@ -32,6 +32,11 @@ app.get('/admin', (_req, res) =>
   res.sendFile(path.join(__dirname, '..', 'public', 'admin.html'))
 );
 
+// ─── Client onboarding (public, token-based) ─────────────────────────────────
+app.get('/onboarding/:token', (_req, res) =>
+  res.sendFile(path.join(__dirname, '..', 'public', 'onboarding.html'))
+);
+
 // ─── Dashboard API ────────────────────────────────────────────────────────────
 app.use('/api', dashboardApi);
 

@@ -876,6 +876,121 @@ router.get('/vendor/usage', requireVendor, async (_req, res) => {
   res.json(rows);
 });
 
+// ─── Onboarding ────────────────────────────────────────────────────────────────
+
+// GET /onboarding/:token — public, client fetches their session
+router.get('/onboarding/:token', async (req, res) => {
+  const { data } = await supabase
+    .from('onboarding_sessions')
+    .select('id,status,business_name,bot_whatsapp,business_hours,delivery_zones,payment_cash,payment_credit,pickup_address,admin_phones,expires_at')
+    .eq('token', req.params.token)
+    .single();
+  if (!data) return res.status(404).json({ error: 'לינק לא נמצא' });
+  if (data.status === 'approved') return res.json({ status: 'approved' });
+  if (new Date(data.expires_at) < new Date()) return res.status(410).json({ error: 'הלינק פג תוקף' });
+  res.json(data);
+});
+
+// PATCH /onboarding/:token — public, client submits their info
+router.patch('/onboarding/:token', async (req, res) => {
+  const { data: session } = await supabase
+    .from('onboarding_sessions')
+    .select('id,status,checklist,expires_at')
+    .eq('token', req.params.token)
+    .single();
+  if (!session)                                return res.status(404).json({ error: 'לינק לא נמצא' });
+  if (session.status === 'approved')           return res.status(409).json({ error: 'האונבורדינג הסתיים' });
+  if (new Date(session.expires_at) < new Date()) return res.status(410).json({ error: 'הלינק פג תוקף' });
+
+  const { business_name, bot_whatsapp, business_hours, delivery_zones,
+          payment_cash, payment_credit, pickup_address, admin_phones } = req.body;
+
+  const checklist = (session.checklist || []).map(i =>
+    i.key === 'client_info' ? { ...i, done: true } : i
+  );
+
+  await supabase.from('onboarding_sessions').update({
+    business_name,
+    bot_whatsapp:   bot_whatsapp ? bot_whatsapp.replace(/\D/g, '') : null,
+    business_hours,
+    delivery_zones: delivery_zones || [],
+    payment_cash:   payment_cash  !== undefined ? payment_cash  : true,
+    payment_credit: payment_credit !== undefined ? payment_credit : false,
+    pickup_address,
+    admin_phones:   admin_phones || [],
+    status:         'pending_vendor',
+    checklist,
+  }).eq('id', session.id);
+
+  res.json({ success: true });
+});
+
+// POST /vendor/onboarding — create client + session, return shareable link
+router.post('/vendor/onboarding', requireVendor, async (req, res) => {
+  const { name, contact_phone, plan, notes } = req.body;
+  if (!name) return res.status(400).json({ error: 'שם חסר' });
+
+  const { data: client, error: cErr } = await supabase
+    .from('clients')
+    .insert({ name, contact_phone: contact_phone?.replace(/\D/g, ''), plan: plan || 'trial', notes, status: 'trial' })
+    .select().single();
+  if (cErr) return res.status(500).json({ error: cErr.message });
+
+  const { data: session, error: sErr } = await supabase
+    .from('onboarding_sessions')
+    .insert({ client_id: client.id, business_name: name })
+    .select().single();
+  if (sErr) return res.status(500).json({ error: sErr.message });
+
+  res.json({ client, session, link: `${process.env.PUBLIC_URL}/onboarding/${session.token}` });
+});
+
+// GET /vendor/onboarding — list active sessions (pending_client + pending_vendor)
+router.get('/vendor/onboarding', requireVendor, async (_req, res) => {
+  const { data, error } = await supabase
+    .from('onboarding_sessions')
+    .select('*, clients(name, contact_phone, plan, status)')
+    .neq('status', 'approved')
+    .order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+// PATCH /vendor/onboarding/:id — vendor fills technical credentials
+router.patch('/vendor/onboarding/:id', requireVendor, async (req, res) => {
+  const fields = ['cardcom_terminal','cardcom_username','green_api_instance','green_api_token'];
+  const updates = {};
+  for (const f of fields) if (req.body[f] !== undefined) updates[f] = req.body[f];
+  const { error } = await supabase.from('onboarding_sessions').update(updates).eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+// PATCH /vendor/onboarding/:id/checklist — toggle one checklist item
+router.patch('/vendor/onboarding/:id/checklist', requireVendor, async (req, res) => {
+  const { key, done } = req.body;
+  const { data: session } = await supabase
+    .from('onboarding_sessions').select('checklist').eq('id', req.params.id).single();
+  if (!session) return res.status(404).json({ error: 'לא נמצא' });
+
+  const checklist = (session.checklist || []).map(i => i.key === key ? { ...i, done } : i);
+  await supabase.from('onboarding_sessions').update({ checklist }).eq('id', req.params.id);
+  res.json({ success: true });
+});
+
+// POST /vendor/onboarding/:id/approve — mark client active, close session
+router.post('/vendor/onboarding/:id/approve', requireVendor, async (req, res) => {
+  const { data: session } = await supabase
+    .from('onboarding_sessions').select('client_id').eq('id', req.params.id).single();
+  if (!session) return res.status(404).json({ error: 'לא נמצא' });
+
+  await Promise.all([
+    supabase.from('onboarding_sessions').update({ status: 'approved' }).eq('id', req.params.id),
+    supabase.from('clients').update({ status: 'active' }).eq('id', session.client_id),
+  ]);
+  res.json({ success: true });
+});
+
 // PATCH /vendor/settings — update vendor_phone and alert preferences
 router.patch('/vendor/settings', requireVendor, async (req, res) => {
   const { vendor_phone, vendor_name, alert_on_error, alert_on_payment_fail, alert_on_restart } = req.body;

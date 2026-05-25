@@ -1,0 +1,398 @@
+<!doctype html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jasell — הגדרת העסק</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/tokens.css">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Poppins', sans-serif; }
+body { background: var(--color-bg); color: var(--color-text); min-height: 100vh; padding: 32px 16px 64px; }
+
+.shell { max-width: 600px; margin: 0 auto; }
+
+.header { text-align: center; margin-bottom: 36px; }
+.header .brand { font-size: 1.8rem; font-weight: 800; color: var(--color-brand); letter-spacing: -.5px; }
+.header .brand span { color: var(--color-accent); }
+.header h1 { font-size: 1.3rem; font-weight: 700; margin-top: 8px; color: var(--color-text); }
+.header p  { font-size: .88rem; color: var(--color-text-secondary); margin-top: 6px; }
+
+.card { background: var(--color-surface); border-radius: var(--radius-lg); padding: 24px; margin-bottom: 16px;
+        box-shadow: var(--shadow-sm); border: 1px solid var(--color-border); }
+
+.section-title { font-size: .78rem; font-weight: 700; color: var(--color-brand);
+                 text-transform: uppercase; letter-spacing: .06em; margin-bottom: 16px; }
+
+.form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.form-group:last-child { margin-bottom: 0; }
+label { font-size: .84rem; font-weight: 600; color: var(--color-text); }
+.hint { font-size: .74rem; color: var(--color-text-secondary); margin-top: 2px; }
+input[type=text], input[type=tel], input[type=time], select {
+  border: 1.5px solid var(--color-border); border-radius: var(--radius-sm);
+  padding: 10px 13px; font-size: .88rem; font-family: inherit; color: var(--color-text);
+  background: var(--color-surface); transition: border-color var(--transition-fast);
+  width: 100%;
+}
+input:focus, select:focus { outline: none; border-color: var(--color-brand); }
+
+/* Hours grid */
+.hours-row { display: grid; grid-template-columns: 56px 44px 1fr; align-items: center;
+             gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--color-border); }
+.hours-row:last-child { border-bottom: none; }
+.day-name { font-size: .84rem; font-weight: 600; }
+.toggle { position: relative; width: 36px; height: 20px; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-track { position: absolute; inset: 0; background: var(--color-border); border-radius: 20px;
+                cursor: pointer; transition: background var(--transition-fast); }
+.toggle input:checked + .toggle-track { background: var(--color-brand); }
+.toggle-track::after { content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%;
+                        background: #fff; top: 3px; right: 3px; transition: transform var(--transition-fast); }
+.toggle input:checked + .toggle-track::after { transform: translateX(-16px); }
+.hours-times { display: flex; align-items: center; gap: 8px; }
+.hours-times input { flex: 1; padding: 6px 10px; font-size: .82rem; }
+.hours-times span { font-size: .78rem; color: var(--color-text-secondary); white-space: nowrap; }
+.hours-closed { font-size: .82rem; color: var(--color-text-disabled); }
+
+/* Dynamic lists */
+.list-item { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.list-item input { flex: 1; }
+.list-item .remove-btn { border: none; background: var(--color-danger-bg); color: var(--color-danger);
+                          border-radius: var(--radius-sm); padding: 8px 10px; cursor: pointer;
+                          font-size: .8rem; white-space: nowrap; flex-shrink: 0; }
+.add-btn { border: 1.5px dashed var(--color-border); background: none; color: var(--color-brand);
+           border-radius: var(--radius-sm); padding: 9px 14px; cursor: pointer;
+           font-family: inherit; font-size: .84rem; font-weight: 600; margin-top: 4px;
+           transition: border-color var(--transition-fast); }
+.add-btn:hover { border-color: var(--color-brand); background: var(--color-brand-soft); }
+
+/* Payment toggles */
+.pay-row { display: flex; align-items: center; gap: 12px; padding: 10px 0;
+           border-bottom: 1px solid var(--color-border); font-size: .86rem; }
+.pay-row:last-child { border-bottom: none; }
+.pay-row input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--color-brand); cursor: pointer; }
+
+/* Submit */
+.submit-btn { width: 100%; background: var(--color-brand); color: #fff; border: none;
+              border-radius: var(--radius-md); padding: 14px; font-size: 1rem; font-weight: 700;
+              cursor: pointer; font-family: inherit; transition: background var(--transition-fast); }
+.submit-btn:hover:not(:disabled) { background: var(--color-brand-dark); }
+.submit-btn:disabled { opacity: .6; cursor: default; }
+
+/* States */
+#stateLoading, #stateSuccess, #stateError, #stateExpired { display: none; text-align: center; padding: 60px 24px; }
+#stateLoading.active, #stateSuccess.active, #stateError.active, #stateExpired.active, #stateForm.active { display: block; }
+#stateForm { display: none; }
+.state-icon { font-size: 3rem; margin-bottom: 16px; }
+.state-title { font-size: 1.3rem; font-weight: 800; margin-bottom: 8px; }
+.state-sub { font-size: .9rem; color: var(--color-text-secondary); }
+.spinner { width: 40px; height: 40px; border: 3px solid var(--color-brand-soft);
+           border-top-color: var(--color-brand); border-radius: 50%;
+           animation: spin .7s linear infinite; margin: 0 auto 16px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 480px) {
+  .hours-row { grid-template-columns: 52px 40px 1fr; gap: 8px; }
+  .hours-times { flex-wrap: wrap; gap: 6px; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="header">
+    <div class="brand">Jas<span>ell</span></div>
+    <h1>הגדרת העסק שלך</h1>
+    <p>מלא את הפרטים כדי שנוכל להכין את המערכת עבורך</p>
+  </div>
+
+  <!-- Loading -->
+  <div id="stateLoading" class="active">
+    <div class="spinner"></div>
+    <div style="color:var(--color-text-secondary);font-size:.9rem">טוען...</div>
+  </div>
+
+  <!-- Error -->
+  <div id="stateError">
+    <div class="state-icon">⚠</div>
+    <div class="state-title">לינק לא תקין</div>
+    <div class="state-sub">הלינק שקיבלת אינו תקין. פנה ל-Jasell לקבלת לינק חדש.</div>
+  </div>
+
+  <!-- Expired -->
+  <div id="stateExpired">
+    <div class="state-icon" style="color:var(--color-warning)">⏱</div>
+    <div class="state-title">הלינק פג תוקף</div>
+    <div class="state-sub">הלינק תקף ל-30 יום. פנה ל-Jasell לקבלת לינק חדש.</div>
+  </div>
+
+  <!-- Success -->
+  <div id="stateSuccess">
+    <div class="card" style="text-align:center;padding:48px 24px">
+      <div style="width:56px;height:56px;background:var(--color-success-bg);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="state-title">הפרטים התקבלו!</div>
+      <div class="state-sub" style="margin-top:8px">צוות Jasell יסיים את ההגדרה וייצור איתך קשר בקרוב.</div>
+    </div>
+  </div>
+
+  <!-- Already approved -->
+  <div id="stateApproved" style="display:none;text-align:center;padding:60px 24px">
+    <div class="state-title" style="color:var(--color-success)">העסק שלך כבר פעיל!</div>
+    <div class="state-sub" style="margin-top:8px">המערכת הוגדרה בהצלחה.</div>
+  </div>
+
+  <!-- Form -->
+  <div id="stateForm">
+    <form id="onboardingForm" onsubmit="submitForm(event)" novalidate>
+
+      <!-- Business basics -->
+      <div class="card">
+        <div class="section-title">פרטי העסק</div>
+        <div class="form-group">
+          <label>שם העסק *</label>
+          <input type="text" id="businessName" required placeholder="פיצה דליבריס">
+        </div>
+        <div class="form-group">
+          <label>מספר WhatsApp של הבוט *</label>
+          <input type="tel" id="botWhatsapp" dir="ltr" required placeholder="972501234567">
+          <div class="hint">המספר שממנו הלקוחות יקבלו הודעות — ללא + או רווחים</div>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>כתובת לאיסוף עצמי</label>
+          <input type="text" id="pickupAddress" placeholder="רחוב הרצל 1, תל אביב (אופציונלי)">
+        </div>
+      </div>
+
+      <!-- Payment -->
+      <div class="card">
+        <div class="section-title">שיטות תשלום</div>
+        <div class="pay-row">
+          <input type="checkbox" id="payCash" checked>
+          <label for="payCash" style="cursor:pointer">מזומן</label>
+        </div>
+        <div class="pay-row">
+          <input type="checkbox" id="payCredit">
+          <label for="payCredit" style="cursor:pointer">אשראי (Cardcom)</label>
+        </div>
+      </div>
+
+      <!-- Business hours -->
+      <div class="card">
+        <div class="section-title">שעות פעילות</div>
+        <div id="hoursGrid"></div>
+      </div>
+
+      <!-- Delivery zones -->
+      <div class="card">
+        <div class="section-title">אזורי משלוח</div>
+        <div id="zonesContainer"></div>
+        <button type="button" class="add-btn" onclick="addZone()">+ הוסף אזור</button>
+      </div>
+
+      <!-- Admin WhatsApp numbers -->
+      <div class="card">
+        <div class="section-title">מנהלי WhatsApp</div>
+        <div style="font-size:.82rem;color:var(--color-text-secondary);margin-bottom:14px">מספרים שיוכלו לנהל את הבוט דרך WhatsApp (להוסיף הזמנות, לשנות זמינות מוצרים וכד')</div>
+        <div id="adminsContainer"></div>
+        <button type="button" class="add-btn" onclick="addAdmin()">+ הוסף מנהל</button>
+      </div>
+
+      <button type="submit" class="submit-btn" id="submitBtn">שלח פרטים</button>
+
+    </form>
+  </div>
+
+</div>
+
+<script>
+'use strict';
+
+const DAYS = [
+  { key:'sun', label:'ראשון' },
+  { key:'mon', label:'שני'   },
+  { key:'tue', label:'שלישי' },
+  { key:'wed', label:'רביעי' },
+  { key:'thu', label:'חמישי' },
+  { key:'fri', label:'שישי'  },
+  { key:'sat', label:'שבת'   },
+];
+
+const token = location.pathname.split('/').pop();
+let sessionId = null;
+
+// ── States ────────────────────────────────────────────────────────────────────
+function show(id) {
+  ['stateLoading','stateError','stateExpired','stateSuccess','stateApproved','stateForm']
+    .forEach(s => { const el = document.getElementById(s); if (el) el.style.display = 'none'; });
+  const el = document.getElementById(id);
+  if (el) el.style.display = 'block';
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  show('stateLoading');
+  try {
+    const res = await fetch(`/api/onboarding/${token}`);
+    if (res.status === 404) return show('stateError');
+    if (res.status === 410) return show('stateExpired');
+    const data = await res.json();
+    if (data.status === 'approved') return show('stateApproved');
+    sessionId = data.id;
+    prefill(data);
+    buildHoursGrid(data.business_hours);
+    buildZones(data.delivery_zones || []);
+    buildAdmins(data.admin_phones || []);
+    show('stateForm');
+  } catch {
+    show('stateError');
+  }
+}
+
+function prefill(data) {
+  if (data.business_name) document.getElementById('businessName').value = data.business_name;
+  if (data.bot_whatsapp)  document.getElementById('botWhatsapp').value  = data.bot_whatsapp;
+  if (data.pickup_address) document.getElementById('pickupAddress').value = data.pickup_address;
+  document.getElementById('payCash').checked   = data.payment_cash   !== false;
+  document.getElementById('payCredit').checked = data.payment_credit === true;
+}
+
+// ── Business hours ─────────────────────────────────────────────────────────────
+function buildHoursGrid(saved) {
+  const grid = document.getElementById('hoursGrid');
+  grid.innerHTML = DAYS.map(d => {
+    const h = (saved || {})[d.key] || {};
+    const isOpen  = !h.closed;
+    const fromVal = h.open  || '09:00';
+    const toVal   = h.close || '22:00';
+    return `
+    <div class="hours-row" id="row-${d.key}">
+      <span class="day-name">${d.label}</span>
+      <label class="toggle">
+        <input type="checkbox" id="open-${d.key}" ${isOpen?'checked':''} onchange="toggleDay('${d.key}')">
+        <span class="toggle-track"></span>
+      </label>
+      <div class="hours-times" id="times-${d.key}" style="${isOpen?'':'display:none'}">
+        <input type="time" id="from-${d.key}" value="${fromVal}">
+        <span>עד</span>
+        <input type="time" id="to-${d.key}" value="${toVal}">
+      </div>
+      <span class="hours-closed" id="closed-${d.key}" style="${isOpen?'display:none':''}">סגור</span>
+    </div>`;
+  }).join('');
+}
+
+function toggleDay(key) {
+  const isOpen = document.getElementById(`open-${key}`).checked;
+  document.getElementById(`times-${key}`).style.display  = isOpen ? '' : 'none';
+  document.getElementById(`closed-${key}`).style.display = isOpen ? 'none' : '';
+}
+
+function getHours() {
+  const h = {};
+  DAYS.forEach(d => {
+    const open = document.getElementById(`open-${d.key}`).checked;
+    h[d.key] = open
+      ? { closed: false, open: document.getElementById(`from-${d.key}`).value, close: document.getElementById(`to-${d.key}`).value }
+      : { closed: true };
+  });
+  return h;
+}
+
+// ── Delivery zones ─────────────────────────────────────────────────────────────
+function buildZones(zones) {
+  const c = document.getElementById('zonesContainer');
+  c.innerHTML = '';
+  zones.forEach((z, i) => addZoneRow(z.city || '', z.price || '', i));
+  if (!zones.length) addZoneRow('', '', 0);
+}
+
+function addZone() {
+  const c = document.getElementById('zonesContainer');
+  addZoneRow('', '', c.children.length);
+}
+
+function addZoneRow(city, price, idx) {
+  const c = document.getElementById('zonesContainer');
+  const div = document.createElement('div');
+  div.className = 'list-item';
+  div.dataset.idx = idx;
+  div.innerHTML = `
+    <input type="text" placeholder="עיר / אזור" value="${city}" style="flex:2" oninput="syncZoneIdx(this)">
+    <input type="text" placeholder="₪ מחיר" value="${price}" style="flex:1;max-width:90px" dir="ltr" oninput="syncZoneIdx(this)">
+    <button type="button" class="remove-btn" onclick="this.parentElement.remove()">הסר</button>`;
+  c.appendChild(div);
+}
+
+function getZones() {
+  return [...document.getElementById('zonesContainer').querySelectorAll('.list-item')].map(row => {
+    const inputs = row.querySelectorAll('input');
+    return { city: inputs[0].value.trim(), price: parseFloat(inputs[1].value) || 0 };
+  }).filter(z => z.city);
+}
+
+// ── Admin phones ───────────────────────────────────────────────────────────────
+function buildAdmins(admins) {
+  const c = document.getElementById('adminsContainer');
+  c.innerHTML = '';
+  admins.forEach(a => addAdminRow(a.name || '', a.phone || ''));
+}
+
+function addAdmin() { addAdminRow('', ''); }
+
+function addAdminRow(name, phone) {
+  const c = document.getElementById('adminsContainer');
+  const div = document.createElement('div');
+  div.className = 'list-item';
+  div.innerHTML = `
+    <input type="text" placeholder="שם" value="${name}" style="flex:1">
+    <input type="tel" placeholder="972501234567" value="${phone}" style="flex:1" dir="ltr">
+    <button type="button" class="remove-btn" onclick="this.parentElement.remove()">הסר</button>`;
+  c.appendChild(div);
+}
+
+function getAdmins() {
+  return [...document.getElementById('adminsContainer').querySelectorAll('.list-item')].map(row => {
+    const inputs = row.querySelectorAll('input');
+    return { name: inputs[0].value.trim(), phone: inputs[1].value.replace(/\D/g,'') };
+  }).filter(a => a.phone);
+}
+
+// ── Submit ─────────────────────────────────────────────────────────────────────
+async function submitForm(e) {
+  e.preventDefault();
+  const name = document.getElementById('businessName').value.trim();
+  const wa   = document.getElementById('botWhatsapp').value.trim();
+  if (!name || !wa) { alert('שם עסק ומספר WhatsApp הם שדות חובה'); return; }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true; btn.textContent = 'שולח...';
+
+  try {
+    const res = await fetch(`/api/onboarding/${token}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        business_name:  name,
+        bot_whatsapp:   wa,
+        pickup_address: document.getElementById('pickupAddress').value.trim(),
+        payment_cash:   document.getElementById('payCash').checked,
+        payment_credit: document.getElementById('payCredit').checked,
+        business_hours: getHours(),
+        delivery_zones: getZones(),
+        admin_phones:   getAdmins(),
+      }),
+    });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'שגיאה'); }
+    show('stateSuccess');
+  } catch (err) {
+    alert(err.message);
+    btn.disabled = false; btn.textContent = 'שלח פרטים';
+  }
+}
+
+init();
+</script>
+</body>
+</html>
