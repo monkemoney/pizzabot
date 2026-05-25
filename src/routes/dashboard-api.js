@@ -4,7 +4,7 @@ const express  = require('express');
 const multer   = require('multer');
 const path     = require('path');
 const { createClient } = require('@supabase/supabase-js');
-const { signDashboard, requireAuth, requireAdmin, requireVendor } = require('../middleware/auth');
+const { signDashboard, requireAuth, requireAdmin, requireVendor, DEFAULT_TENANT_ID } = require('../middleware/auth');
 const { cancelDeal } = require('../services/cardcom');
 const { getOrders, getOrderById, updateOrderStatus, updateOrder, updateSession,
         autoCompleteDeliveredOrders }      = require('../services/supabase');
@@ -42,19 +42,32 @@ const upload = multer({
 router.post('/auth/login', async (req, res) => {
   const { username, password } = req.body;
 
-  const users = {
+  // 1. Vendor / default-tenant accounts (env vars)
+  const builtIn = {
     admin:   { password: process.env.DASHBOARD_ADMIN_PASSWORD,   role: 'admin'   },
     manager: { password: process.env.DASHBOARD_MANAGER_PASSWORD, role: 'manager' },
     vendor:  { password: process.env.DASHBOARD_VENDOR_PASSWORD,  role: 'vendor'  },
   };
 
-  const user = users[username];
-  if (!user || user.password !== password) {
-    return res.status(401).json({ error: 'שם משתמש או סיסמא שגויים' });
+  const builtInUser = builtIn[username];
+  if (builtInUser && builtInUser.password === password) {
+    const token = signDashboard(username, builtInUser.role, DEFAULT_TENANT_ID);
+    return res.json({ token, role: builtInUser.role, username });
   }
 
-  const token = signDashboard(username, user.role);
-  res.json({ token, role: user.role, username });
+  // 2. Per-tenant users stored in tenant_users table
+  const { data: tenantUser, error } = await supabase
+    .from('tenant_users')
+    .select('*')
+    .eq('username', username)
+    .single();
+
+  if (!error && tenantUser && tenantUser.password === password) {
+    const token = signDashboard(username, tenantUser.role, tenantUser.tenant_id);
+    return res.json({ token, role: tenantUser.role, username });
+  }
+
+  return res.status(401).json({ error: 'שם משתמש או סיסמא שגויים' });
 });
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
@@ -995,17 +1008,132 @@ router.patch('/vendor/onboarding/:id/checklist', requireVendor, async (req, res)
   res.json({ success: true });
 });
 
-// POST /vendor/onboarding/:id/approve — mark client active, close session
+// POST /vendor/onboarding/:id/approve — full provisioning + mark client active
 router.post('/vendor/onboarding/:id/approve', requireVendor, async (req, res) => {
-  const { data: session } = await supabase
-    .from('onboarding_sessions').select('client_id').eq('id', req.params.id).single();
-  if (!session) return res.status(404).json({ error: 'לא נמצא' });
+  const { data: ob } = await supabase
+    .from('onboarding_sessions')
+    .select('*, clients(id, tenant_id, name, contact_phone)')
+    .eq('id', req.params.id).single();
+  if (!ob) return res.status(404).json({ error: 'לא נמצא' });
 
+  const tenantId  = ob.clients?.tenant_id;
+  const clientId  = ob.clients?.id;
+  if (!tenantId) return res.status(400).json({ error: 'tenant_id חסר בלקוח' });
+
+  const PUBLIC_URL = process.env.PUBLIC_URL || 'https://www.jasell.com';
+
+  // ── 1. Seed settings for this tenant ──────────────────────────────────────
+  const settingsToSeed = [
+    ['business_name',      ob.business_name   || ob.clients?.name || ''],
+    ['is_open',            true],
+    ['delivery_enabled',   ob.delivery_enabled !== false],
+    ['pickup_enabled',     ob.pickup_enabled   !== false],
+    ['payment_cash',       ob.payment_cash     !== false],
+    ['payment_credit',     ob.payment_credit   === true],
+    ['payment_bit',        ob.payment_bit      === true],
+    ['payment_paybox',     ob.payment_paybox   === true],
+    ['pickup_address',     ob.pickup_address   || ''],
+    ['business_address',   ob.business_address || ''],
+    ['delivery_zones',     ob.delivery_zones   || []],
+    ['business_hours',     ob.business_hours   || null],
+    ['bot_url',            PUBLIC_URL],
+    ['green_api_instance', ob.green_api_instance || ''],
+    ['green_api_token',    ob.green_api_token    || ''],
+    ['cardcom_terminal',   ob.cardcom_terminal   || ''],
+    ['cardcom_username',   ob.cardcom_username   || ''],
+  ];
+
+  for (const [key, value] of settingsToSeed) {
+    if (value !== null && value !== undefined && value !== '') {
+      await supabase.from('settings').upsert(
+        { tenant_id: tenantId, key, value, updated_at: new Date().toISOString() },
+        { onConflict: 'tenant_id,key' }
+      );
+    }
+  }
+
+  // ── 2. Copy menu from default tenant ──────────────────────────────────────
+  const { data: srcCats } = await supabase
+    .from('categories').select('*').eq('tenant_id', DEFAULT_TENANT_ID).order('sort_order');
+  const { data: srcProds } = await supabase
+    .from('products').select('*, product_additions(*)').eq('tenant_id', DEFAULT_TENANT_ID).order('sort_order');
+
+  const catIdMap = {}; // old id → new id
+  for (const cat of (srcCats || [])) {
+    const { id: _id, ...rest } = cat;
+    const { data: newCat } = await supabase.from('categories')
+      .insert({ ...rest, tenant_id: tenantId }).select('id').single();
+    if (newCat) catIdMap[_id] = newCat.id;
+  }
+
+  for (const prod of (srcProds || [])) {
+    const { id: _pid, category_id, product_additions: additions, ...pRest } = prod;
+    const newCatId = catIdMap[category_id] || null;
+    const { data: newProd } = await supabase.from('products')
+      .insert({ ...pRest, tenant_id: tenantId, category_id: newCatId }).select('id').single();
+    if (newProd && additions?.length) {
+      const addRows = additions.map(({ id: _aid, product_id: _pid2, ...aRest }) =>
+        ({ ...aRest, product_id: newProd.id })
+      );
+      await supabase.from('product_additions').insert(addRows);
+    }
+  }
+
+  // ── 3. Create admin_users from admin_phones ────────────────────────────────
+  const adminPhones = Array.isArray(ob.admin_phones) ? ob.admin_phones : [];
+  for (const entry of adminPhones) {
+    const phone = (entry.phone || entry).replace(/\D/g, '');
+    if (!phone) continue;
+    await supabase.from('admin_users').upsert(
+      { tenant_id: tenantId, phone, name: entry.name || phone, role: 'admin' },
+      { onConflict: 'tenant_id,phone' }
+    );
+  }
+
+  // ── 4. Generate dashboard credentials ─────────────────────────────────────
+  const crypto = require('crypto');
+  const username = 'client-' + crypto.randomBytes(3).toString('hex');
+  const password = crypto.randomBytes(5).toString('base64url').slice(0, 8);
+
+  await supabase.from('tenant_users').upsert(
+    { tenant_id: tenantId, username, password, role: 'admin' },
+    { onConflict: 'username' }
+  );
+
+  // ── 5. Set Green API webhook ───────────────────────────────────────────────
+  const webhookUrl = `${PUBLIC_URL}/webhook/${tenantId}`;
+  if (ob.green_api_instance && ob.green_api_token) {
+    const { setWebhook } = require('../services/greenapi');
+    await setWebhook(ob.green_api_instance, ob.green_api_token, webhookUrl).catch((err) =>
+      console.error('[provision] setWebhook error:', err.message)
+    );
+  }
+
+  // ── 6. Send WhatsApp credentials to first admin phone ─────────────────────
+  const firstAdminPhone = adminPhones[0]?.phone || adminPhones[0];
+  if (firstAdminPhone) {
+    const credMsg =
+      `🎉 *הבוט שלך מוכן!*\n\n` +
+      `כניסה לדשבורד: ${PUBLIC_URL}\n` +
+      `שם משתמש: *${username}*\n` +
+      `סיסמא: *${password}*\n\n` +
+      `שנה סיסמא בהגדרות לאחר הכניסה הראשונה.`;
+    const { sendMessage: sm } = require('../services/greenapi');
+    await sm(firstAdminPhone.replace(/\D/g, ''), credMsg).catch(() => {});
+  }
+
+  // ── 7. Mark session approved + client active ───────────────────────────────
   await Promise.all([
-    supabase.from('onboarding_sessions').update({ status: 'approved' }).eq('id', req.params.id),
-    supabase.from('clients').update({ status: 'active' }).eq('id', session.client_id),
+    supabase.from('onboarding_sessions').update({
+      status: 'approved',
+      approved_username: username,
+      approved_password: password,
+      webhook_url:       webhookUrl,
+    }).eq('id', req.params.id),
+    supabase.from('clients').update({ status: 'active' }).eq('id', clientId),
   ]);
-  res.json({ success: true });
+
+  res.json({ success: true, username, password, webhookUrl, tenantId });
 });
 
 // PATCH /vendor/settings — update vendor_phone and alert preferences

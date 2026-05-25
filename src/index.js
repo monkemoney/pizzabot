@@ -8,9 +8,11 @@ const adminRouter      = require('./routes/admin');
 const dashboardApi     = require('./routes/dashboard-api');
 const paymentRouter    = require('./routes/payment');
 const businessBotRouter = require('./routes/business-bot');
-const { handleMessage }                      = require('./bot/handler');
-const { handleAdminMessage, getAdminUser }   = require('./bot/admin-handler');
-const { formatPhone } = require('./services/greenapi');
+const { handleMessage }        = require('./bot/handler');
+const { handleAdminMessage }   = require('./bot/admin-handler');
+const { getAdminUser }         = require('./services/supabase');
+const { formatPhone }          = require('./services/greenapi');
+const { DEFAULT_TENANT_ID }    = require('./services/settings');
 const { autoCompleteDeliveredOrders } = require('./services/supabase');
 const { createClient: createSB }       = require('@supabase/supabase-js');
 const vendorAlerts                     = require('./services/vendor-alerts');
@@ -53,19 +55,12 @@ if (process.env.GREEN_API_BUSINESS_INSTANCE_ID) {
   console.log('[server] Business bot webhook: /webhook/business');
 }
 
-// ─── Customer WhatsApp webhook (Green API) ────────────────────────────────────
-//
-// Payload structure:
-// { typeWebhook: "incomingMessageReceived",
-//   senderData: { sender: "972501234567@c.us" },
-//   messageData: { typeMessage: "textMessage",
-//                  textMessageData: { textMessage: "hello" } } }
-//
-app.post('/webhook', (req, res) => {
+// ─── WhatsApp webhook handler (shared for default + per-tenant routes) ───────
+
+function handleWebhook(req, res, tenantId) {
   res.sendStatus(200); // ack immediately — Green API retries on non-200
 
   const body = req.body;
-
   if (body.typeWebhook !== 'incomingMessageReceived') return;
 
   const messageData = body.messageData;
@@ -92,50 +87,42 @@ app.post('/webhook', (req, res) => {
                || messageData.buttonsResponseMessage?.selectedButtonId;
 
   } else if (messageData.typeMessage === 'pollUpdateMessage') {
-    // ── Toppings poll handler ─────────────────────────────────────────────────
-    // Only toppings polls remain in the new waiter flow.
-    // Toppings always have " — " (price separator) + a ✅ confirm button.
-
     const allOptions = messageData.pollMessageData?.votes || [];
     const voted = allOptions
       .filter((o) => Array.isArray(o.optionVoters) ? o.optionVoters.length > 0 : o.optionVoters > 0)
       .map((o) => o.optionName);
 
     console.log('[poll] voted:', voted);
-
     if (!voted.length) return;
 
     const hasConfirm = voted.some((v) => v.startsWith('✅') && !v.includes('ללא') && !v.includes('No topping'));
-    const hasNoTop   = voted.some((v) => v.includes('ללא תוספות') || v.includes('No topping'));
     const hasItems   = voted.some((v) => v.includes(' — '));
 
     if (hasConfirm) {
-      // User confirmed topping selection → build text for Claude
       const selections = voted.filter((v) => !v.startsWith('✅'));
-      textMessage = selections.length
-        ? `בחרתי: ${selections.join(', ')}`
-        : 'ללא תוספות';
+      textMessage = selections.length ? `בחרתי: ${selections.join(', ')}` : 'ללא תוספות';
     } else if (!hasItems) {
-      // Intermediate vote with no price separator → ignore
       return;
     } else {
-      // Has item votes but no confirm yet → ignore (wait for confirm)
       return;
     }
   }
 
   if (!textMessage) return;
 
-  // Check if sender is an admin user → route to admin handler
-  getAdminUser(phone).then(adminUser => {
-    if (adminUser) {
-      return handleAdminMessage(phone, textMessage, adminUser);
-    }
-    return handleMessage(phone, textMessage);
+  getAdminUser(phone, tenantId).then(adminUser => {
+    if (adminUser) return handleAdminMessage(phone, textMessage, adminUser, tenantId);
+    return handleMessage(phone, textMessage, tenantId);
   }).catch((err) =>
-    console.error(`[webhook] handler error for ${phone}:`, err.message)
+    console.error(`[webhook:${tenantId}] handler error for ${phone}:`, err.message)
   );
-});
+}
+
+// Default tenant webhook (backward compat)
+app.post('/webhook', (req, res) => handleWebhook(req, res, DEFAULT_TENANT_ID));
+
+// Per-tenant webhook — each client's Green API instance points here
+app.post('/webhook/:tenantId', (req, res) => handleWebhook(req, res, req.params.tenantId));
 
 // ─── 404 ──────────────────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));

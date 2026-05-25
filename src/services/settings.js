@@ -7,54 +7,60 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-// In-memory cache — refreshed every 60 seconds
-let cache = {};
-let cacheTime = 0;
+const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
 const CACHE_TTL = 60_000;
 
-async function loadAll() {
-  const now = Date.now();
-  if (now - cacheTime < CACHE_TTL) return cache;
+// Per-tenant cache: Map<tenantId, { data: {}, time: number }>
+const _caches = new Map();
 
-  const { data, error } = await supabase.from('settings').select('key, value');
+function _getCache(tenantId) {
+  if (!_caches.has(tenantId)) _caches.set(tenantId, { data: {}, time: 0 });
+  return _caches.get(tenantId);
+}
+
+async function loadAll(tenantId = DEFAULT_TENANT_ID) {
+  const c = _getCache(tenantId);
+  const now = Date.now();
+  if (now - c.time < CACHE_TTL) return c.data;
+
+  const { data, error } = await supabase
+    .from('settings')
+    .select('key, value')
+    .eq('tenant_id', tenantId);
+
   if (error) {
-    console.error('[settings] load error:', error.message);
-    return cache; // return stale cache on error
+    console.error(`[settings] load error (tenant ${tenantId}):`, error.message);
+    return c.data;
   }
 
   const fresh = {};
-  for (const row of data) {
-    fresh[row.key] = row.value; // already parsed JSONB
-  }
-  cache = fresh;
-  cacheTime = now;
-  return cache;
+  for (const row of data) fresh[row.key] = row.value;
+  c.data = fresh;
+  c.time = now;
+  return fresh;
 }
 
-async function get(key) {
-  const all = await loadAll();
+async function get(key, tenantId = DEFAULT_TENANT_ID) {
+  const all = await loadAll(tenantId);
   return all[key];
 }
 
-async function set(key, value) {
+async function set(key, value, tenantId = DEFAULT_TENANT_ID) {
   const { error } = await supabase.from('settings').upsert(
-    { key, value, updated_at: new Date().toISOString() },
-    { onConflict: 'key' }
+    { tenant_id: tenantId, key, value, updated_at: new Date().toISOString() },
+    { onConflict: 'tenant_id,key' }
   );
   if (error) throw new Error('[settings] set error: ' + error.message);
-  // Invalidate cache
-  cacheTime = 0;
+  _getCache(tenantId).time = 0;
 }
 
-async function isOpen() {
-  const open = await get('is_open');
+async function isOpen(tenantId = DEFAULT_TENANT_ID) {
+  const open = await get('is_open', tenantId);
   if (open === false || open === 'false') return false;
 
-  // Check business hours
-  const hours = await get('business_hours');
+  const hours = await get('business_hours', tenantId);
   if (!hours) return true;
 
-  // Always use Israel time (UTC+2 winter / UTC+3 summer) — the server runs on UTC
   const nowIL = new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' });
   const now   = new Date(nowIL);
 
@@ -62,7 +68,6 @@ async function isOpen() {
   const day  = days[now.getDay()];
   const todayHours = hours[day];
 
-  // If no hours defined for today OR the day is marked closed → closed
   if (!todayHours || todayHours.is_open === false) return false;
 
   const [openH, openM]   = (todayHours.open  || '00:00').split(':').map(Number);
@@ -71,11 +76,14 @@ async function isOpen() {
   const openMinutes  = openH  * 60 + openM;
   const closeMinutes = closeH * 60 + closeM;
 
-  console.log(`[settings] isOpen check — IL time: ${now.toLocaleTimeString('he-IL')} day:${day} window:${todayHours.open}-${todayHours.close} → ${nowMinutes >= openMinutes && nowMinutes <= closeMinutes}`);
+  console.log(`[settings] isOpen (tenant ${tenantId}) — IL time: ${now.toLocaleTimeString('he-IL')} day:${day} window:${todayHours.open}-${todayHours.close} → ${nowMinutes >= openMinutes && nowMinutes <= closeMinutes}`);
 
   return nowMinutes >= openMinutes && nowMinutes <= closeMinutes;
 }
 
-function _clearCache() { cacheTime = 0; cache = {}; }
+function _clearCache(tenantId = DEFAULT_TENANT_ID) {
+  _getCache(tenantId).time = 0;
+  _getCache(tenantId).data = {};
+}
 
-module.exports = { get, set, loadAll, isOpen, _clearCache };
+module.exports = { get, set, loadAll, isOpen, _clearCache, DEFAULT_TENANT_ID };

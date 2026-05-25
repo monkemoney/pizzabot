@@ -25,10 +25,10 @@ function parsePayload(jsonStr) {
   }
 }
 
-async function reply(phone, text) {
-  if (!text) return;
-  try { await sendMessage(phone, text); }
-  catch (err) { console.error(`[ai-handler] send failed ${phone}:`, err.message); }
+function reply(phone, text, tenantId) {
+  if (!text) return Promise.resolve();
+  return sendMessage(phone, text, tenantId)
+    .catch((err) => console.error(`[ai-handler] send failed ${phone}:`, err.message));
 }
 
 function detectLang(lastMessage, history) {
@@ -45,11 +45,10 @@ function makeReturnValue() {
 
 // ─── Item dispute response handler ───────────────────────────────────────────
 
-async function handleDisputeResponse(phone, userMessage, session) {
+async function handleDisputeResponse(phone, userMessage, session, tenantId) {
   const dispute = session.pending_dispute;
   const msg     = userMessage.trim();
 
-  // Normalise: support both new (items[]) and old (item_name) format
   const missingItems = dispute.items && dispute.items.length
     ? dispute.items
     : [{ type: 'item', name: dispute.item_name || '?', price: dispute.item_price || 0, qty: 1 }];
@@ -61,66 +60,54 @@ async function handleDisputeResponse(phone, userMessage, session) {
 
   const choice = msg.replace(/\s+/g, '');
 
-  // ── If waiting for replacement text (choice already was '3') ────────────────
   if (dispute.awaiting_replacement) {
     const order = await getOrderById(dispute.order_id);
     if (!order || ['cancelled', 'done'].includes(order.status)) {
-      await updateSession(phone, { pending_dispute: null });
-      await reply(phone, 'ההזמנה כבר אינה פעילה. 🙏');
+      await updateSession(phone, { pending_dispute: null }, tenantId);
+      await reply(phone, 'ההזמנה כבר אינה פעילה. 🙏', tenantId);
       return;
     }
-    // Mark dispute resolved, add replacement note, pass to Claude to process
     await updateOrder(order.id, { dispute_status: 'resolved', dispute_resolution: 'replaced' });
-    await updateSession(phone, {
-      pending_dispute: null,
-      // Inject context so Claude knows what happened
-    });
-    // Let Claude handle the replacement naturally with context
-    const systemContext = `הלקוח ביקש להחליף את ${namesStr} ב: "${msg}". עדכן את העגלה בהתאם, אשר את השינוי ועבור לסיכום.`;
-    await reply(phone, `מעולה! בודקים אפשרות להחלפה — ${msg}. נחזור אליך מיד.`);
-    // Continue with Claude to handle replacement
-    await handleMessage(phone, `רוצה לשנות ${missingItems.map(d=>d.name).join(' ו')} ל: ${msg}`);
+    await updateSession(phone, { pending_dispute: null }, tenantId);
+    await reply(phone, `מעולה! בודקים אפשרות להחלפה — ${msg}. נחזור אליך מיד.`, tenantId);
+    await handleMessage(phone, `רוצה לשנות ${missingItems.map(d=>d.name).join(' ו')} ל: ${msg}`, tenantId);
     return;
   }
 
   if (!['1', '2', '3'].includes(choice)) {
     const hint = `אנא שלח:\n*1* — לבטל את ההזמנה\n*2* — להמשיך ללא ${namesStr}${refundStr}\n*3* — להחליף בפריט אחר`;
-    await reply(phone, hint);
+    await reply(phone, hint, tenantId);
     return;
   }
 
   const order = await getOrderById(dispute.order_id);
   if (!order || ['cancelled', 'done'].includes(order.status)) {
-    await updateSession(phone, { pending_dispute: null });
-    await reply(phone, 'ההזמנה כבר אינה פעילה. תודה! 🙏');
+    await updateSession(phone, { pending_dispute: null }, tenantId);
+    await reply(phone, 'ההזמנה כבר אינה פעילה. תודה! 🙏', tenantId);
     return;
   }
 
-  // ── 1: Cancel ──
   if (choice === '1') {
     await updateOrderStatus(order.id, 'cancelled');
     await updateOrder(order.id, { dispute_status: 'resolved', dispute_resolution: 'cancelled', cancelled_by: 'customer' });
-    await updateSession(phone, { pending_dispute: null, conversation_history: [], pending_order: {} });
+    await updateSession(phone, { pending_dispute: null, conversation_history: [], pending_order: {} }, tenantId);
     const refundNote = order.payment_method === 'credit'
       ? '\nהתשלום יזוכה לכרטיסך תוך 3-5 ימי עסקים.' : '';
-    await reply(phone, `✅ הזמנה מספר *${dispute.order_number}* בוטלה.${refundNote}\n\nמצטערים על אי הנוחות 🙏`);
+    await reply(phone, `✅ הזמנה מספר *${dispute.order_number}* בוטלה.${refundNote}\n\nמצטערים על אי הנוחות 🙏`, tenantId);
     return;
   }
 
-  // ── 2: Continue without missing items ──
   if (choice === '2') {
     let orderItems = [...(order.items || [])];
     let removed    = 0;
 
     for (const d of missingItems) {
       if (d.type === 'topping') {
-        // Remove topping from all items that have it
         orderItems = orderItems.map(it => ({
           ...it,
           toppings: (it.toppings || []).filter(t => (t.name || t.name_he) !== d.name),
         }));
       } else {
-        // Remove item entirely
         const before = orderItems.length;
         orderItems   = orderItems.filter(it => (it.name || it.name_he) !== d.name);
         const qty    = d.qty || 1;
@@ -130,12 +117,10 @@ async function handleDisputeResponse(phone, userMessage, session) {
 
     const newTotal = Math.max(0, (parseFloat(order.total_price) || 0) - removed);
     await updateOrder(order.id, {
-      items:              orderItems,
-      total_price:        newTotal,
-      dispute_status:     'resolved',
-      dispute_resolution: 'removed',
+      items: orderItems, total_price: newTotal,
+      dispute_status: 'resolved', dispute_resolution: 'removed',
     });
-    await updateSession(phone, { pending_dispute: null });
+    await updateSession(phone, { pending_dispute: null }, tenantId);
 
     const removedList = missingItems.map(d =>
       d.type === 'topping' ? `תוספת ${d.name}` : d.name).join(', ');
@@ -144,50 +129,40 @@ async function handleDisputeResponse(phone, userMessage, session) {
 
     await reply(phone,
       `✅ ההזמנה עודכנה — הוסרו: *${removedList}*.\n` +
-      `סכום מעודכן: ₪${newTotal.toFixed(0)}.${refundNote}\nתודה על ההבנה! 🙏`
+      `סכום מעודכן: ₪${newTotal.toFixed(0)}.${refundNote}\nתודה על ההבנה! 🙏`,
+      tenantId
     );
     return;
   }
 
   // ── 3: Replace with something else ──
-  await updateSession(phone, {
-    pending_dispute: { ...dispute, awaiting_replacement: true },
-  });
-  await reply(phone,
-    `מה תרצה במקום ${namesStr}? 😊\n\nכתוב מה תרצה להחליף ואנחנו נבדוק שיש לנו.`
-  );
+  await updateSession(phone, { pending_dispute: { ...dispute, awaiting_replacement: true } }, tenantId);
+  await reply(phone, `מה תרצה במקום ${namesStr}? 😊\n\nכתוב מה תרצה להחליף ואנחנו נבדוק שיש לנו.`, tenantId);
 }
 
 // ─── Main handler ────────────────────────────────────────────────────────────
 
-async function handleMessage(phone, userMessage) {
-  const session = await getSession(phone);
+async function handleMessage(phone, userMessage, tenantId = null) {
+  const tid = tenantId || settings.DEFAULT_TENANT_ID;
+  const session = await getSession(phone, tid);
 
-  // ── Pending dispute — process before isOpen check ────────────────────────────
-  // Customer is replying to a "missing item" question about an existing order.
   if (session.pending_dispute) {
-    return handleDisputeResponse(phone, userMessage, session);
+    return handleDisputeResponse(phone, userMessage, session, tid);
   }
 
-  // Check if the restaurant is open
-  const open = await settings.isOpen();
+  const open = await settings.isOpen(tid);
   if (!open) {
     const lang = session.language || 'he';
     await reply(phone, lang === 'en'
       ? "Sorry, we're currently closed. Please try again during business hours 🕐"
-      : 'מצטערים, אנחנו כרגע סגורים. אנא נסה שוב בשעות הפתיחה 🕐');
+      : 'מצטערים, אנחנו כרגע סגורים. אנא נסה שוב בשעות הפתיחה 🕐', tid);
     return;
   }
 
   let history = Array.isArray(session.conversation_history) ? session.conversation_history : [];
 
-  // ── Stale session guard ───────────────────────────────────────────────────────
-  // If history is very long but seems stuck or outdated (old poll-based flow),
-  // check the last assistant message. If it contains old-flow markers (בחרתי:/סקר)
-  // or if history is older than 3 hours, reset so Claude starts fresh.
   if (history.length > 0) {
-    const lastMsg = history[history.length - 1];
-    const lastTs  = session.updated_at ? new Date(session.updated_at) : null;
+    const lastTs   = session.updated_at ? new Date(session.updated_at) : null;
     const ageHours = lastTs ? (Date.now() - lastTs.getTime()) / 3600000 : 999;
     const hasOldFlow = history.some((m) =>
       typeof m.content === 'string' && (
@@ -197,17 +172,14 @@ async function handleMessage(phone, userMessage) {
       )
     );
     if (ageHours > 3 || hasOldFlow) {
-      console.log(`[ai-handler] resetting stale/old-flow session for ${phone} (age=${ageHours.toFixed(1)}h, oldFlow=${hasOldFlow})`);
+      console.log(`[ai-handler] resetting stale session for ${phone} (age=${ageHours.toFixed(1)}h)`);
       history = [];
-      await updateSession(phone, { conversation_history: [], pending_order: {} });
+      await updateSession(phone, { conversation_history: [], pending_order: {} }, tid);
     }
   }
 
-  console.log(`[ai-handler] phone=${phone} historyLen=${history.length} msg="${userMessage.slice(0, 80)}"`);
+  console.log(`[ai-handler] phone=${phone} tenant=${tid} historyLen=${history.length} msg="${userMessage.slice(0, 80)}"`);
 
-  // ── 15-minute edit window ──────────────────────────────────────────────────
-  // If history is empty (new conversation) and the customer has a recent order,
-  // check if they're trying to cancel/modify it.
   if (history.length === 0) {
     const lastOrder = await getLastOrderByPhone(phone);
     if (lastOrder && lastOrder.status === 'new') {
@@ -217,31 +189,27 @@ async function handleMessage(phone, userMessage) {
         const cancelKeywords = ['בטל', 'ביטול', 'לבטל', 'cancel', 'שנה', 'לשנות'];
         const wantsCancel = cancelKeywords.some((k) => userMessage.toLowerCase().includes(k));
         if (wantsCancel) {
-          // Cancel the order
           await updateOrderStatus(lastOrder.id, 'cancelled');
           const msg = lang === 'en'
             ? `✅ Order #${lastOrder.order_number} has been cancelled. Want to place a new order?`
             : `✅ הזמנה מספר ${lastOrder.order_number} בוטלה. רוצה להזמין מחדש?`;
-          await reply(phone, msg);
+          await reply(phone, msg, tid);
           return;
         }
-        // Inform them about the edit window
         const msg = lang === 'en'
           ? `Your order #${lastOrder.order_number} was placed ${Math.floor(minutesSince)} min ago and is being prepared.\nTo cancel, send *בטל* within ${Math.floor(15 - minutesSince)} more minutes.`
           : `הזמנה מספר ${lastOrder.order_number} בוצעה לפני ${Math.floor(minutesSince)} דקות ונמצאת בטיפול.\nלביטול שלח *בטל* בתוך ${Math.floor(15 - minutesSince)} דקות נוספות.`;
-        await reply(phone, msg);
+        await reply(phone, msg, tid);
         return;
       }
     }
   }
-  // ────────────────────────────────────────────────────────────────────────────
 
-  // Load returning customer profile (name, address from previous orders)
-  const customerProfile = await getCustomerProfile(phone).catch(() => null);
+  const customerProfile = await getCustomerProfile(phone, tid).catch(() => null);
 
   let systemPrompt;
   try {
-    systemPrompt = await buildSystemPrompt(customerProfile);
+    systemPrompt = await buildSystemPrompt(customerProfile, tid);
   } catch (err) {
     console.error('[ai-handler] Failed to build system prompt:', err.message);
     systemPrompt = 'You are a pizza ordering assistant. Help the customer order pizza.';
@@ -253,51 +221,44 @@ async function handleMessage(phone, userMessage) {
   } catch (err) {
     console.error('[ai-handler] Claude error:', err.message);
     require('../services/vendor-alerts').alerts.botError(phone, err).catch(() => {});
-    await reply(phone, 'מצטערים, אירעה שגיאה זמנית. אנא נסה שוב. 🙏');
+    await reply(phone, 'מצטערים, אירעה שגיאה זמנית. אנא נסה שוב. 🙏', tid);
     return;
   }
 
   const match     = assistantText.match(ACTION_RE);
   const cleanText = stripAction(assistantText);
 
-  // Send reply to customer first
-  await reply(phone, cleanText);
+  await reply(phone, cleanText, tid);
 
-  // Append to history
   const updatedHistory = [
     ...history,
     { role: 'user',      content: userMessage   },
     { role: 'assistant', content: assistantText },
-  ].slice(-40); // keep last 40 messages
+  ].slice(-40);
 
   if (!match) {
-    await updateSession(phone, { conversation_history: updatedHistory });
+    await updateSession(phone, { conversation_history: updatedHistory }, tid);
     return;
   }
 
   const actionType = match[1];
   const payload    = match[2] ? parsePayload(match[2]) : null;
 
-  // ── SHOW_TOPPINGS — toppings poll ──
   if (actionType === 'SHOW_TOPPINGS') {
     const lang = detectLang(userMessage, history);
-    // Try to extract the product name from the current user message for per-product toppings
     const productName = userMessage.length < 80 ? userMessage : null;
     await sendToppingsPoll(phone, lang, productName).catch(() => {});
-    await updateSession(phone, { conversation_history: updatedHistory });
+    await updateSession(phone, { conversation_history: updatedHistory }, tid);
     return;
   }
 
-  // ── RESET ──
   if (actionType === 'RESET') {
-    await updateSession(phone, { conversation_history: [], pending_order: {} });
+    await updateSession(phone, { conversation_history: [], pending_order: {} }, tid);
     return;
   }
 
-  // ── SAVE_ORDER (cash payment) ──
   if (actionType === 'SAVE_ORDER' && payload) {
     try {
-      // Persist customer profile for future orders
       if (payload.customer_name || payload.address) {
         await saveCustomerProfile(phone, {
           name:            payload.customer_name  || null,
@@ -305,10 +266,10 @@ async function handleMessage(phone, userMessage) {
           last_address:    payload.address        || null,
           delivery_method: payload.delivery_method,
           payment_method:  'cash',
-        });
+        }, tid);
       }
 
-      const { id, orderNumber } = await saveOrder({
+      const { orderNumber } = await saveOrder({
         phone,
         customer_name:   payload.customer_name   || null,
         customer_phone:  payload.customer_phone  || null,
@@ -320,26 +281,24 @@ async function handleMessage(phone, userMessage) {
         payment_status:  'paid',
         total_price:     payload.total,
         status:          'new',
+        tenant_id:       tid,
       });
 
       const lang = detectLang(userMessage, history);
       const confirmMsg = lang === 'en'
         ? `🍕 Order *#${orderNumber}* confirmed!\nWe'll start preparing it now.`
         : `🍕 הזמנה מספר *${orderNumber}* אושרה!\nמתחילים להכין עכשיו.`;
-      await reply(phone, confirmMsg);
-
-      await updateSession(phone, { conversation_history: [], pending_order: {} });
+      await reply(phone, confirmMsg, tid);
+      await updateSession(phone, { conversation_history: [], pending_order: {} }, tid);
     } catch (err) {
       console.error('[ai-handler] saveOrder error:', err.message);
-      await reply(phone, 'אירעה שגיאה בשמירת ההזמנה. אנא נסה שוב. 🙏');
-      await updateSession(phone, { conversation_history: updatedHistory });
+      await reply(phone, 'אירעה שגיאה בשמירת ההזמנה. אנא נסה שוב. 🙏', tid);
+      await updateSession(phone, { conversation_history: updatedHistory }, tid);
     }
     return;
   }
 
-  // ── CREATE_PAYMENT (credit card) ──
   if (actionType === 'CREATE_PAYMENT' && payload) {
-    // Save profile even before payment confirms — address/name are known
     if (payload.customer_name || payload.address) {
       await saveCustomerProfile(phone, {
         name:            payload.customer_name  || null,
@@ -347,48 +306,46 @@ async function handleMessage(phone, userMessage) {
         last_address:    payload.address        || null,
         delivery_method: payload.delivery_method,
         payment_method:  'credit',
-      });
+      }, tid);
     }
-    await updateSession(phone, { conversation_history: updatedHistory });
+    await updateSession(phone, { conversation_history: updatedHistory }, tid);
 
     const returnValue = makeReturnValue();
-
     try {
       const { lowProfileCode, paymentUrl } = await createPaymentPage({
         amount:      payload.total,
         returnValue,
-        productName: `פיצה דליבריס — הזמנה`,
+        productName: `הזמנה`,
         phone,
+        tenantId:    tid,
       });
 
-      // Save the pending payment so the webhook / polling can confirm it later
       await savePendingPayment({
         phone,
         cardcomCode:  lowProfileCode,
         returnValue,
-        orderData:    payload,
+        orderData:    { ...payload, tenant_id: tid },
       });
 
-      console.log(`[ai-handler] CREATE_PAYMENT — phone=${phone} code=${lowProfileCode} rv=${returnValue} total=${payload.total}`);
+      console.log(`[ai-handler] CREATE_PAYMENT — phone=${phone} tenant=${tid} code=${lowProfileCode} rv=${returnValue} total=${payload.total}`);
 
       const lang = detectLang(userMessage, history);
       const linkMsg = lang === 'en'
         ? `💳 Please complete your payment here:\n${paymentUrl}\n\nThe link is valid for 30 minutes.`
         : `💳 לסיום ביצוע ההזמנה, שלם כאן:\n${paymentUrl}\n\nהקישור בתוקף ל-30 דקות.`;
 
-      await reply(phone, linkMsg);
+      await reply(phone, linkMsg, tid);
     } catch (err) {
       console.error('[ai-handler] createPaymentPage error:', err.message);
       const lang = detectLang(userMessage, history);
       await reply(phone, lang === 'en'
         ? 'Sorry, could not generate a payment link. Please try again.'
-        : 'מצטערים, לא הצלחנו ליצור קישור תשלום. אנא נסה שוב.');
+        : 'מצטערים, לא הצלחנו ליצור קישור תשלום. אנא נסה שוב.', tid);
     }
     return;
   }
 
-  // Fallback — save history
-  await updateSession(phone, { conversation_history: updatedHistory });
+  await updateSession(phone, { conversation_history: updatedHistory }, tid);
 }
 
 module.exports = { handleMessage, stripAction, detectLang, parsePayload };

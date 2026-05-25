@@ -18,23 +18,24 @@ function stripAdminActions(text) {
   return text.replace(ADMIN_ACTION_RE, '').trim();
 }
 
-async function reply(phone, text) {
-  if (!text) return;
-  await sendMessage(phone, text).catch(err =>
-    console.error(`[admin-bot] send failed ${phone}:`, err.message)
-  );
+const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
+
+function reply(phone, text, tenantId) {
+  if (!text) return Promise.resolve();
+  return sendMessage(phone, text, tenantId)
+    .catch(err => console.error(`[admin-bot] send failed ${phone}:`, err.message));
 }
 
 // ── Build admin system prompt ─────────────────────────────────────────────────
-async function buildAdminPrompt(adminUser) {
+async function buildAdminPrompt(adminUser, tenantId = DEFAULT_TENANT_ID) {
   const [allSettings, activeOrders] = await Promise.all([
-    settings.loadAll(),
-    getOrders().then(o => o.filter(x => !['done','cancelled'].includes(x.status)).slice(0, 20)),
+    settings.loadAll(tenantId),
+    getOrders().then(o => o.filter(x => !['done','cancelled'].includes(x.status) && (x.tenant_id === tenantId || !x.tenant_id)).slice(0, 20)),
   ]);
 
-  // Load products
+  // Load products for this tenant
   const { data: products } = await supabase
-    .from('products').select('id, name_he, price, is_available, category_id').order('sort_order');
+    .from('products').select('id, name_he, price, is_available, category_id').eq('tenant_id', tenantId).order('sort_order');
   const { data: additions } = await supabase
     .from('product_additions').select('id, product_id, name_he, price, is_available').order('sort_order');
 
@@ -110,7 +111,7 @@ ${orderList}
 }
 
 // ── Dispatch admin actions ────────────────────────────────────────────────────
-async function dispatchActions(text, phone, adminUser) {
+async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT_ID) {
   const results = [];
   let match;
   const re = new RegExp(ADMIN_ACTION_RE.source, 'g');
@@ -139,7 +140,7 @@ async function dispatchActions(text, phone, adminUser) {
               await supabase.from('products').update({ is_available: available }).eq('id', p.id);
             }
           }
-          invalidateCache();
+          invalidateCache(tenantId);
           results.push(`${available ? '✅' : '❌'} *${name}* — ${available ? 'מוחזר לתפריט' : 'סומן כאזל'}`);
           break;
         }
@@ -185,10 +186,10 @@ async function dispatchActions(text, phone, adminUser) {
           const { updateSession: us } = require('../services/supabase');
           const items = missing.map(n => ({ type: 'item', name: n, price: 0, qty: 1 }));
           await supabase.from('orders').update({ dispute_status: 'pending', dispute_item: missing.join(', '), updated_at: new Date().toISOString() }).eq('id', ord.id);
-          await us(ord.phone, { pending_dispute: { order_id: ord.id, order_number, items, refund: 0, created_at: new Date().toISOString() } });
+          await us(ord.phone, { pending_dispute: { order_id: ord.id, order_number, items, refund: 0, created_at: new Date().toISOString() } }, tenantId);
           const listStr = missing.map(n => `• *${n}*`).join('\n');
           const msg = `שלום${ord.customer_name ? ` ${ord.customer_name}` : ''}! 🙏\n\nלצערנו הפריטים הבאים אזלו:\n${listStr}\n\n(הזמנה *#${order_number}*)\n\n*1* — לבטל\n*2* — להמשיך בלי\n*3* — להחליף`;
-          await sendMessage(ord.phone, msg).catch(() => {});
+          await sendMessage(ord.phone, msg, tenantId).catch(() => {});
           results.push(`✅ מחלוקת נפתחה להזמנה #${order_number} — הלקוח עודכן`);
           break;
         }
@@ -197,7 +198,7 @@ async function dispatchActions(text, phone, adminUser) {
           const { key, value } = payload;
           const allowed = ['is_open','delivery_enabled','pickup_enabled','payment_cash','payment_credit','payment_bit','payment_paybox'];
           if (!allowed.includes(key)) { results.push(`❌ מפתח "${key}" לא מורשה`); break; }
-          await settings.set(key, value);
+          await settings.set(key, value, tenantId);
           const labels = { is_open:'בוט', delivery_enabled:'משלוח', pickup_enabled:'איסוף', payment_cash:'מזומן', payment_credit:'אשראי' };
           results.push(`${value ? '✅' : '❌'} *${labels[key] || key}* — ${value ? 'פועל' : 'מושבת'}`);
           break;
@@ -211,7 +212,7 @@ async function dispatchActions(text, phone, adminUser) {
           for (const p of found) {
             await supabase.from('products').update({ price, updated_at: new Date().toISOString() }).eq('id', p.id);
           }
-          invalidateCache();
+          invalidateCache(tenantId);
           results.push(`✅ *${found[0].name_he}* — מחיר עודכן ל-₪${price}`);
           break;
         }
@@ -242,21 +243,20 @@ async function dispatchActions(text, phone, adminUser) {
 }
 
 // ── Main admin handler ────────────────────────────────────────────────────────
-async function handleAdminMessage(phone, userMessage, adminUser) {
-  console.log(`[admin-bot] phone=${phone} name="${adminUser.name}" msg="${userMessage.slice(0,60)}"`);
+async function handleAdminMessage(phone, userMessage, adminUser, tenantId = DEFAULT_TENANT_ID) {
+  console.log(`[admin-bot] phone=${phone} tenant=${tenantId} name="${adminUser.name}" msg="${userMessage.slice(0,60)}"`);
 
-  const session = await getSession(`admin:${phone}`);
+  const session = await getSession(`admin:${phone}`, tenantId);
   const history = Array.isArray(session.conversation_history) ? session.conversation_history : [];
 
-  // Reset command
   if (['reset','אפס','נקה'].some(k => userMessage.trim().toLowerCase() === k)) {
-    await updateSession(`admin:${phone}`, { conversation_history: [] });
-    await reply(phone, '✅ היסטוריית שיחת הניהול נוקתה.');
+    await updateSession(`admin:${phone}`, { conversation_history: [] }, tenantId);
+    await reply(phone, '✅ היסטוריית שיחת הניהול נוקתה.', tenantId);
     return;
   }
 
   let systemPrompt;
-  try { systemPrompt = await buildAdminPrompt(adminUser); }
+  try { systemPrompt = await buildAdminPrompt(adminUser, tenantId); }
   catch (err) { console.error('[admin-bot] prompt error:', err.message); }
 
   let assistantText;
@@ -264,37 +264,22 @@ async function handleAdminMessage(phone, userMessage, adminUser) {
     assistantText = await callClaude(systemPrompt, history.slice(-20), userMessage);
   } catch (err) {
     console.error('[admin-bot] Claude error:', err.message);
-    await reply(phone, '⚠️ שגיאה זמנית, נסה שוב.');
+    await reply(phone, '⚠️ שגיאה זמנית, נסה שוב.', tenantId);
     return;
   }
 
-  // Execute all actions
-  const actionResults = await dispatchActions(assistantText, phone, adminUser);
+  const actionResults = await dispatchActions(assistantText, phone, adminUser, tenantId);
 
-  // Send clean text (without action blocks)
   const cleanText = stripAdminActions(assistantText);
-  if (cleanText) await reply(phone, cleanText);
+  if (cleanText) await reply(phone, cleanText, tenantId);
+  if (actionResults.length) await reply(phone, actionResults.join('\n'), tenantId);
 
-  // Send action results summary if any
-  if (actionResults.length) {
-    await reply(phone, actionResults.join('\n'));
-  }
-
-  // Save history (admin session keyed with admin: prefix)
   const updatedHistory = [
     ...history,
     { role: 'user',      content: userMessage    },
     { role: 'assistant', content: assistantText  },
   ].slice(-30);
-  await updateSession(`admin:${phone}`, { conversation_history: updatedHistory });
+  await updateSession(`admin:${phone}`, { conversation_history: updatedHistory }, tenantId);
 }
 
-// ── Check if phone is an admin ────────────────────────────────────────────────
-async function getAdminUser(phone) {
-  const normalised = phone.replace(/\D/g, '');
-  const { data } = await supabase
-    .from('admin_users').select('*').eq('phone', normalised).single();
-  return data || null;
-}
-
-module.exports = { handleAdminMessage, getAdminUser };
+module.exports = { handleAdminMessage };

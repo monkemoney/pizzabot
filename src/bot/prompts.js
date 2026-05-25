@@ -3,10 +3,11 @@
 const settings          = require('../services/settings');
 const { buildMenuText } = require('../services/menu-service');
 
-async function buildSystemPrompt(customerProfile = null) {
+async function buildSystemPrompt(customerProfile = null, tenantId = null) {
+  const tid = tenantId || settings.DEFAULT_TENANT_ID;
   const [allSettings, menuText] = await Promise.all([
-    settings.loadAll(),
-    settings.loadAll().then((s) => buildMenuText(s)),
+    settings.loadAll(tid),
+    settings.loadAll(tid).then((s) => buildMenuText(s, tid)),
   ]);
 
   const deliveryEnabled = allSettings.delivery_enabled !== false;

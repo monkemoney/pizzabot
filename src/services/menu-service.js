@@ -7,73 +7,69 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-let cache = null;
-let cacheTime = 0;
+const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
 const CACHE_TTL = 60_000;
 
-async function getProducts() {
-  const now = Date.now();
-  if (cache && now - cacheTime < CACHE_TTL) return cache;
+// Per-tenant cache: Map<tenantId, { data: null|{}, time: number }>
+const _caches = new Map();
 
-  // Load categories
+function _getCache(tenantId) {
+  if (!_caches.has(tenantId)) _caches.set(tenantId, { data: null, time: 0 });
+  return _caches.get(tenantId);
+}
+
+async function getProducts(tenantId = DEFAULT_TENANT_ID) {
+  const c = _getCache(tenantId);
+  const now = Date.now();
+  if (c.data && now - c.time < CACHE_TTL) return c.data;
+
   const { data: cats, error: cErr } = await supabase
     .from('categories')
     .select('*')
+    .eq('tenant_id', tenantId)
     .order('sort_order');
 
   if (cErr) {
-    console.error('[menu-service] categories error:', cErr.message);
-    return cache || { categories: [], main: [], raw: [] };
+    console.error(`[menu-service] categories error (tenant ${tenantId}):`, cErr.message);
+    return c.data || { categories: [], main: [], raw: [] };
   }
 
-  // Load products with category info
   const { data: products, error: pErr } = await supabase
     .from('products')
     .select('*, categories(id, name_he, name_en, emoji, has_toppings)')
+    .eq('tenant_id', tenantId)
     .eq('is_available', true)
     .order('sort_order');
 
   if (pErr) {
-    console.error('[menu-service] products error:', pErr.message);
-    return cache || { categories: [], main: [], raw: [] };
+    console.error(`[menu-service] products error (tenant ${tenantId}):`, pErr.message);
+    return c.data || { categories: [], main: [], raw: [] };
   }
 
-  // Group products by category
   const byCategory = {};
-  for (const cat of cats) {
-    byCategory[cat.id] = { ...cat, items: [] };
-  }
+  for (const cat of cats) byCategory[cat.id] = { ...cat, items: [] };
   for (const p of products) {
-    const catId = p.category_id;
-    if (catId && byCategory[catId]) {
-      byCategory[catId].items.push(p);
-    }
+    if (p.category_id && byCategory[p.category_id]) byCategory[p.category_id].items.push(p);
   }
 
-  cache = {
-    categories:  cats,
-    byCategory,
-    main:        products, // all orderable products
-    raw:         products,
-  };
-  cacheTime = now;
-  return cache;
+  c.data = { categories: cats, byCategory, main: products, raw: products };
+  c.time = now;
+  return c.data;
 }
 
-function invalidateCache() {
-  cacheTime = 0;
+function invalidateCache(tenantId = DEFAULT_TENANT_ID) {
+  _getCache(tenantId).time = 0;
 }
 
-async function buildMenuText(settings) {
-  const { categories, byCategory } = await getProducts();
+async function buildMenuText(settingsObj, tenantId = DEFAULT_TENANT_ID) {
+  const { categories, byCategory } = await getProducts(tenantId);
 
-  const deliveryPrice   = settings?.delivery_price   ?? 30;
-  const deliveryEnabled = settings?.delivery_enabled !== false;
-  const pickupEnabled   = settings?.pickup_enabled   !== false;
+  const deliveryPrice   = settingsObj?.delivery_price   ?? 30;
+  const deliveryEnabled = settingsObj?.delivery_enabled !== false;
+  const pickupEnabled   = settingsObj?.pickup_enabled   !== false;
 
-  // Exclude topping-addon categories from the menu text (they're follow-ups, not main items)
   const sections = categories.filter((c) => !c.is_topping_addon).map((cat) => {
-    const items = (byCategory[cat.id]?.items || []);
+    const items = byCategory[cat.id]?.items || [];
     if (!items.length) return null;
     const lines = items.map((p) => `• ${p.name_he} — ${p.price}₪`).join('\n');
     return `${cat.emoji} ${cat.name_he}:\n${lines}`;

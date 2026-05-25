@@ -7,8 +7,8 @@ const BASE_URL    = process.env.GREEN_API_BASE_URL || 'https://api.green-api.com
 const INSTANCE_ID = process.env.GREEN_API_INSTANCE_ID;
 const TOKEN       = process.env.GREEN_API_TOKEN;
 
-function apiUrl(method) {
-  return `${BASE_URL}/waInstance${INSTANCE_ID}/${method}/${TOKEN}`;
+function apiUrl(method, instanceId = INSTANCE_ID, token = TOKEN) {
+  return `${BASE_URL}/waInstance${instanceId}/${method}/${token}`;
 }
 
 function formatPhone(raw) {
@@ -23,14 +23,50 @@ function toChatId(phone) {
   return bare.includes('@') ? bare : `${bare}@c.us`;
 }
 
-async function sendMessage(phone, message) {
+// Resolve Green API credentials for a tenant.
+// For the default tenant, use env vars. For others, read from settings table.
+async function _tenantCreds(tenantId) {
+  const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
+  if (!tenantId || tenantId === DEFAULT_TENANT_ID) {
+    return { instanceId: INSTANCE_ID, token: TOKEN };
+  }
+  const settings = require('./settings');
+  const [instanceId, token] = await Promise.all([
+    settings.get('green_api_instance', tenantId),
+    settings.get('green_api_token', tenantId),
+  ]);
+  return { instanceId: instanceId || INSTANCE_ID, token: token || TOKEN };
+}
+
+async function sendMessage(phone, message, tenantId = null) {
   const chatId = toChatId(phone);
+  const { instanceId, token } = await _tenantCreds(tenantId);
   try {
-    const r = await axios.post(apiUrl('sendMessage'), { chatId, message });
+    const r = await axios.post(apiUrl('sendMessage', instanceId, token), { chatId, message });
     return r.data;
   } catch (err) {
     const detail = err.response ? JSON.stringify(err.response.data) : err.message;
     console.error(`[greenapi] sendMessage failed for ${chatId}:`, detail);
+    throw err;
+  }
+}
+
+/**
+ * Configure Green API webhook URL for a specific instance.
+ * Called during client provisioning.
+ */
+async function setWebhook(instanceId, token, webhookUrl) {
+  try {
+    const r = await axios.post(apiUrl('setSettings', instanceId, token), {
+      webhookUrl,
+      webhookUrlToken: '',
+      delaySendMessagesMilliseconds: 1000,
+      markIncomingMessagesReaded: 'yes',
+    });
+    return r.data;
+  } catch (err) {
+    const detail = err.response ? JSON.stringify(err.response.data) : err.message;
+    console.error(`[greenapi] setWebhook failed (instance ${instanceId}):`, detail);
     throw err;
   }
 }
@@ -248,5 +284,5 @@ module.exports = {
   sendMessage, sendListMessage, sendMenuList, sendCategoryPoll,
   sendToppingsPoll, sendPoll, resolveCategoryVote,
   isControlOption, CTRL_CONFIRM, CTRL_BACK, CTRL_NO_TOP,
-  sendButtons, formatPhone, toChatId,
+  sendButtons, formatPhone, toChatId, setWebhook,
 };

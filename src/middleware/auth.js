@@ -30,12 +30,12 @@ function verify(token) {
   } catch { return null; }
 }
 
-/** Sign a dashboard token — always includes tenant_id */
-function signDashboard(username, role) {
+/** Sign a dashboard token — includes the caller's tenant_id */
+function signDashboard(username, role, tenantId = DEFAULT_TENANT_ID) {
   return sign({
     username,
     role,
-    tenant_id: DEFAULT_TENANT_ID,
+    tenant_id: tenantId,
     exp: Date.now() + 24 * 60 * 60 * 1000,
   });
 }

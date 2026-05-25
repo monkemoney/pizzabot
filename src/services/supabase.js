@@ -8,10 +8,13 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
+const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
+
 // ─── Sessions ────────────────────────────────────────────────────────────────
 
-const DEFAULT_SESSION = (phone) => ({
+const DEFAULT_SESSION = (phone, tenantId) => ({
   phone,
+  tenant_id: tenantId,
   state: 'IDLE',
   language: 'he',
   cart: [],
@@ -22,15 +25,16 @@ const DEFAULT_SESSION = (phone) => ({
   updated_at: new Date().toISOString(),
 });
 
-async function getSession(phone) {
+async function getSession(phone, tenantId = DEFAULT_TENANT_ID) {
   const { data, error } = await supabase
     .from('sessions')
     .select('*')
+    .eq('tenant_id', tenantId)
     .eq('phone', phone)
     .single();
 
   if (error && error.code === 'PGRST116') {
-    const defaultSession = DEFAULT_SESSION(phone);
+    const defaultSession = DEFAULT_SESSION(phone, tenantId);
     const { data: created, error: createError } = await supabase
       .from('sessions')
       .insert(defaultSession)
@@ -46,7 +50,7 @@ async function getSession(phone) {
 
   if (error) {
     console.error('[supabase] getSession error:', error.message);
-    return DEFAULT_SESSION(phone);
+    return DEFAULT_SESSION(phone, tenantId);
   }
 
   if (!Array.isArray(data.conversation_history)) data.conversation_history = [];
@@ -55,16 +59,16 @@ async function getSession(phone) {
   return data;
 }
 
-async function updateSession(phone, updates) {
+async function updateSession(phone, updates, tenantId = DEFAULT_TENANT_ID) {
   const payload = { ...updates, updated_at: new Date().toISOString() };
   const { error } = await supabase
     .from('sessions')
-    .upsert({ phone, ...payload }, { onConflict: 'phone' });
+    .upsert({ phone, tenant_id: tenantId, ...payload }, { onConflict: 'tenant_id,phone' });
 
   if (error) console.error('[supabase] updateSession error:', error.message);
 }
 
-async function clearSession(phone) {
+async function clearSession(phone, tenantId = DEFAULT_TENANT_ID) {
   // Keep customer_profile across resets — it's permanent per-customer memory
   await updateSession(phone, {
     state: 'IDLE',
@@ -74,22 +78,37 @@ async function clearSession(phone) {
     data: {},
     conversation_history: [],
     pending_order: {},
-  });
+  }, tenantId);
 }
 
-async function saveCustomerProfile(phone, profile) {
-  await updateSession(phone, { customer_profile: profile });
+async function saveCustomerProfile(phone, profile, tenantId = DEFAULT_TENANT_ID) {
+  await updateSession(phone, { customer_profile: profile }, tenantId);
 }
 
-async function getCustomerProfile(phone) {
+async function getCustomerProfile(phone, tenantId = DEFAULT_TENANT_ID) {
   const { data, error } = await supabase
     .from('sessions')
     .select('customer_profile')
+    .eq('tenant_id', tenantId)
     .eq('phone', phone)
     .single();
   if (error || !data) return null;
   const p = data.customer_profile;
   return p && Object.keys(p).length > 0 ? p : null;
+}
+
+// ─── Admin users ──────────────────────────────────────────────────────────────
+
+async function getAdminUser(phone, tenantId = DEFAULT_TENANT_ID) {
+  const normalised = phone.replace(/\D/g, '');
+  const { data, error } = await supabase
+    .from('admin_users')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('phone', normalised)
+    .single();
+  if (error) return null;
+  return data;
 }
 
 // ─── Pending payments ─────────────────────────────────────────────────────────
@@ -241,6 +260,7 @@ module.exports = {
   clearSession,
   saveCustomerProfile,
   getCustomerProfile,
+  getAdminUser,
   savePendingPayment,
   getPendingByCardcomCode,
   getPendingByReturnValue,
