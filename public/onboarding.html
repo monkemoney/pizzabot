@@ -339,9 +339,9 @@ function buildHoursGrid(saved) {
         <span class="sw-track"></span>
       </label>
       <div class="hours-times" id="times-${d.key}" style="${isOpen?'':'display:none'}">
-        <input type="time" id="from-${d.key}" value="${fromVal}">
+        <input type="time" id="from-${d.key}" value="${fromVal}" dir="ltr">
         <span>עד</span>
-        <input type="time" id="to-${d.key}" value="${toVal}">
+        <input type="time" id="to-${d.key}" value="${toVal}" dir="ltr">
       </div>
       <span class="hours-closed" id="closed-${d.key}" style="${isOpen?'display:none':''}">סגור</span>
     </div>`;
