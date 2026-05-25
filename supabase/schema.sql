@@ -178,11 +178,13 @@ CREATE TABLE IF NOT EXISTS orders (
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_number   INTEGER DEFAULT nextval('order_number_seq');
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_phone TEXT;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT 'paid';
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS cardcom_code   TEXT;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at     TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_number      INTEGER DEFAULT nextval('order_number_seq');
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_phone    TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_status    TEXT DEFAULT 'paid';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cardcom_code      TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at        TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS destination_type  TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS courier_notes     TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_orders_phone      ON orders(phone);
 CREATE INDEX IF NOT EXISTS idx_orders_status     ON orders(status);
