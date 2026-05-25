@@ -180,13 +180,19 @@ pizza-bot/
 ### URL Routing
 
 ```
-GET  /              → index.html (login page)
-GET  /dashboard.html → business SPA (admin/manager); vendor role redirected to /admin
-GET  /admin         → admin.html (vendor-only SPA); non-vendor redirected to /
-GET  /menu.html     → public menu (no auth)
-POST /webhook       → WhatsApp webhook (customer + admin bot)
-/api/*              → dashboard-api.js (auth required)
+GET  /                    → index.html (login page)
+GET  /dashboard.html      → business SPA (admin/manager); vendor role redirected to /admin
+GET  /admin               → admin.html (vendor-only SPA); non-vendor redirected to /
+GET  /menu.html           → public menu (no auth)
+GET  /onboarding/:token   → onboarding.html (public, client-facing, no auth)
+POST /webhook             → WhatsApp webhook — DEFAULT_TENANT_ID (backward compat)
+POST /webhook/:tenantId   → WhatsApp webhook — per-tenant (Green API points here per client)
+POST /webhook/payment     → Cardcom IndicatorUrl (handled by paymentRouter before :tenantId)
+/api/*                    → dashboard-api.js (auth required)
 ```
+
+**Express route ordering matters for `/webhook`:**
+`app.use('/webhook', paymentRouter)` is registered first — runs for every `/webhook/*` request. paymentRouter only defines `/payment`, `/success`, `/failed` — anything else falls through via `next()`. So `POST /webhook/<uuid>` always reaches `app.post('/webhook/:tenantId', ...)` cleanly. Never reorder these registrations.
 
 **Login redirect logic (index.html → app.js):**
 ```
@@ -198,8 +204,8 @@ POST /api/auth/login → { token, role }
 ### Auth & Tenant Isolation (auth.js)
 
 ```
-signDashboard(username, role):
-  → sign({ username, role, tenant_id: DEFAULT_TENANT_ID, exp: +24h })
+signDashboard(username, role, tenantId):
+  → sign({ username, role, tenant_id: tenantId, exp: +24h })
 
 requireAuth: verifies HMAC token, attaches req.user (incl. tenant_id fallback)
 requireAdmin: requireAuth + role ∈ {admin, vendor}
@@ -208,20 +214,54 @@ requireVendor: requireAuth + role === 'vendor'
 DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001'
 ```
 
+**Login flow (multi-tenant):**
+1. Check `tenant_users` table by username → if found, use `tenantUser.tenant_id` in JWT
+2. Fall back to env vars (`admin`/`manager`/`vendor`) → use `DEFAULT_TENANT_ID` in JWT
+
 All order queries in dashboard-api.js are scoped with `.eq('tenant_id', tid(req))`.
 All order mutations use `assertTenant(row, req)` before writing.
+
+### Multi-Tenant System (built 2026-05-25)
+
+All clients share one Render deployment under `jasell.com`. Isolated by `tenant_id` in every DB query.
+
+**Tables with `tenant_id` column (default `aaaaaaaa-0000-0000-0000-000000000001`):**
+`settings`, `sessions`, `categories`, `products`, `admin_users`, `orders`
+
+**New table `tenant_users`:** per-tenant dashboard credentials — `tenant_id`, `username`, `password`, `role`
+
+**Per-tenant services:**
+- `settings.js` — `Map<tenantId, {data, time}>` cache; all queries filtered by `.eq('tenant_id', tenantId)`
+- `menu-service.js` — same Map cache pattern
+- `greenapi.js` — `_tenantCreds(tenantId)` reads `green_api_instance` + `green_api_token` from settings at runtime
+
+**Provisioning on approve (`POST /vendor/onboarding/:id/approve`):**
+1. Generate UUID tenant_id from `clients` row
+2. Seed settings (business info, Green API creds, Cardcom creds, bot_url)
+3. Copy menu from DEFAULT_TENANT_ID (categories → products → product_additions, remapping IDs)
+4. Create `admin_users` from admin_phones
+5. Auto-generate dashboard credentials → upsert into `tenant_users`
+6. Call Green API `setSettings` → sets `webhookUrl = https://www.jasell.com/webhook/<tenant_id>`
+7. Send WhatsApp to first admin phone with credentials
+8. Mark `onboarding_sessions.status = 'approved'`, `clients.status = 'active'`
+9. Return `{ username, password, webhookUrl, tenantId }` → show in credentials modal
+
+**`getAdminUser(phone, tenantId)`** lives in `supabase.js` (not admin-handler.js). Called from `handleWebhook()` in index.js with the correct tenantId per route.
 
 ### Webhook Routing (index.js)
 
 ```
-Incoming WhatsApp message (POST /webhook)
-  → formatPhone(sender)
-  → getAdminUser(phone) — checks admin_users table
-    → found: handleAdminMessage(phone, text, adminUser)  [admin-handler.js]
-    → not found: handleMessage(phone, text)               [ai-handler.js]
+Incoming WhatsApp message (POST /webhook or POST /webhook/:tenantId)
+  → handleWebhook(req, res, tenantId)
+      → res.sendStatus(200)  ← immediate ack, Green API retries on non-200
+      → formatPhone(sender)
+      → getAdminUser(phone, tenantId) — checks admin_users filtered by tenant_id
+          → found: handleAdminMessage(phone, text, adminUser, tenantId)  [admin-handler.js]
+          → not found: handleMessage(phone, text, tenantId)               [ai-handler.js]
 ```
 
 Admin sessions stored with `admin:` prefix in sessions table (separate from customer sessions).
+All bot handlers receive `tenantId` and pass it to every service call — no cross-tenant leakage.
 
 ### Customer Message Flow
 
@@ -272,15 +312,37 @@ Separate SPA for the platform owner. Auth guard: `role !== 'vendor'` → redirec
 
 **Vendor API routes (all require `requireVendor`):**
 ```
-GET    /api/vendor/clients        → all clients + current-month usage (month_calls, month_cost)
-POST   /api/vendor/clients        → create client (tenant_id auto-generated)
-PATCH  /api/vendor/clients/:id    → update status/plan/notes/tenant_id
-DELETE /api/vendor/clients/:id    → remove client
-GET    /api/vendor/stats          → cross-client KPIs
-GET    /api/vendor/usage          → Claude API usage + cost per tenant per month (last 6 months)
-PATCH  /api/vendor/settings       → vendor_phone, alert prefs
-POST   /api/vendor/alerts-test    → send test WhatsApp
+GET    /api/vendor/clients                    → all clients + current-month usage (month_calls, month_cost)
+POST   /api/vendor/clients                    → create client (tenant_id auto-generated)
+PATCH  /api/vendor/clients/:id               → update status/plan/notes/tenant_id
+DELETE /api/vendor/clients/:id               → remove client
+GET    /api/vendor/stats                     → cross-client KPIs
+GET    /api/vendor/usage                     → Claude API usage + cost per tenant per month (last 6 months)
+PATCH  /api/vendor/settings                  → vendor_phone, alert prefs
+POST   /api/vendor/alerts-test               → send test WhatsApp
+
+# Onboarding
+POST   /api/vendor/onboarding                → create client + session, return shareable link
+GET    /api/vendor/onboarding                → list active sessions (pending_client + pending_vendor)
+PATCH  /api/vendor/onboarding/:id            → save tech fields (Green API, Cardcom)
+PATCH  /api/vendor/onboarding/:id/checklist  → toggle one checklist item
+POST   /api/vendor/onboarding/:id/approve    → full provisioning (see Multi-Tenant section)
+
+# Public (no auth)
+GET    /api/onboarding/:token                → client fetches their session
+PATCH  /api/onboarding/:token                → client submits their info → status: pending_vendor
 ```
+
+**Onboarding 2-step wizard (admin.js):**
+- Step 1 (client info): read-only display of what the client submitted + status badge. "הבא →" navigates to step 2.
+- Step 2 (tech fields): vendor fills Green API Instance ID*, Green API Token*, Cardcom Terminal Number, Cardcom Secret (ApiName). Tenant ID shown read-only/copyable.
+- Approve button: disabled until `step1Done` (client submitted) AND `step2Done` (instance + token saved).
+- After approve: credentials modal shows username, password, dashboard URL, webhook URL, tenant ID — all copyable.
+
+**Cardcom onboarding flow:**
+- Client form: link "הירשם ל-Cardcom ↗" → `cardcom.co.il`. Explains that Cardcom rep will send credentials to Jasell after signup.
+- Vendor step 2: enters Terminal Number + Secret (ApiName) received from Cardcom rep.
+- These seed the tenant's settings as `cardcom_terminal` / `cardcom_username`.
 
 ### Vendor Alerts (vendor-alerts.js)
 
@@ -401,14 +463,23 @@ All loaded from `settings` table (key/value JSONB). Keys:
 
 ```sql
 categories         -- emoji, name_he, name_en, is_topping_addon, has_toppings, sort_order
+                   -- tenant_id UUID (DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001')
 products           -- name_he, name_en, price, description, image_url, category_id, is_available
+                   -- tenant_id UUID (DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001')
 product_additions  -- per-product toppings, FK → products CASCADE, is_available
 settings           -- key/value JSONB (all app + vendor settings)
+                   -- tenant_id UUID (DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001')
+                   -- UNIQUE(tenant_id, key)
 sessions           -- per-phone (customer: phone, admin: 'admin:phone'):
                    --   conversation_history, pending_order, pending_dispute, customer_profile
+                   -- tenant_id UUID (DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001')
+                   -- UNIQUE(tenant_id, phone)
 pending_payments   -- Cardcom: phone, cardcom_code, return_value, order_data, expires_at
 push_subscriptions -- endpoint, p256dh, auth, user_agent
-admin_users        -- phone (unique, normalised), name, role ('admin'|'manager'), created_at
+admin_users        -- phone (unique per tenant), name, role ('admin'|'manager'), created_at
+                   -- tenant_id UUID (DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001')
+tenant_users       -- per-tenant dashboard credentials (created on approve)
+                   -- tenant_id UUID, username TEXT, password TEXT, role TEXT
 orders             -- order_number (seq 1000+), items JSONB, status, payment_method, payment_status,
                    -- cardcom_code, cardcom_deal_number, refund_status,
                    -- cancelled_by, cancel_reason, dispute_status, dispute_item,
@@ -419,6 +490,15 @@ clients            -- platform clients: name, contact_phone, plan, status, notes
                    -- plan: 'trial'|'basic'|'pro'|'enterprise'
                    -- status: 'active'|'trial'|'inactive'
                    -- tenant_id: links to api_usage for cost tracking; auto-generated UUID per client
+onboarding_sessions -- client onboarding state machine
+                   -- client_id, token (UUID, shareable link), status ('pending_client'|'pending_vendor'|'approved')
+                   -- business fields: business_name, bot_whatsapp, business_address, pickup_address,
+                   --   delivery_enabled, pickup_enabled, payment_cash/credit/bit/paybox,
+                   --   business_hours JSONB, delivery_zones JSONB, admin_phones TEXT[]
+                   -- tech fields: green_api_instance, green_api_token, cardcom_terminal, cardcom_username
+                   -- approval: approved_username, approved_password, webhook_url
+                   -- audit: updated_at TIMESTAMPTZ, updated_by TEXT ('client'|'vendor')
+                   -- expires_at, checklist JSONB
 api_usage          -- Claude API token logging per call:
                    -- tenant_id, created_at, input_tokens, output_tokens,
                    -- cache_read_tokens, cache_write_tokens
@@ -460,7 +540,9 @@ api_usage          -- Claude API token logging per call:
 - **Cost per client:** vendor dashboard shows monthly Claude cost + call count per client (joined by `tenant_id`)
 - **API cost dashboard:** 6-month history table in vendor סקירה כללית (claude-opus-4-7 pricing)
 - `assertTenant()` soft guard on all order mutation endpoints
-- **Client onboarding flow:** vendor creates client → shareable link → client fills business details → vendor fills Cardcom/Green API credentials + checklist → approve marks client active. Table: `onboarding_sessions`. Public page: `/onboarding/:token`. Vendor portal page: "אונבורדינג" tab. Form fields: business_name, bot_whatsapp, business_address, pickup_address, delivery_enabled, pickup_enabled, payment_cash/credit/bit/paybox, business_hours (7-day grid), delivery_zones (city+area+fee+min_order+eta_minutes), admin_phones.
+- **Client onboarding flow:** vendor creates client → shareable link → client fills business details (step 1) → vendor fills Green API + Cardcom credentials (step 2) → approve provisions everything automatically. Table: `onboarding_sessions`. Public page: `/onboarding/:token`. Vendor portal page: "אונבורדינג" tab.
+- **Multi-tenant platform (2026-05-25):** all clients under `jasell.com`, isolated by `tenant_id`. Per-tenant settings/menu/sessions/admin_users. `tenant_users` table for per-tenant credentials. Full provisioning on approve. Per-tenant webhook at `/webhook/:tenantId`.
+- **Onboarding audit trail:** `onboarding_sessions.updated_at` + `updated_by` stamped on every client PATCH, vendor PATCH, checklist toggle, and approve.
 - **Design token system:** `public/tokens.css` — single source of truth for all colors, spacing, radius, shadows, typography, icon sizes, layout constants, transitions
 - **Icon system:** all UI emoji replaced with Lucide inline SVGs (`currentColor`, `stroke-width:1.75`). `SVG` object in `app.js` holds all icons; `S(path, size)` helper builds them. WhatsApp message emoji kept intentionally.
 - **CSS variable aliasing:** old names (`--primary`, `--bg`, `--text-muted`, etc.) are aliases to new tokens — `var(--color-brand)`, `var(--color-bg)`, `var(--color-text-secondary)`. Change values only in `tokens.css`.
@@ -470,9 +552,7 @@ api_usage          -- Claude API token logging per call:
 |------|-------|
 | Cardcom production | Test terminal 1000 — switch to prod terminal before go-live |
 | Cardcom auto-refund blind spot | Orders confirmed via success-redirect or polling have no `cardcom_deal_number` → manual refund |
-| No test suite | Zero automated tests |
 | Bit / Paybox | Settings toggles only |
-| Multi-tenant full isolation | deferred — one deployment per client (model A) for now |
 
 ---
 
@@ -481,11 +561,13 @@ api_usage          -- Claude API token logging per call:
 1. **Backup before infra change:** `node scripts/backup-render-env.js`
 2. **Schema changes — preferred: Supabase Management API** (curl from local, see Commands section). Fallback: SQL editor in browser. Never try direct `pg` (IPv6 fails everywhere).
 3. **Always run** `node --check public/app.js && node --check public/admin.js` before committing
-4. **Every desktop UI change must include mobile** — check `window.innerWidth <= 768` branches
-5. **delivery_zones** is authoritative; `saveZones()` syncs `delivery_cities`; bot reads zones first
-6. **Admin users added via dashboard Settings** → "מנהלי וואצפ" section, stored in `admin_users` table
-7. **Vendor portal** is at `/admin` (admin.html + admin.js) — completely separate from business dashboard; any change to one does NOT affect the other
-8. **Always update CLAUDE.md** when architecture changes
+4. **Run tests:** `npm test` — runs `tests/` with Jest. 19 tests covering `settings.isOpen()` logic.
+5. **Every desktop UI change must include mobile** — check `window.innerWidth <= 768` branches
+6. **delivery_zones** is authoritative; `saveZones()` syncs `delivery_cities`; bot reads zones first
+7. **Admin users added via dashboard Settings** → "מנהלי וואצפ" section, stored in `admin_users` table
+8. **Vendor portal** is at `/admin` (admin.html + admin.js) — completely separate from business dashboard; any change to one does NOT affect the other
+9. **Multi-tenant rule:** every new DB query on a tenant-scoped table must include `.eq('tenant_id', tenantId)`. Every new service function must accept `tenantId = DEFAULT_TENANT_ID`.
+10. **Always update CLAUDE.md** when architecture changes
 
 ---
 
@@ -635,3 +717,33 @@ In `dir="rtl"` pages, `input[type=time]` renders MM:HH instead of HH:MM. Fix: ad
 
 ### Delivery zones schema — 5 fields, not 2
 Full zone object: `{ city, area, fee, min_order, eta_minutes }`. Old onboarding code used `{ city, price }` — wrong field name (`price` vs `fee`) and missing 3 fields. Always match the settings page schema exactly.
+
+### Multi-tenant — every DB query must include .eq('tenant_id', tenantId)
+After adding `tenant_id` to a table, any query that omits the filter will silently return rows from all tenants (Supabase doesn't enforce RLS by default in service-role mode). Pattern: all service functions accept `tenantId = DEFAULT_TENANT_ID` as a parameter. Never hardcode `DEFAULT_TENANT_ID` inside a query — always pass it down from the route/handler.
+
+### Multi-tenant settings/menu cache — Map keyed by tenantId, not a global object
+`settings.js` and `menu-service.js` use `Map<tenantId, {data, time}>`. Calling `_clearCache(tenantId)` or `invalidateCache(tenantId)` clears only that tenant's cache. Never call `_clearCache()` without a tenantId unless you want to flush all tenants (e.g., on global schema change).
+
+### getAdminUser must live in supabase.js, not admin-handler.js
+`index.js` calls `getAdminUser(phone, tenantId)` before deciding which handler to invoke. If it lived in `admin-handler.js`, index.js would have to import from a handler file — wrong layering. Moved to `supabase.js` which is the correct DB-access layer.
+
+### Webhook routing — paymentRouter runs before per-tenant handler, calls next() safely
+`app.use('/webhook', paymentRouter)` is registered before `app.post('/webhook/:tenantId', ...)`. For `POST /webhook/<uuid>`, paymentRouter finds no matching route and calls `next()` automatically (Express Router default). The per-tenant handler then fires. This is correct — but never add a catch-all route inside paymentRouter or it will swallow tenant webhooks.
+
+### Onboarding audit — always stamp updated_at + updated_by on every PATCH
+`onboarding_sessions` has `updated_at TIMESTAMPTZ` and `updated_by TEXT`. Set `updated_by: 'client'` in the public PATCH and `updated_by: 'vendor'` in all vendor PATCHes and the approve POST. These were added via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` through the Management API (2026-05-25).
+
+### Supabase mock — select() must return object with .eq(), not a bare Promise
+When `settings.js` chains `.select().eq('tenant_id', tenantId)`, the Jest mock must mirror this chain:
+```js
+select: () => ({ eq: async () => ({ data: rows, error: null }) })
+```
+If `select()` returns a bare `async` function (resolves immediately), calling `.eq()` on the resolved value throws `TypeError: .eq is not a function`. Same applies to `upsert()` if it chains `.eq()`.
+
+### Cardcom client onboarding flow
+1. Client ticks "אשראי (Cardcom)" in onboarding form → sees link to `cardcom.co.il` and note that Jasell will receive the credentials.
+2. Client signs up on Cardcom site.
+3. Cardcom rep sends Terminal Number + Secret (ApiName) to vendor/Jasell.
+4. Vendor enters them in Step 2 of the onboarding wizard (`cardcom_terminal`, `cardcom_username`).
+5. Approve seeds these into the tenant's `settings` table — bot uses them for all Cardcom calls.
+Env var name: `CARDCOM_USERNAME` = ApiName (not a human username). Don't confuse with dashboard login.
