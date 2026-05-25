@@ -22,7 +22,9 @@ function verify(token) {
   if (parts.length !== 2) return null;
   const [b64, sig] = parts;
   const expected = crypto.createHmac('sha256', JWT_SECRET).update(b64).digest('base64url');
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  } catch { return null; }
   try {
     const payload = JSON.parse(Buffer.from(b64, 'base64url').toString());
     if (payload.exp && Date.now() > payload.exp) return null;

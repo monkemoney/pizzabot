@@ -191,8 +191,8 @@ async function pollPendingPayments() {
 
 setInterval(pollPendingPayments, 2 * 60 * 1000); // every 2 minutes
 
-// ─── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, async () => {
+// ─── Start (only when run directly, not when require()'d in tests) ───────────
+if (require.main === module) app.listen(PORT, async () => {
   console.log(`[server] Pizza bot listening on port ${PORT}`);
   console.log(`[server] Dashboard: http://localhost:${PORT}/`);
   console.log(`[server] Webhook:   http://localhost:${PORT}/webhook`);
@@ -211,7 +211,7 @@ app.listen(PORT, async () => {
 
   // Notify vendor on restart
   vendorAlerts.alerts.serverRestart().catch(() => {});
-});
+}); // end app.listen guard
 
 // ─── Global error handler — notify vendor ────────────────────────────────────
 process.on('uncaughtException', (err) => {

@@ -168,6 +168,16 @@ pizza-bot/
 │   ├── backup-render-env.js
 │   ├── sync-render-env.js
 │   └── render-guard.sh
+├── tests/
+│   ├── auth.test.js              # sign/verify/signDashboard, requireAuth/Admin/Vendor, tenant isolation
+│   ├── session-isolation.test.js # session key isolation by (phone, tenant_id), admin: prefix
+│   ├── admin-bot.test.js         # all 7 ADMIN: ACTION blocks + reset command
+│   ├── webhook-routing.test.js   # per-tenant routing, admin vs customer dispatch
+│   ├── onboarding.test.js        # client GET/PATCH, vendor POST/GET/PATCH, auth enforcement
+│   ├── payment-webhook.test.js   # confirmPending success/failure/idempotency, success-redirect
+│   ├── audit-trail.test.js       # updated_at + updated_by='client'/'vendor' on every mutation
+│   ├── settings.test.js          # isOpen() with Israel TZ, business hours
+│   └── ai-handler.test.js        # stripAction, detectLang, parsePayload
 ├── .claude/settings.json
 ├── .env.production               # Gitignored
 └── CLAUDE.md
@@ -550,6 +560,8 @@ api_usage          -- Claude API token logging per call:
 - **Icon system:** all UI emoji replaced with Lucide inline SVGs (`currentColor`, `stroke-width:1.75`). `SVG` object in `app.js` holds all icons; `S(path, size)` helper builds them. WhatsApp message emoji kept intentionally.
 - **CSS variable aliasing:** old names (`--primary`, `--bg`, `--text-muted`, etc.) are aliases to new tokens — `var(--color-brand)`, `var(--color-bg)`, `var(--color-text-secondary)`. Change values only in `tokens.css`.
 - **Bit payment flow:** bot emits `SAVE_ORDER` with `payment_method='bit'`, `payment_status='pending'`; sends customer Bit phone + amount; dashboard shows teal "ממתין לBit" badge + "אשר קבלת תשלום Bit" button → `POST /api/orders/:id/confirm-payment` sets `payment_status='paid'`. `bit_phone` stored in settings, shown/hidden in Settings page when Bit toggle is on.
+- **Admin bot Bit confirmation:** `CONFIRM_PAYMENT` action in admin-handler.js — "קיבלתי Bit #1042" → sets `payment_status='paid'`, sends WhatsApp to customer. Bit-pending orders show `💳 ממתין לBit` in the admin prompt order list.
+- **Comprehensive test suite (2026-05-25):** 96 tests across 9 files — auth, session isolation, all admin bot actions, webhook routing, onboarding flow (both sides), payment webhook, audit trail. `supertest` used for HTTP-level integration tests. `npm test -- --forceExit` is the run command.
 
 ### ❌ Missing / needs work
 | Item | Notes |
@@ -565,7 +577,7 @@ api_usage          -- Claude API token logging per call:
 1. **Backup before infra change:** `node scripts/backup-render-env.js`
 2. **Schema changes — preferred: Supabase Management API** (curl from local, see Commands section). Fallback: SQL editor in browser. Never try direct `pg` (IPv6 fails everywhere).
 3. **Always run** `node --check public/app.js && node --check public/admin.js` before committing
-4. **Run tests:** `npm test` — runs `tests/` with Jest. 19 tests covering `settings.isOpen()` logic.
+4. **Run tests:** `npm test -- --forceExit` — runs `tests/` with Jest. **96 tests** across 9 suites. Use `--forceExit` to avoid hanging on the `setInterval` poll timer.
 5. **Every desktop UI change must include mobile** — check `window.innerWidth <= 768` branches
 6. **delivery_zones** is authoritative; `saveZones()` syncs `delivery_cities`; bot reads zones first
 7. **Admin users added via dashboard Settings** → "מנהלי וואצפ" section, stored in `admin_users` table
@@ -765,3 +777,34 @@ There is no interactive WhatsApp bot for the platform vendor. Vendor interaction
 
 ### Admin phone in admin_users loses customer bot access
 If a business owner adds their own phone to `admin_users`, they will always be routed to the admin bot — they cannot order pizza as a customer through the same number. The routing decision at `getAdminUser()` is binary with no override. This is by design but worth knowing when onboarding admins.
+
+### Jest 30 mock factory — variables must be prefixed with `mock`
+`jest.mock()` factories are hoisted before variable declarations. Jest 30 enforces that any outer-scope variable referenced inside a factory must be prefixed with `mock` (case-insensitive: `mockFoo`, `MockBar`, `MOCK_BAZ`). Non-prefixed variables used directly inside `jest.fn(async () => myVar)` will throw `Invalid variable access` at compile time — even if the access is inside a nested function. Variables accessed several levels deep (inside regular arrow functions, not wrapped in `jest.fn()`) are allowed. When in doubt, prefix all mutable test-state variables with `mock`.
+
+### timingSafeEqual throws RangeError on different-length inputs
+`crypto.timingSafeEqual(a, b)` throws if `a.length !== b.length`. In auth.js `verify()`, a tampered token with a different-length signature would crash the server instead of returning `null`. Fixed by wrapping in try-catch. Always guard `timingSafeEqual` calls — any attacker-controlled input can have arbitrary length.
+
+### Express app — require.main === module to prevent port conflict in tests
+`index.js` called `app.listen()` unconditionally. When multiple test files `require('../src/index')`, each starts a server → `EADDRINUSE: address already in use :::3000`. Fix: guard the listen call with `if (require.main === module) app.listen(...)`. The app is still exported as `module.exports = app` and works with supertest without a bound port.
+
+### supertest integration tests — install as devDependency
+`npm install --save-dev supertest` is required for HTTP-level tests against the Express app. supertest calls `app.listen(0)` on an ephemeral port internally — no port conflicts as long as `app.listen()` is not called in module scope.
+
+### Supabase mock — update().eq() must support both await and .select().single() chaining
+Some routes do `await .update().eq()` (simple), others do `.update().eq().select().single()` (returns updated row). The mock must support both. Solution: make `eq()` in update-mode return a thenable builder:
+```js
+const result = { error: null, data: updatedRow };
+return Object.assign(Promise.resolve(result), {
+  select: () => ({ single: async () => result }),
+});
+```
+Assigning properties to a Promise object makes it both awaitable and chainable.
+
+### Supabase mock — add .neq() to select chain
+Some GET routes filter with `.neq('status', 'approved')`. If the mock's builder object doesn't have `.neq()`, the route crashes with `TypeError: .neq is not a function`. Add `neq: () => b` to any mock builder used for tables that use this filter (e.g., `onboarding_sessions`).
+
+### Supabase mock — greenapi must export formatPhone and toChatId
+`index.js` imports `{ formatPhone }` from `greenapi.js` to normalize incoming WhatsApp phone numbers. Any test that requires `index.js` must mock `formatPhone` in the greenapi mock, or the webhook handler crashes with `TypeError: formatPhone is not a function`. Minimal mock: `formatPhone: (raw) => raw.replace(/[^0-9]/g, '')`.
+
+### setInterval in index.js keeps Jest open — use --forceExit
+`index.js` starts `setInterval(pollPendingPayments, 2 * 60 * 1000)` at module scope. This timer keeps the Node.js event loop alive after tests finish, causing Jest to hang. Run with `npm test -- --forceExit` to terminate cleanly. The interval is only an issue in tests — in production it runs forever as intended.
