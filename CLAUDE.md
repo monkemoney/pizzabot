@@ -630,5 +630,8 @@ Supabase `.select('col1,col2,...')` returns only the named columns. When new col
 ### Login API requires both username and password
 `POST /api/auth/login` expects `{ username, password }`. Sending only `password` returns "שם משתמש או סיסמא שגויים". Valid usernames: `admin`, `manager`, `vendor`.
 
+### input[type=time] reverses in RTL pages — always add dir="ltr"
+In `dir="rtl"` pages, `input[type=time]` renders MM:HH instead of HH:MM. Fix: add `dir="ltr"` to every time input. Applies to any numeric/formatted input that has inherent LTR order (time, phone, numbers with separators).
+
 ### Delivery zones schema — 5 fields, not 2
 Full zone object: `{ city, area, fee, min_order, eta_minutes }`. Old onboarding code used `{ city, price }` — wrong field name (`price` vs `fee`) and missing 3 fields. Always match the settings page schema exactly.
