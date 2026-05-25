@@ -14,6 +14,8 @@ async function buildSystemPrompt(customerProfile = null, tenantId = null) {
   const pickupEnabled   = allSettings.pickup_enabled   !== false;
   const cashEnabled     = allSettings.payment_cash     !== false;
   const creditEnabled   = allSettings.payment_credit   !== false;
+  const bitEnabled      = allSettings.payment_bit      === true || allSettings.payment_bit === 'true';
+  const bitPhone        = allSettings.bit_phone ? String(allSettings.bit_phone).replace(/"/g,'') : null;
 
   const pickupAddress  = allSettings.pickup_address || 'רוטשילד 19, תל אביב';
   const menuUrl        = (allSettings.bot_url || process.env.PUBLIC_URL || 'https://www.jasell.com') + '/menu.html';
@@ -55,11 +57,14 @@ async function buildSystemPrompt(customerProfile = null, tenantId = null) {
     : deliveryEnabled ? `משלוח בלבד — לאיזו כתובת?`
     : `איסוף עצמי בלבד מ-${pickupAddress}.`;
 
-  const paymentQuestion = cashEnabled && creditEnabled
-    ? `מזומן 💵 או אשראי 💳?`
-    : cashEnabled   ? `תשלום במזומן.`
-    : creditEnabled ? `תשלום באשראי (קישור יישלח).`
-    : '';
+  const paymentOptions = [
+    cashEnabled                    && 'מזומן 💵',
+    bitEnabled && bitPhone         && 'Bit 📱',
+    creditEnabled                  && 'אשראי 💳',
+  ].filter(Boolean);
+  const paymentQuestion = paymentOptions.length > 1
+    ? paymentOptions.join(' / ') + '?'
+    : paymentOptions[0] || '';
 
   // ── Returning customer block ─────────────────────────────────────────────────
   let returningBlock = '';
@@ -78,6 +83,10 @@ ${parts.join('\n')}
 • אם כן — השתמש בפרטים השמורים ישירות.
 `;
   }
+
+  const bitInstructions = bitEnabled && bitPhone
+    ? `\nBit: לאחר שמירת ההזמנה — שלח ללקוח: "שלם ₪[סכום] בBit למספר ${bitPhone} ולאחר ששילמת שלח *שילמתי* 📱"`
+    : '';
 
   return `אתה ג׳אסל, מלצר-בוט של פיצה דליבריס.${returningBlock}
 אתה מנהל שיחות ב-WhatsApp בדיוק כמו מלצר מקצועי במסעדה — חם, קצר, יעיל.
@@ -186,13 +195,14 @@ ${paymentQuestion}"
 • [פריט] × [כמות] — [תוספות] — [מחיר]
 ─────────────────
 *סה"כ: XXX₪*
-💳 תשלום: [מזומן / אשראי]
+💳 תשלום: [מזומן / Bit / אשראי]
 👤 שם: [שם לקוח]
 [📍 כתובת — רק אם משלוח]
 לאישור שלח *1* ✅  |  לשינוי ערוך בחופשי  |  לביטול *2* ❌
 
 שלב 7 — אחרי אישור (1) → פלט ACTION.
 **אל תאמר שההזמנה אושרה לפני שה-ACTION בוצע.**
+${bitInstructions}
 
 ══════════════════════════════════════════
 כללים חשובים
@@ -211,11 +221,15 @@ ACTION blocks
 תשלום מזומן:
 <!--ACTION:SAVE_ORDER:{"customer_name":"<שם>","customer_phone":"<טלפון>","items":[{"name":"<פריט>","price":<מחיר יחידה>,"qty":<כמות>,"toppings":[...]}],"delivery_method":"pickup|delivery","address":"<כתובת או null>","payment_method":"cash","total":<סכום סופי כולל משלוח>,"notes":"<הערות או null>"}-->
 
+תשלום Bit:
+<!--ACTION:SAVE_ORDER:{"customer_name":"<שם>","customer_phone":"<טלפון>","items":[{"name":"<פריט>","price":<מחיר יחידה>,"qty":<כמות>,"toppings":[...]}],"delivery_method":"pickup|delivery","address":"<כתובת או null>","payment_method":"bit","total":<סכום סופי כולל משלוח>,"notes":"<הערות או null>"}-->
+
 ביטול: <!--ACTION:RESET-->
 תוספות: <!--ACTION:SHOW_TOPPINGS-->
 
 אחרי CREATE_PAYMENT: "✅ הקישור לתשלום ישלח עוד רגע 💳"
-אחרי SAVE_ORDER: "✅ ההזמנה התקבלה! מכינים עכשיו ונעדכן אותך 🍕"
+אחרי SAVE_ORDER (מזומן): "✅ ההזמנה התקבלה! מכינים עכשיו ונעדכן אותך 🍕"
+אחרי SAVE_ORDER (Bit): "✅ ההזמנה נשמרה! לסיום התשלום — שלח *${bitEnabled && bitPhone ? bitPhone : '<מספר Bit>'}* סכום ₪[סכום] בBit. לאחר התשלום שלח *שילמתי* 📱"
 `;
 }
 

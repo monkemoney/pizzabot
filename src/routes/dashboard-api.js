@@ -214,6 +214,28 @@ router.post('/orders/:id/cancel-refund', requireAdmin, async (req, res) => {
   });
 });
 
+// ─── Confirm Bit/Cash Payment ─────────────────────────────────────────────────
+
+router.post('/orders/:id/confirm-payment', requireAdmin, async (req, res) => {
+  const order = await getOrderById(req.params.id);
+  if (!order || !assertTenant(order, req)) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+  if (order.payment_status === 'paid') return res.status(400).json({ error: 'ההזמנה כבר שולמה' });
+
+  const { error } = await supabase.from('orders').update({
+    payment_status: 'paid',
+    updated_at:     new Date().toISOString(),
+  }).eq('id', order.id);
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  // Notify customer
+  const method = order.payment_method === 'bit' ? 'Bit' : 'מזומן';
+  await sendMessage(order.phone, `✅ קיבלנו את התשלום ב${method}! ההזמנה מספר *${order.order_number}* אושרה — מתחילים להכין 🍕`).catch(() => {});
+
+  console.log(`[confirm-payment] Order #${order.order_number} payment confirmed by admin`);
+  res.json({ success: true });
+});
+
 // ─── Item Dispute ─────────────────────────────────────────────────────────────
 
 router.post('/orders/:id/item-dispute', requireAdmin, async (req, res) => {

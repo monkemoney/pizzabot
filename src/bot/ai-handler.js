@@ -258,6 +258,7 @@ async function handleMessage(phone, userMessage, tenantId = null) {
   }
 
   if (actionType === 'SAVE_ORDER' && payload) {
+    const isBit = payload.payment_method === 'bit';
     try {
       if (payload.customer_name || payload.address) {
         await saveCustomerProfile(phone, {
@@ -265,7 +266,7 @@ async function handleMessage(phone, userMessage, tenantId = null) {
           phone:           payload.customer_phone || null,
           last_address:    payload.address        || null,
           delivery_method: payload.delivery_method,
-          payment_method:  'cash',
+          payment_method:  isBit ? 'bit' : 'cash',
         }, tid);
       }
 
@@ -277,18 +278,29 @@ async function handleMessage(phone, userMessage, tenantId = null) {
         delivery_method: payload.delivery_method,
         address:         payload.address         || null,
         notes:           payload.notes           || null,
-        payment_method:  'cash',
-        payment_status:  'paid',
+        payment_method:  isBit ? 'bit' : 'cash',
+        payment_status:  isBit ? 'pending' : 'paid',
         total_price:     payload.total,
         status:          'new',
         tenant_id:       tid,
       });
 
       const lang = detectLang(userMessage, history);
-      const confirmMsg = lang === 'en'
-        ? `🍕 Order *#${orderNumber}* confirmed!\nWe'll start preparing it now.`
-        : `🍕 הזמנה מספר *${orderNumber}* אושרה!\nמתחילים להכין עכשיו.`;
-      await reply(phone, confirmMsg, tid);
+
+      if (isBit) {
+        const allSettings = await settings.loadAll(tid);
+        const bitPhone = allSettings.bit_phone ? String(allSettings.bit_phone).replace(/"/g, '') : null;
+        const confirmMsg = lang === 'en'
+          ? `🍕 Order *#${orderNumber}* saved!\nPlease send ₪${payload.total} via Bit${bitPhone ? ` to ${bitPhone}` : ''}.\nOnce paid, reply *paid* 📱`
+          : `🍕 הזמנה מספר *${orderNumber}* נשמרה!\nלסיום — שלח *₪${payload.total}* בBit${bitPhone ? ` למספר ${bitPhone}` : ''}.\nלאחר התשלום שלח *שילמתי* 📱`;
+        await reply(phone, confirmMsg, tid);
+      } else {
+        const confirmMsg = lang === 'en'
+          ? `🍕 Order *#${orderNumber}* confirmed!\nWe'll start preparing it now.`
+          : `🍕 הזמנה מספר *${orderNumber}* אושרה!\nמתחילים להכין עכשיו.`;
+        await reply(phone, confirmMsg, tid);
+      }
+
       await updateSession(phone, { conversation_history: [], pending_order: {} }, tid);
     } catch (err) {
       console.error('[ai-handler] saveOrder error:', err.message);

@@ -270,7 +270,7 @@ function exportOrdersCSV() {
       o.customer_phone || o.phone || '',
       o.delivery_method === 'delivery' ? 'משלוח' : 'איסוף',
       o.address || '',
-      o.payment_method === 'cash' ? 'מזומן' : 'אשראי',
+      o.payment_method === 'cash' ? 'מזומן' : o.payment_method === 'bit' ? 'Bit' : 'אשראי',
       o.payment_status === 'paid'  ? 'שולם'  : 'ממתין',
       statusHe[o.status] || o.status || '',
       items,
@@ -311,8 +311,8 @@ function renderOrderCard(o) {
     ${o.address ? `<div style="font-size:.75rem;color:var(--text-muted);margin-bottom:8px;display:flex;align-items:center;gap:4px">${SVG.pin} ${o.address}</div>` : '<div style="margin-bottom:8px"></div>'}
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
       <span class="badge ${o.delivery_method==='delivery'?'badge-delivery':'badge-done'}" style="display:inline-flex;align-items:center;gap:4px">${o.delivery_method==='delivery'?`${SVG.truck} משלוח`:`${SVG.home} איסוף`}</span>
-      <span style="display:inline-flex;align-items:center;gap:4px;font-size:.72rem;background:var(--bg);padding:3px 10px;border-radius:999px;color:var(--text-muted)">${o.payment_method==='cash'?`${SVG.wallet} מזומן`:`${SVG.card} אשראי`}</span>
-      <span class="badge ${o.payment_status==='paid'?'badge-paid':'badge-pending-pay'}" style="display:inline-flex;align-items:center;gap:4px">${o.payment_status==='paid'?`${SVG.check} שולם`:`${SVG.clock} ממתין`}</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;font-size:.72rem;background:var(--bg);padding:3px 10px;border-radius:999px;color:var(--text-muted)">${o.payment_method==='cash'?`${SVG.wallet} מזומן`:o.payment_method==='bit'?`${SVG.phone} Bit`:`${SVG.card} אשראי`}</span>
+      <span class="badge ${o.payment_status==='paid'?'badge-paid':o.payment_method==='bit'?'badge-bit-pending':'badge-pending-pay'}" style="display:inline-flex;align-items:center;gap:4px">${o.payment_status==='paid'?`${SVG.check} שולם`:o.payment_method==='bit'?`${SVG.phone} ממתין לBit`:`${SVG.clock} ממתין`}</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
       <select onchange="updateOrderStatus('${o.id}',this.value,${o.order_number})"
@@ -433,9 +433,14 @@ function renderOrderRow(o) {
             <span>סה"כ</span><span style="color:var(--primary)">₪${total.toFixed(2)}</span>
           </div>
           <div style="display:flex;justify-content:space-between;color:var(--text-muted);font-size:.75rem">
-            <span>${o.payment_method==='cash'?'מזומן':'אשראי'}</span>
-            <span class="badge ${o.payment_status==='paid'?'badge-paid':'badge-pending-pay'}">${o.payment_status==='paid'?'שולם':'ממתין'}</span>
+            <span>${o.payment_method==='cash'?'מזומן':o.payment_method==='bit'?'Bit':'אשראי'}</span>
+            <span class="badge ${o.payment_status==='paid'?'badge-paid':o.payment_method==='bit'?'badge-bit-pending':'badge-pending-pay'}">${o.payment_status==='paid'?'שולם':o.payment_method==='bit'?'ממתין לBit':'ממתין'}</span>
           </div>
+          ${o.payment_method==='bit' && o.payment_status!=='paid' && !isCancelled ? `
+          <button onclick="event.stopPropagation();confirmBitPayment('${o.id}')"
+            style="display:flex;align-items:center;justify-content:center;gap:6px;width:100%;background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:8px 14px;margin-top:8px;font-size:.8rem;font-weight:700;color:#16a34a;cursor:pointer;font-family:inherit">
+            ${SVG.check} אשר קבלת תשלום Bit
+          </button>` : ''}
           ${o.refund_status==='manual'?`
           <a href="https://secure.cardcom.solutions" target="_blank" onclick="event.stopPropagation()"
             style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:10px;padding:9px 13px;margin-top:8px;font-size:.78rem;font-weight:700;color:#e0004d;text-decoration:none">
@@ -463,8 +468,8 @@ function renderOrderRow(o) {
       <span class="badge ${o.delivery_method==='delivery'?'badge-delivery':'badge-done'}" style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap">
         ${o.delivery_method==='delivery'?`${SVG.truck} משלוח`:`${SVG.home} איסוף`}
       </span>
-      <span class="badge ${o.payment_status==='paid'?'badge-paid':'badge-pending-pay'}" style="display:inline-flex;align-items:center;gap:3px">
-        ${o.payment_status==='paid'?`${SVG.check} שולם`:`${SVG.clock} ממתין`}
+      <span class="badge ${o.payment_status==='paid'?'badge-paid':o.payment_method==='bit'?'badge-bit-pending':'badge-pending-pay'}" style="display:inline-flex;align-items:center;gap:3px">
+        ${o.payment_status==='paid'?`${SVG.check} שולם`:o.payment_method==='bit'?`${SVG.phone} Bit`:`${SVG.clock} ממתין`}
       </span>
       <div style="font-weight:800;font-size:.95rem">₪${(parseFloat(o.total_price)||0).toFixed(0)}</div>
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">
@@ -921,6 +926,19 @@ function buildCancelMessage() {
   return `❌ הזמנה מספר *${orderNum}* ${byLine}${reasonLine}${refundLine}\n\nמצטערים על אי הנוחות 🙏`;
 }
 
+async function confirmBitPayment(orderId) {
+  const o = currentOrders.find(x => x.id === orderId);
+  if (!o) return;
+  if (!confirm(`לאשר קבלת תשלום Bit עבור הזמנה #${o.order_number} (₪${parseFloat(o.total_price||0).toFixed(0)})?`)) return;
+  try {
+    await api('POST', `/orders/${orderId}/confirm-payment`);
+    showToast('תשלום אושר!');
+    loadOrders();
+  } catch (err) {
+    showToast(err.message || 'שגיאה באישור תשלום');
+  }
+}
+
 function openCancelRefundModal(orderId) {
   const o = currentOrders.find(x => x.id === orderId);
   if (!o) return;
@@ -931,7 +949,7 @@ function openCancelRefundModal(orderId) {
 
   document.getElementById('cancelRefundTitle').textContent   = `ביטול הזמנה #${o.order_number}`;
   document.getElementById('cancelRefundAmount').textContent  = `₪${parseFloat(o.total_price||0).toFixed(2)}`;
-  document.getElementById('cancelRefundPayment').textContent = isCreditPaid ? 'אשראי — יינתן זיכוי' : o.payment_method === 'cash' ? 'מזומן' : 'לא שולם';
+  document.getElementById('cancelRefundPayment').textContent = isCreditPaid ? 'אשראי — יינתן זיכוי' : o.payment_method === 'cash' ? 'מזומן' : o.payment_method === 'bit' ? `Bit${o.payment_status==='paid'?' — שולם':' — ממתין'}` : 'לא שולם';
   document.getElementById('cancelRefundPayment').style.color = isCreditPaid ? '#16a34a' : '#c07000';
   document.getElementById('cancelRefundReason').value        = '';
   document.getElementById('cancelSendToCustomer').checked    = true;
@@ -1906,6 +1924,9 @@ function renderSettingsForm(s) {
       ${sToggle('payment_cash',   'מזומן',   s.payment_cash   !== false)}
       ${sToggle('payment_credit', 'אשראי',   s.payment_credit !== false)}
       ${sToggle('payment_bit',    'ביט',      !!s.payment_bit)}
+      <div id="bitPhoneRow" style="margin:10px 0 4px 0;padding:12px 14px;background:var(--primary-soft);border-radius:12px;${s.payment_bit?'':'display:none'}">
+        ${sField('bit_phone', 'מספר טלפון לBit', s.bit_phone || '', 'tel', '050-0000000')}
+      </div>
       ${sToggle('payment_paybox', 'פייבוקס',  !!s.payment_paybox)}
       ${sToggle('payment_other',  'אחר',      !!s.payment_other)}
       ${saveBtn('savePayments')}
@@ -1976,6 +1997,15 @@ function renderSettingsForm(s) {
   renderZonesTable();
   renderCouriersTable();
 
+  // Bit toggle → show/hide phone input
+  const bitToggle = document.querySelector('.setting-toggle[data-key="payment_bit"]');
+  if (bitToggle) {
+    bitToggle.addEventListener('change', () => {
+      const row = document.getElementById('bitPhoneRow');
+      if (row) row.style.display = bitToggle.checked ? '' : 'none';
+    });
+  }
+
   // Sync hours-active toggle → enable/disable time inputs
   document.querySelectorAll('.hours-active').forEach((cb) => {
     cb.addEventListener('change', () => {
@@ -2006,6 +2036,8 @@ async function savePayments() {
   document.querySelectorAll('.setting-toggle[data-key^="payment_"]').forEach((el) => {
     updates[el.dataset.key] = el.checked;
   });
+  const bitPhone = document.getElementById('bit_phone')?.value?.trim();
+  if (bitPhone !== undefined) updates.bit_phone = bitPhone;
   await saveSection(updates);
 }
 
