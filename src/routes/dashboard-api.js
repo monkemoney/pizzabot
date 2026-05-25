@@ -931,6 +931,8 @@ router.patch('/onboarding/:token', async (req, res) => {
     bot_whatsapp:     bot_whatsapp ? bot_whatsapp.replace(/\D/g, '') : null,
     business_address: business_address || null,
     business_hours,
+    updated_at:       new Date().toISOString(),
+    updated_by:       'client',
     delivery_zones:   delivery_zones || [],
     payment_cash:     payment_cash     !== undefined ? payment_cash     : true,
     payment_credit:   payment_credit   !== undefined ? payment_credit   : false,
@@ -989,7 +991,7 @@ router.get('/vendor/onboarding', requireVendor, async (_req, res) => {
 // PATCH /vendor/onboarding/:id — vendor fills technical credentials
 router.patch('/vendor/onboarding/:id', requireVendor, async (req, res) => {
   const fields = ['cardcom_terminal','cardcom_username','green_api_instance','green_api_token'];
-  const updates = {};
+  const updates = { updated_at: new Date().toISOString(), updated_by: 'vendor' };
   for (const f of fields) if (req.body[f] !== undefined) updates[f] = req.body[f];
   const { error } = await supabase.from('onboarding_sessions').update(updates).eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
@@ -1004,7 +1006,7 @@ router.patch('/vendor/onboarding/:id/checklist', requireVendor, async (req, res)
   if (!session) return res.status(404).json({ error: 'לא נמצא' });
 
   const checklist = (session.checklist || []).map(i => i.key === key ? { ...i, done } : i);
-  await supabase.from('onboarding_sessions').update({ checklist }).eq('id', req.params.id);
+  await supabase.from('onboarding_sessions').update({ checklist, updated_at: new Date().toISOString(), updated_by: 'vendor' }).eq('id', req.params.id);
   res.json({ success: true });
 });
 
@@ -1125,10 +1127,12 @@ router.post('/vendor/onboarding/:id/approve', requireVendor, async (req, res) =>
   // ── 7. Mark session approved + client active ───────────────────────────────
   await Promise.all([
     supabase.from('onboarding_sessions').update({
-      status: 'approved',
+      status:            'approved',
       approved_username: username,
       approved_password: password,
       webhook_url:       webhookUrl,
+      updated_at:        new Date().toISOString(),
+      updated_by:        'vendor',
     }).eq('id', req.params.id),
     supabase.from('clients').update({ status: 'active' }).eq('id', clientId),
   ]);
