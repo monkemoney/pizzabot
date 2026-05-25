@@ -94,9 +94,14 @@ Direct pg:    DOES NOT WORK — both local and Render (free tier) get ENETUNREAC
 npm start        # production
 npm run dev      # nodemon watch
 
-# Schema changes — two options:
-#   A) Supabase SQL Editor (always works): https://supabase.com/dashboard/project/umoftdmutxhrbknowbyh/sql/new
-#   B) startup migration in index.js via pg (runs on Render, not locally — IPv6 only)
+# Schema changes — preferred: Supabase Management API (runs from local, no browser needed)
+curl -s -X POST "https://api.supabase.com/v1/projects/umoftdmutxhrbknowbyh/database/query" \
+  -H "Authorization: Bearer <SUPABASE_MGMT_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "<SQL here>"}'
+# Returns [] on success (DDL), rows array on SELECT.
+# Fallback: Supabase SQL Editor: https://supabase.com/dashboard/project/umoftdmutxhrbknowbyh/sql/new
+# Avoid: startup migration via pg in index.js (Render free tier has no IPv6 outbound)
 
 # Env var backup/restore (ALWAYS before infra changes)
 node scripts/backup-render-env.js   # pulls from Render → .env.production
@@ -455,7 +460,7 @@ api_usage          -- Claude API token logging per call:
 - **Cost per client:** vendor dashboard shows monthly Claude cost + call count per client (joined by `tenant_id`)
 - **API cost dashboard:** 6-month history table in vendor סקירה כללית (claude-opus-4-7 pricing)
 - `assertTenant()` soft guard on all order mutation endpoints
-- **Client onboarding flow:** vendor creates client → shareable link → client fills business details → vendor fills Cardcom/Green API credentials + checklist → approve marks client active. Table: `onboarding_sessions`. Public page: `/onboarding/:token`. Vendor portal page: "אונבורדינג" tab.
+- **Client onboarding flow:** vendor creates client → shareable link → client fills business details → vendor fills Cardcom/Green API credentials + checklist → approve marks client active. Table: `onboarding_sessions`. Public page: `/onboarding/:token`. Vendor portal page: "אונבורדינג" tab. Form fields: business_name, bot_whatsapp, business_address, pickup_address, delivery_enabled, pickup_enabled, payment_cash/credit/bit/paybox, business_hours (7-day grid), delivery_zones (city+area+fee+min_order+eta_minutes), admin_phones.
 - **Design token system:** `public/tokens.css` — single source of truth for all colors, spacing, radius, shadows, typography, icon sizes, layout constants, transitions
 - **Icon system:** all UI emoji replaced with Lucide inline SVGs (`currentColor`, `stroke-width:1.75`). `SVG` object in `app.js` holds all icons; `S(path, size)` helper builds them. WhatsApp message emoji kept intentionally.
 - **CSS variable aliasing:** old names (`--primary`, `--bg`, `--text-muted`, etc.) are aliases to new tokens — `var(--color-brand)`, `var(--color-bg)`, `var(--color-text-secondary)`. Change values only in `tokens.css`.
@@ -474,9 +479,7 @@ api_usage          -- Claude API token logging per call:
 ## Operational Rules
 
 1. **Backup before infra change:** `node scripts/backup-render-env.js`
-2. **Schema changes — only one option that works:**
-   - Supabase SQL editor: `https://supabase.com/dashboard/project/umoftdmutxhrbknowbyh/sql/new`
-   - Direct `pg` connection fails everywhere (local and Render free tier both get ENETUNREACH on IPv6)
+2. **Schema changes — preferred: Supabase Management API** (curl from local, see Commands section). Fallback: SQL editor in browser. Never try direct `pg` (IPv6 fails everywhere).
 3. **Always run** `node --check public/app.js && node --check public/admin.js` before committing
 4. **Every desktop UI change must include mobile** — check `window.innerWidth <= 768` branches
 5. **delivery_zones** is authoritative; `saveZones()` syncs `delivery_cities`; bot reads zones first
@@ -488,8 +491,11 @@ api_usage          -- Claude API token logging per call:
 
 ## Known Issues & Lessons Learned
 
+### Supabase Management API — run SQL from terminal (preferred)
+`POST https://api.supabase.com/v1/projects/umoftdmutxhrbknowbyh/database/query` with a personal access token (`sbp_...`) from supabase.com/dashboard/account/tokens. Returns `[]` on DDL success. Works from local, no browser needed. Token saved in Claude memory (not in CLAUDE.md — GitHub blocks `sbp_` secrets). The old SQL editor still works as fallback.
+
 ### Supabase DB is IPv6-only — pg fails everywhere (local AND Render)
-`db.umoftdmutxhrbknowbyh.supabase.co` resolves to IPv6 only. Local machine times out. Render free tier also gets `ENETUNREACH` — it has no outbound IPv6 route. **The only working option for schema changes is the Supabase SQL editor in the browser.**
+`db.umoftdmutxhrbknowbyh.supabase.co` resolves to IPv6 only. Local machine times out. Render free tier also gets `ENETUNREACH` — it has no outbound IPv6 route. Use the Management API or SQL editor instead — never direct `pg`.
 
 ### Supabase pooler (Supavisor) — credentials don't work locally either
 `aws-0-[region].pooler.supabase.com` returns "Tenant or user not found" for this project. Don't try the pooler. Use the SQL editor or the Render startup migration.
@@ -509,14 +515,11 @@ No pg access locally. Created via Supabase SQL editor. All new tables must be cr
 ### requireAdmin also passes vendor role
 `requireAdmin` allows both `admin` and `vendor` roles (vendor is a superset). This lets the vendor portal call most business endpoints. `requireVendor` is strictly vendor-only.
 
-### tenant_id on orders — must be added via Supabase SQL editor
-Startup migration via `pg` in `index.js` was tried but fails — Render free tier has no IPv6 outbound. Run this once in the SQL editor:
-```sql
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS tenant_id UUID DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001';
-UPDATE orders SET tenant_id = 'aaaaaaaa-0000-0000-0000-000000000001' WHERE tenant_id IS NULL;
-CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id);
-```
-Until this runs, all order API calls return empty (`.eq('tenant_id', ...)` on a missing column → error).
+### Schema drift — DB can silently fall behind schema.sql
+schema.sql is documentation, not auto-applied. Columns added only via `ALTER TABLE` in SQL editor or Management API. In one incident, 9 columns were in schema.sql but missing from the DB (cardcom_deal_number, refund_status, cancelled_by, cancel_reason, dispute_status, dispute_item, dispute_resolution, tenant_id, pending_dispute) — features silently failed. **Always verify new columns exist in DB after adding them to schema.sql.** Use: `SELECT column_name FROM information_schema.columns WHERE table_name='X' AND column_name='Y'`.
+
+### tenant_id on orders — applied via Management API
+Applied: `ALTER TABLE orders ADD COLUMN IF NOT EXISTS tenant_id UUID DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001'` + UPDATE + CREATE INDEX. All done. Until tenant_id existed, `.eq('tenant_id', ...)` queries returned empty (column missing = filter fails silently).
 
 ### assertTenant() is a soft check — only enforces when column exists
 `assertTenant(row, req)` returns `true` if `row.tenant_id` is null/undefined. Designed for forward compatibility: works before migration (passes everything) and after (enforces isolation).
@@ -617,3 +620,15 @@ Both `app.js` and `admin.js` toast functions use `t.textContent = msg`. SVG mark
 
 ### Design system: tokens.css is single source of truth
 `public/tokens.css` defines all design values. The `:root` blocks in `dashboard.html` and `admin.html` are thin alias layers pointing to tokens. To change a color, spacing, or radius: edit `tokens.css` only — never touch the HTML `:root` blocks directly. Old variable names (`--primary`, `--bg`, etc.) remain valid everywhere for backwards compatibility.
+
+### Business hours format — is_open not closed
+Settings schema uses `{ is_open: bool, open: 'HH:MM', close: 'HH:MM' }` per day. The onboarding form initially used `{ closed: bool }` — wrong. Any code reading/writing business hours must use `is_open`. Default when no saved value: `is_open: true` (open), `open: '10:00'`, `close: '22:00'`.
+
+### GET routes must explicitly list every column they return
+Supabase `.select('col1,col2,...')` returns only the named columns. When new columns are added to a table, every GET route that clients depend on for prefill/display must be updated to include them. Forgetting this means the new fields are saved (PATCH works) but never returned to the client (GET silently omits them), so prefill and re-editing show stale/empty data.
+
+### Login API requires both username and password
+`POST /api/auth/login` expects `{ username, password }`. Sending only `password` returns "שם משתמש או סיסמא שגויים". Valid usernames: `admin`, `manager`, `vendor`.
+
+### Delivery zones schema — 5 fields, not 2
+Full zone object: `{ city, area, fee, min_order, eta_minutes }`. Old onboarding code used `{ city, price }` — wrong field name (`price` vs `fee`) and missing 3 fields. Always match the settings page schema exactly.
