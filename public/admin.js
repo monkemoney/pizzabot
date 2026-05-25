@@ -458,10 +458,10 @@ function renderSessionModal() {
        </div>`
     : '';
 
-  const zonesSummary = (s.delivery_zones || []).map(z => `${z.city} ₪${z.price}`).join(' · ') || '—';
+  const zonesSummary = (s.delivery_zones || []).map(z => `${z.city} ₪${z.fee}`).join(' · ') || '—';
   const adminsSummary = (s.admin_phones || []).map(a => a.name || a.phone).join(', ') || '—';
   const hoursSummary = s.business_hours
-    ? Object.entries(s.business_hours).filter(([,h]) => !h.closed).length + ' ימים פתוחים'
+    ? Object.entries(s.business_hours).filter(([,h]) => h.is_open !== false).length + ' ימים פתוחים'
     : '—';
 
   const checklistHtml = (s.checklist || []).map(item => `
@@ -479,10 +479,12 @@ function renderSessionModal() {
     <div style="margin-bottom:20px">
       ${row('שם עסק', s.business_name)}
       ${row('WhatsApp בוט', s.bot_whatsapp)}
+      ${row('כתובת סניף', s.business_address)}
       ${row('כתובת איסוף', s.pickup_address)}
+      ${row('סוגי הזמנה', [s.delivery_enabled!==false&&'משלוח', s.pickup_enabled!==false&&'איסוף עצמי'].filter(Boolean).join(', ') || '—')}
       ${row('שעות פעילות', hoursSummary)}
       ${row('אזורי משלוח', zonesSummary)}
-      ${row('תשלום', [s.payment_cash&&'מזומן', s.payment_credit&&'אשראי'].filter(Boolean).join(', ') || '—')}
+      ${row('תשלום', [s.payment_cash&&'מזומן', s.payment_credit&&'אשראי', s.payment_bit&&'Bit', s.payment_paybox&&'Paybox'].filter(Boolean).join(', ') || '—')}
       ${row('מנהלי WhatsApp', adminsSummary)}
     </div>
 
