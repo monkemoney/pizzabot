@@ -922,6 +922,14 @@ router.patch('/onboarding/:token', async (req, res) => {
     checklist,
   }).eq('id', session.id);
 
+  // Notify vendor via WhatsApp (fire-and-forget)
+  const { alerts } = require('../services/vendor-alerts');
+  alerts.onboardingComplete(
+    business_name || '—',
+    bot_whatsapp  || '—',
+    session.id
+  ).catch(() => {});
+
   res.json({ success: true });
 });
 
