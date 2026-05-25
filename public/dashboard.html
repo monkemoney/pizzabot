@@ -654,57 +654,6 @@ input[type=time] { direction: ltr; }
       </div>
     </div>
   </div>
-    </div>
-
-    <!-- KPIs -->
-    <div id="vendorStats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-bottom:24px"></div>
-
-    <!-- Clients -->
-    <div class="card" style="padding:24px 26px;margin-bottom:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
-        <div>
-          <div style="font-size:1rem;font-weight:800;color:var(--text)">לקוחות (עסקים)</div>
-          <div style="font-size:.78rem;color:var(--text-muted);margin-top:3px">עסקים שרכשו את המערכת</div>
-        </div>
-        <button onclick="openAddClientModal()" class="btn btn-primary btn-sm">+ הוסף לקוח</button>
-      </div>
-      <div id="clientsTable"></div>
-    </div>
-
-    <!-- Alert settings -->
-    <div class="card" style="padding:24px 26px" id="vendorSettingsForm">
-      <div style="font-size:1rem;font-weight:800;color:var(--text);margin-bottom:18px">הגדרות ספק</div>
-      <div style="display:flex;flex-direction:column;gap:14px;max-width:480px">
-        <div class="form-group">
-          <label>שמך</label>
-          <input type="text" id="vendorName" placeholder="נווה מרום">
-        </div>
-        <div class="form-group">
-          <label>מספר WhatsApp לקבלת התראות</label>
-          <input type="tel" id="vendorPhone" dir="ltr" placeholder="972501234567">
-          <div style="font-size:.74rem;color:var(--text-muted);margin-top:4px">ללא + או רווחים</div>
-        </div>
-        <div style="background:var(--bg);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px">
-          <div style="font-size:.8rem;font-weight:700;color:var(--text-muted);margin-bottom:4px">קבל התראה על:</div>
-          <label style="display:flex;align-items:center;gap:10px;font-size:.86rem;cursor:pointer">
-            <input type="checkbox" id="alertOnError" checked style="accent-color:var(--primary)">
-            שגיאות שרת וקריסות
-          </label>
-          <label style="display:flex;align-items:center;gap:10px;font-size:.86rem;cursor:pointer">
-            <input type="checkbox" id="alertOnPayment" checked style="accent-color:var(--primary)">
-            כשלון תשלום
-          </label>
-          <label style="display:flex;align-items:center;gap:10px;font-size:.86rem;cursor:pointer">
-            <input type="checkbox" id="alertOnRestart" checked style="accent-color:var(--primary)">
-            אתחול שרת
-          </label>
-        </div>
-        <div style="display:flex;gap:10px;margin-top:4px">
-          <button onclick="saveVendorSettings()" class="btn btn-primary btn-sm">שמור הגדרות</button>
-          <button onclick="sendTestAlert()" class="btn btn-ghost btn-sm">שלח התראת טסט</button>
-        </div>
-      </div>
-    </div>
   </div>
 
   <!-- STATS -->
