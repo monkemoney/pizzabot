@@ -6,8 +6,12 @@ const dbRows = [];
 jest.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     from: () => ({
-      select: async () => ({ data: dbRows, error: null }),
-      upsert: async () => ({ error: null }),
+      select: () => ({
+        eq: async () => ({ data: dbRows, error: null }),
+      }),
+      upsert: () => ({
+        eq: async () => ({ error: null }),
+      }),
     }),
   }),
 }));
