@@ -297,6 +297,9 @@ Triggered when sender phone is in `admin_users` table. Same Green API instance.
 | `SET` | "סגור הזמנות" / "פתח" | Toggles is_open / delivery / payment settings |
 | `UPDATE_PRICE` | "עדכן פיצה משפחתית ל-65" | Updates product price, invalidates cache |
 | `LIST_ORDERS` | "מה ההזמנות?" | Returns active orders summary |
+| `CONFIRM_PAYMENT` | "קיבלתי Bit 1042" / "שילמו #1042" | Sets `payment_status='paid'`, notifies customer |
+
+Pending Bit orders appear with `💳 ממתין לBit` in the order list inside the admin prompt, so the admin sees immediately which orders need confirmation.
 
 `reset` / `אפס` clears admin session history.
 
