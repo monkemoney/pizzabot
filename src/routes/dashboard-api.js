@@ -949,7 +949,7 @@ router.post('/vendor/onboarding', requireVendor, async (req, res) => {
 router.get('/vendor/onboarding', requireVendor, async (_req, res) => {
   const { data, error } = await supabase
     .from('onboarding_sessions')
-    .select('*, clients(name, contact_phone, plan, status)')
+    .select('*, clients(name, contact_phone, plan, status, tenant_id)')
     .neq('status', 'approved')
     .order('created_at', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });

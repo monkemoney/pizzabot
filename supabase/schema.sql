@@ -257,3 +257,41 @@ CREATE TABLE IF NOT EXISTS api_usage (
 );
 CREATE INDEX IF NOT EXISTS idx_api_usage_tenant  ON api_usage(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_api_usage_created ON api_usage(created_at);
+
+-- ── Onboarding sessions ───────────────────────────────────────────────────────
+-- Tracks client onboarding flow. Token is a public one-time link sent to client.
+-- status: pending_client → pending_vendor → approved
+CREATE TABLE IF NOT EXISTS onboarding_sessions (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id          UUID REFERENCES clients(id) ON DELETE CASCADE,
+  token              TEXT UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(24), 'hex'),
+  status             TEXT NOT NULL DEFAULT 'pending_client',
+  -- Client-filled (via /onboarding/:token)
+  business_name      TEXT,
+  bot_whatsapp       TEXT,
+  business_hours     JSONB,
+  delivery_zones     JSONB DEFAULT '[]',
+  payment_cash       BOOLEAN DEFAULT true,
+  payment_credit     BOOLEAN DEFAULT false,
+  pickup_address     TEXT,
+  admin_phones       JSONB DEFAULT '[]',
+  -- Vendor-filled (technical credentials)
+  cardcom_terminal   TEXT,
+  cardcom_username   TEXT,
+  green_api_instance TEXT,
+  green_api_token    TEXT,
+  -- Vendor checklist (key/label/done array)
+  checklist JSONB DEFAULT '[
+    {"key":"client_info","label":"פרטי עסק מהלקוח","done":false},
+    {"key":"cardcom","label":"Cardcom terminal","done":false},
+    {"key":"green_api","label":"Green API instance","done":false},
+    {"key":"render","label":"פריסת Render service","done":false},
+    {"key":"menu","label":"הגדרת תפריט","done":false},
+    {"key":"test","label":"בדיקת בוט","done":false}
+  ]',
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  expires_at  TIMESTAMPTZ DEFAULT NOW() + INTERVAL '30 days'
+);
+CREATE INDEX IF NOT EXISTS idx_onboarding_token  ON onboarding_sessions(token);
+CREATE INDEX IF NOT EXISTS idx_onboarding_client ON onboarding_sessions(client_id);
+CREATE INDEX IF NOT EXISTS idx_onboarding_status ON onboarding_sessions(status);

@@ -491,8 +491,17 @@ function renderSessionModal() {
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px" id="techFields">
       ${techInput('cardcom_terminal',   'Cardcom Terminal', s.cardcom_terminal   || '', 'ltr')}
       ${techInput('cardcom_username',   'Cardcom Username', s.cardcom_username   || '', 'ltr')}
-      ${techInput('green_api_instance', 'Green API Instance ID', s.green_api_instance || '', 'ltr')}
-      ${techInput('green_api_token',    'Green API Token',  s.green_api_token    || '', 'ltr')}
+      ${techInput('green_api_instance', 'Green API Instance ID *', s.green_api_instance || '', 'ltr')}
+      ${techInput('green_api_token',    'Green API Token *',  s.green_api_token    || '', 'ltr')}
+      <div>
+        <div style="font-size:.78rem;font-weight:600;color:var(--text-muted);margin-bottom:4px">Tenant ID (להכנסה ב-Render env: TENANT_ID)</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input readonly value="${s.clients?.tenant_id || '—'}" dir="ltr"
+            style="flex:1;border:1.5px solid var(--border);border-radius:8px;padding:8px 12px;font-family:monospace;font-size:.82rem;background:#fafafa;color:var(--text-muted)">
+          <button type="button" onclick="navigator.clipboard.writeText('${s.clients?.tenant_id || ''}').then(()=>showToast('Tenant ID הועתק'))"
+            class="btn btn-ghost btn-sm" style="flex-shrink:0">העתק</button>
+        </div>
+      </div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:24px">
       <button onclick="saveTechFields('${s.id}')" class="btn btn-ghost btn-sm">שמור הגדרות טכניות</button>
@@ -521,13 +530,15 @@ function techInput(id, label, val, dir='rtl') {
 }
 
 async function saveTechFields(id) {
+  const fields = {
+    cardcom_terminal:   document.getElementById('tech_cardcom_terminal').value.trim(),
+    cardcom_username:   document.getElementById('tech_cardcom_username').value.trim(),
+    green_api_instance: document.getElementById('tech_green_api_instance').value.trim(),
+    green_api_token:    document.getElementById('tech_green_api_token').value.trim(),
+  };
   try {
-    await api('PATCH', `/vendor/onboarding/${id}`, {
-      cardcom_terminal:   document.getElementById('tech_cardcom_terminal').value.trim(),
-      cardcom_username:   document.getElementById('tech_cardcom_username').value.trim(),
-      green_api_instance: document.getElementById('tech_green_api_instance').value.trim(),
-      green_api_token:    document.getElementById('tech_green_api_token').value.trim(),
-    });
+    await api('PATCH', `/vendor/onboarding/${id}`, fields);
+    if (_currentSession) Object.assign(_currentSession, fields);
     showToast('הגדרות טכניות נשמרו');
   } catch (err) { alert(err.message); }
 }
@@ -544,6 +555,14 @@ async function toggleChecklist(id, key, done) {
 }
 
 async function approveOnboarding(id) {
+  const s = _currentSession;
+  const missing = [];
+  if (!s?.green_api_instance) missing.push('Green API Instance ID');
+  if (!s?.green_api_token)    missing.push('Green API Token');
+  if (missing.length) {
+    alert(`שדות חובה חסרים לפני אישור:\n• ${missing.join('\n• ')}\n\nשמור את ההגדרות הטכניות תחילה.`);
+    return;
+  }
   if (!confirm('לאשר את הלקוח ולסמן אותו כפעיל?')) return;
   try {
     await api('POST', `/vendor/onboarding/${id}/approve`);
