@@ -243,6 +243,18 @@ async function updateOrder(id, updates) {
   return data;
 }
 
+// Delete sessions inactive for more than 90 days (GDPR hygiene)
+async function pruneOldSessions() {
+  const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  const { error, count } = await supabase
+    .from('sessions')
+    .delete({ count: 'exact' })
+    .lt('updated_at', cutoff);
+
+  if (error) console.error('[supabase] pruneOldSessions error:', error.message);
+  else if (count > 0) console.log(`[supabase] pruneOldSessions: removed ${count} sessions older than 90 days`);
+}
+
 // Auto-complete delivered orders older than 1 hour
 async function autoCompleteDeliveredOrders() {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -258,6 +270,7 @@ async function autoCompleteDeliveredOrders() {
 module.exports = {
   getSession,
   updateSession,
+  pruneOldSessions,
   clearSession,
   saveCustomerProfile,
   getCustomerProfile,

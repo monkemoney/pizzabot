@@ -105,6 +105,7 @@ jest.mock('../src/services/supabase', () => ({
   updateSession:               jest.fn(async () => {}),
   getAllPendingPayments:        jest.fn(async () => []),
   autoCompleteDeliveredOrders: jest.fn(async () => {}),
+  pruneOldSessions:            jest.fn(async () => {}),
   getOrderById:                jest.fn(async (id) => store.orders?.[id] || null),
   updateOrderStatus:           jest.fn(async (id, status) => {
     if (store.orders?.[id]) store.orders[id].status = status;

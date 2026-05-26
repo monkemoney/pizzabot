@@ -116,6 +116,7 @@ jest.mock('../src/services/supabase',      () => ({
   updateSession:               jest.fn(async () => {}),
   getAllPendingPayments:        jest.fn(async () => []),
   autoCompleteDeliveredOrders: jest.fn(async () => {}),
+  pruneOldSessions:            jest.fn(async () => {}),
   getPendingByCardcomCode:     jest.fn(async () => null),
   getPendingByReturnValue:     jest.fn(async () => null),
 }));

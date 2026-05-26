@@ -13,7 +13,7 @@ const { handleAdminMessage }   = require('./bot/admin-handler');
 const { getAdminUser }         = require('./services/supabase');
 const { formatPhone }          = require('./services/greenapi');
 const { DEFAULT_TENANT_ID }    = require('./services/settings');
-const { autoCompleteDeliveredOrders } = require('./services/supabase');
+const { autoCompleteDeliveredOrders, pruneOldSessions } = require('./services/supabase');
 const { createClient: createSB }       = require('@supabase/supabase-js');
 const vendorAlerts                     = require('./services/vendor-alerts');
 
@@ -150,6 +150,7 @@ app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 
 // ─── Auto-complete delivered orders hourly ────────────────────────────────────
 setInterval(autoCompleteDeliveredOrders, 60 * 60 * 1000);
+setInterval(pruneOldSessions, 24 * 60 * 60 * 1000); // daily
 
 // ─── Pending payment polling (every 2 min) ───────────────────────────────────
 // Safety net: if success-redirect and IndicatorUrl both missed, confirm after 5 min.

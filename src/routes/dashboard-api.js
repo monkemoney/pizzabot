@@ -1073,6 +1073,7 @@ router.post('/vendor/onboarding/:id/approve', requireVendor, async (req, res) =>
     ['payment_cash',       ob.payment_cash     !== false],
     ['payment_credit',     ob.payment_credit   === true],
     ['payment_bit',        ob.payment_bit      === true],
+    ['bit_phone',          ob.bit_phone        || ''],
     ['payment_paybox',     ob.payment_paybox   === true],
     ['pickup_address',     ob.pickup_address   || ''],
     ['business_address',   ob.business_address || ''],

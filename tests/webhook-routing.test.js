@@ -22,7 +22,8 @@ jest.mock('../src/services/supabase', () => ({
   getSession:                 jest.fn(async () => ({ conversation_history: [], pending_order: {} })),
   updateSession:              jest.fn(async () => {}),
   getAllPendingPayments:       jest.fn(async () => []),
-  autoCompleteDeliveredOrders:jest.fn(async () => {}),
+  autoCompleteDeliveredOrders: jest.fn(async () => {}),
+  pruneOldSessions:            jest.fn(async () => {}),
 }));
 
 jest.mock('../src/services/greenapi',       () => ({ sendMessage: jest.fn(async () => {}), formatPhone: (raw) => raw.replace(/[^0-9]/g, ''), toChatId: (p) => `${p}@c.us` }));

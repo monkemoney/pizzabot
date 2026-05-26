@@ -36,6 +36,7 @@ jest.mock('../src/services/supabase', () => ({
   getSession:                  jest.fn(async () => ({ conversation_history: [], pending_order: {} })),
   updateSession:               jest.fn(async () => {}),
   autoCompleteDeliveredOrders: jest.fn(async () => {}),
+  pruneOldSessions:            jest.fn(async () => {}),
 }));
 
 jest.mock('../src/services/greenapi', () => ({
