@@ -115,9 +115,10 @@ async function getAdminUser(phone, tenantId = DEFAULT_TENANT_ID) {
 
 async function savePendingPayment({ phone, cardcomCode, returnValue, orderData }) {
   const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min
+  const tenantId = orderData?.tenant_id || DEFAULT_TENANT_ID;
   const { data, error } = await supabase
     .from('pending_payments')
-    .insert({ phone, cardcom_code: cardcomCode, return_value: returnValue, order_data: orderData, expires_at: expiresAt })
+    .insert({ phone, cardcom_code: cardcomCode, return_value: returnValue, order_data: orderData, expires_at: expiresAt, tenant_id: tenantId })
     .select('id')
     .single();
 

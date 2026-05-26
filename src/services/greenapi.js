@@ -35,7 +35,10 @@ async function _tenantCreds(tenantId) {
     settings.get('green_api_instance', tenantId),
     settings.get('green_api_token', tenantId),
   ]);
-  return { instanceId: instanceId || INSTANCE_ID, token: token || TOKEN };
+  if (!instanceId || !token) {
+    throw new Error(`[greenapi] Missing Green API credentials for tenant ${tenantId}`);
+  }
+  return { instanceId, token };
 }
 
 async function sendMessage(phone, message, tenantId = null) {
