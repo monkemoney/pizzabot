@@ -1,8 +1,9 @@
 'use strict';
 
-const express  = require('express');
-const multer   = require('multer');
-const path     = require('path');
+const express    = require('express');
+const multer     = require('multer');
+const path       = require('path');
+const rateLimit  = require('express-rate-limit');
 const { createClient } = require('@supabase/supabase-js');
 const { signDashboard, requireAuth, requireAdmin, requireVendor, DEFAULT_TENANT_ID } = require('../middleware/auth');
 const { cancelDeal } = require('../services/cardcom');
@@ -16,6 +17,22 @@ const { sendMessage }                     = require('../services/greenapi');
 const router       = express.Router();
 const supabase     = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 const pushNotifier = require('../services/push-notifier');
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'יותר מדי ניסיונות התחברות, נסה שוב בעוד 15 דקות' },
+});
+
+const onboardingLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'יותר מדי בקשות, נסה שוב מאוחר יותר' },
+});
 
 // Shorthand: tenant_id from JWT
 const tid = (req) => req.user?.tenant_id;
@@ -39,7 +56,7 @@ const upload = multer({
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-router.post('/auth/login', async (req, res) => {
+router.post('/auth/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
 
   // 1. Vendor / default-tenant accounts (env vars)
@@ -927,7 +944,7 @@ router.get('/onboarding/:token', async (req, res) => {
 });
 
 // PATCH /onboarding/:token — public, client submits their info
-router.patch('/onboarding/:token', async (req, res) => {
+router.patch('/onboarding/:token', onboardingLimiter, async (req, res) => {
   const { data: session } = await supabase
     .from('onboarding_sessions')
     .select('id,status,checklist,expires_at')
