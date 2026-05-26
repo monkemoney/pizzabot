@@ -4,6 +4,7 @@ const express    = require('express');
 const multer     = require('multer');
 const path       = require('path');
 const rateLimit  = require('express-rate-limit');
+const bcrypt     = require('bcryptjs');
 const { createClient } = require('@supabase/supabase-js');
 const { signDashboard, requireAuth, requireAdmin, requireVendor, DEFAULT_TENANT_ID } = require('../middleware/auth');
 const { cancelDeal } = require('../services/cardcom');
@@ -79,7 +80,7 @@ router.post('/auth/login', loginLimiter, async (req, res) => {
     .eq('username', username)
     .single();
 
-  if (!error && tenantUser && tenantUser.password === password) {
+  if (!error && tenantUser && await bcrypt.compare(password, tenantUser.password)) {
     const token = signDashboard(username, tenantUser.role, tenantUser.tenant_id);
     return res.json({ token, role: tenantUser.role, username });
   }
@@ -1135,9 +1136,10 @@ router.post('/vendor/onboarding/:id/approve', requireVendor, async (req, res) =>
   const crypto = require('crypto');
   const username = 'client-' + crypto.randomBytes(3).toString('hex');
   const password = crypto.randomBytes(5).toString('base64url').slice(0, 8);
+  const passwordHash = await bcrypt.hash(password, 10);
 
   await supabase.from('tenant_users').upsert(
-    { tenant_id: tenantId, username, password, role: 'admin' },
+    { tenant_id: tenantId, username, password: passwordHash, role: 'admin' },
     { onConflict: 'username' }
   );
 
@@ -1168,7 +1170,7 @@ router.post('/vendor/onboarding/:id/approve', requireVendor, async (req, res) =>
     supabase.from('onboarding_sessions').update({
       status:            'approved',
       approved_username: username,
-      approved_password: password,
+      approved_password: passwordHash,
       webhook_url:       webhookUrl,
       updated_at:        new Date().toISOString(),
       updated_by:        'vendor',
