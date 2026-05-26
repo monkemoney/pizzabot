@@ -69,9 +69,18 @@ function handleWebhook(req, res, tenantId) {
   const rawSender = body.senderData?.sender;
   if (!rawSender) return;
 
-  // Ignore messages from the business bot instance
+  // Verify the request came from the expected Green API instance for this tenant
   const instanceId = body.instanceData?.idInstance?.toString();
   if (instanceId && instanceId === process.env.GREEN_API_BUSINESS_INSTANCE_ID) return;
+
+  const expectedInstance = tenantId === DEFAULT_TENANT_ID
+    ? process.env.GREEN_API_INSTANCE_ID
+    : null; // resolved async below
+
+  if (expectedInstance && instanceId && instanceId !== expectedInstance) {
+    console.warn(`[webhook:${tenantId}] instanceId mismatch — got ${instanceId}, expected ${expectedInstance}. Dropping.`);
+    return;
+  }
 
   const phone = formatPhone(rawSender);
   let textMessage = null;
@@ -110,10 +119,22 @@ function handleWebhook(req, res, tenantId) {
 
   if (!textMessage) return;
 
-  getAdminUser(phone, tenantId).then(adminUser => {
+  const verifyAndHandle = async () => {
+    // For per-tenant routes, verify instanceId against the tenant's configured instance
+    if (tenantId !== DEFAULT_TENANT_ID && instanceId) {
+      const tenantInstance = await settings.get('green_api_instance', tenantId).catch(() => null);
+      if (tenantInstance && instanceId !== tenantInstance.toString()) {
+        console.warn(`[webhook:${tenantId}] instanceId mismatch — got ${instanceId}, expected ${tenantInstance}. Dropping.`);
+        return;
+      }
+    }
+
+    const adminUser = await getAdminUser(phone, tenantId);
     if (adminUser) return handleAdminMessage(phone, textMessage, adminUser, tenantId);
     return handleMessage(phone, textMessage, tenantId);
-  }).catch((err) =>
+  };
+
+  verifyAndHandle().catch((err) =>
     console.error(`[webhook:${tenantId}] handler error for ${phone}:`, err.message)
   );
 }
