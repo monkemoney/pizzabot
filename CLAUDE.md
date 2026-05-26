@@ -567,6 +567,7 @@ api_usage          -- Claude API token logging per call:
 - **Admin bot Bit confirmation:** `CONFIRM_PAYMENT` action in admin-handler.js — "קיבלתי Bit #1042" → sets `payment_status='paid'`, sends WhatsApp to customer. Bit-pending orders show `💳 ממתין לBit` in the admin prompt order list.
 - **Comprehensive test suite (2026-05-25):** 96 tests across 9 files — auth, session isolation, all admin bot actions, webhook routing, onboarding flow (both sides), payment webhook, audit trail. `supertest` used for HTTP-level integration tests. `npm test -- --forceExit` is the run command.
 - **Security hardening (2026-05-26):** JWT_SECRET + dashboard passwords rotated to random values. bcrypt hashing for `tenant_users.password`. Rate limiting on login (10/15min) and public onboarding endpoint (20/hr). Green API webhook instanceId verification. `_tenantCreds()` throws on missing credentials. tenant_id passed to `saveOrder()` from all payment confirmation paths. Session pruning job (90-day TTL, runs daily).
+- **GDPR / privacy (2026-05-27):** `DELETE /api/customers/:phone` (requireAdmin) — deletes session row + anonymizes orders (phone→'deleted', customer_name→'[deleted]', address→'[deleted]', notes→null). First bot message appends italic privacy-policy link `_מדיניות הפרטיות: ${botUrl}/privacy.html_`. Public page: `public/privacy.html` (Hebrew, RTL, covers data collected, third parties, retention, rights, contact).
 
 ### ❌ Missing / needs work
 | Item | Notes |
@@ -820,6 +821,12 @@ When adding a new function to `setInterval` in `index.js` (e.g. `pruneOldSession
 
 ### tenant_id must be passed explicitly to saveOrder() from payment paths
 `confirmPending()` in `payment.js` and the polling loop in `index.js` both call `saveOrder()`. Neither receives `tenantId` as a function argument — they must extract it from `orderData.tenant_id` (stored there by `ai-handler.js` at pending payment creation time). Pattern: `tenant_id: orderData.tenant_id || process.env.TENANT_ID`. Omitting this silently saves all paid orders under DEFAULT_TENANT_ID regardless of which tenant processed the payment.
+
+### GDPR erasure — delete session, anonymize orders (don't hard-delete)
+`DELETE /api/customers/:phone` deletes the session row (conversation history) and anonymizes order rows: `phone='deleted'`, `customer_name='[deleted]'`, `address='[deleted]'`, `notes=null`. Hard-deleting orders would break accounting and order-number sequences. The anonymization pattern satisfies GDPR right-to-erasure while keeping business records intact. Only `requireAdmin` — never expose this to manager role or public.
+
+### Privacy policy link — first bot message only, uses italic WhatsApp formatting
+In `ai-handler.js`, when `history.length === 0` (first message in a new session), append `\n\n_מדיניות הפרטיות: ${botUrl}/privacy.html_` to the reply. WhatsApp renders `_text_` as italic. The `botUrl` comes from `settings.get('bot_url', tid)` with fallback to `process.env.PUBLIC_URL`. Do not send the notice on every message — only on session start.
 
 ### pending_payments.tenant_id is now a real column, not just inside order_data JSON
 Previously `tenant_id` was only stored inside the `order_data` JSONB field. As of 2026-05-26 it's a proper column with DEFAULT and index. `savePendingPayment()` in supabase.js writes it from `orderData.tenant_id`. Always pass `tenant_id` as a real column — don't rely on `order_data->>'tenant_id'` for filtering.

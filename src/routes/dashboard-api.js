@@ -640,6 +640,25 @@ router.get('/customers', requireAdmin, async (req, res) => {
   res.json(data);
 });
 
+// DELETE /api/customers/:phone — GDPR right-to-erasure
+// Deletes session (conversation history + profile) and anonymises orders for this phone.
+router.delete('/customers/:phone', requireAdmin, async (req, res) => {
+  const phone = req.params.phone.replace(/\D/g, '');
+  const tenantId = tid(req);
+
+  // 1. Delete session row entirely
+  await supabase.from('sessions').delete()
+    .eq('tenant_id', tenantId).eq('phone', phone);
+
+  // 2. Anonymise orders — keep for legal/financial records but strip PII
+  await supabase.from('orders')
+    .update({ phone: 'deleted', customer_name: '[deleted]', address: '[deleted]', notes: null })
+    .eq('tenant_id', tenantId).eq('phone', phone);
+
+  console.log(`[gdpr] erasure complete for ${phone} (tenant ${tenantId})`);
+  res.json({ success: true });
+});
+
 router.post('/customers/broadcast', requireAdmin, async (req, res) => {
   const { phones, message } = req.body;
   if (!Array.isArray(phones) || !message) {

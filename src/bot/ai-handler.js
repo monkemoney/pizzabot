@@ -228,7 +228,14 @@ async function handleMessage(phone, userMessage, tenantId = null) {
   const match     = assistantText.match(ACTION_RE);
   const cleanText = stripAction(assistantText);
 
-  await reply(phone, cleanText, tid);
+  // On first message, append a one-time privacy notice
+  if (history.length === 0) {
+    const botUrl = (await settings.get('bot_url', tid).catch(() => null)) || process.env.PUBLIC_URL || 'https://www.jasell.com';
+    const privacyNotice = `\n\n_מדיניות הפרטיות שלנו: ${botUrl}/privacy.html_`;
+    await reply(phone, cleanText + privacyNotice, tid);
+  } else {
+    await reply(phone, cleanText, tid);
+  }
 
   const updatedHistory = [
     ...history,
