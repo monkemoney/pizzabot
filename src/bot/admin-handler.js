@@ -204,6 +204,7 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
           const allowed = ['is_open','delivery_enabled','pickup_enabled','payment_cash','payment_credit','payment_bit','payment_paybox'];
           if (!allowed.includes(key)) { results.push(`❌ מפתח "${key}" לא מורשה`); break; }
           await settings.set(key, value, tenantId);
+          settings._clearCache(tenantId);
           const labels = { is_open:'בוט', delivery_enabled:'משלוח', pickup_enabled:'איסוף', payment_cash:'מזומן', payment_credit:'אשראי' };
           results.push(`${value ? '✅' : '❌'} *${labels[key] || key}* — ${value ? 'פועל' : 'מושבת'}`);
           break;
