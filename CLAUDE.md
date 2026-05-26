@@ -844,3 +844,20 @@ Service upgraded from Free to Starter on 2026-05-26. Free tier slept after 15 mi
 
 ### pg package removed — do not re-add
 `pg` was listed as a dependency but never worked (IPv6 blocks it everywhere). Removed 2026-05-26. If direct DB access is ever needed, use the Supabase Management API or SQL editor — never `pg` directly.
+
+### settings.set() already invalidates cache — no extra _clearCache() needed
+`settings.set()` does `_getCache(tenantId).time = 0` after every DB write. This causes `loadAll()` to reload from DB on the next `get()` call (since `Date.now() - 0 > CACHE_TTL`). Any call to `settings._clearCache()` immediately after `settings.set()` is redundant. The only difference: `_clearCache()` also sets `data = {}`, removing the fallback on reload error. For most cases `settings.set()` is sufficient — only call `_clearCache()` explicitly if you need to also eliminate the stale-data fallback.
+
+### Testing the admin bot or customer bot via curl — use instanceId in payload
+To send a simulated WhatsApp message directly to the webhook (bypassing Green API):
+```bash
+curl -X POST "https://www.jasell.com/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "typeWebhook": "incomingMessageReceived",
+    "instanceData": { "idInstance": 7105619659 },
+    "senderData": { "sender": "<phone>@c.us", "senderName": "Test" },
+    "messageData": { "typeMessage": "textMessage", "textMessageData": { "textMessage": "<msg>" } }
+  }'
+```
+The `idInstance` must match `GREEN_API_INSTANCE_ID` (default tenant) or the tenant's `green_api_instance` setting, otherwise the instanceId verification added 2026-05-26 will drop the message silently. To trigger the admin bot, use a phone that exists in `admin_users` for the target tenant.
