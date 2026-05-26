@@ -46,6 +46,7 @@ async function confirmPending(pending, source = 'webhook', dealNumber = null) {
       cardcom_deal_number:  dealNumber || null,
       total_price:          orderData.total,
       status:               'new',
+      tenant_id:            orderData.tenant_id       || process.env.TENANT_ID,
     });
 
     await deletePendingPayment(pending.id);

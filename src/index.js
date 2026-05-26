@@ -169,6 +169,7 @@ async function pollPendingPayments() {
         cardcom_code:    pending.cardcom_code,
         total_price:     orderData.total,
         status:          'new',
+        tenant_id:       orderData.tenant_id      || process.env.TENANT_ID,
       });
 
       await deletePendingPayment(pending.id);
