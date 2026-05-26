@@ -60,12 +60,12 @@ VAPID_PUBLIC_KEY=BM-j1EvpL7QoX1HcNaYpWDaHdjIQsNtEwwGbBdhFFd_a2FIlEOVtDAyxm8SN-8y
 VAPID_PRIVATE_KEY=A5G6P2JTHYA77V85yrbqVJ_t1V_MvJceyQx_rJ36wDY
 VAPID_EMAIL=mailto:admin@jasell.com
 
-# Dashboard auth — three roles
-ADMIN_SECRET=jasell-admin-2026
-DASHBOARD_ADMIN_PASSWORD=admin2026
-DASHBOARD_MANAGER_PASSWORD=manager2026
-DASHBOARD_VENDOR_PASSWORD=jasell-vendor-2026   # platform owner
-JWT_SECRET=pizzabot-jwt-secret-2026-change-in-prod
+# Dashboard auth — three roles  (all rotated 2026-05-26 — real values in .env.production / Render)
+ADMIN_SECRET=<random base64url>
+DASHBOARD_ADMIN_PASSWORD=<random>
+DASHBOARD_MANAGER_PASSWORD=<random>
+DASHBOARD_VENDOR_PASSWORD=<random>
+JWT_SECRET=<96-char random hex>
 
 # Tenant isolation
 TENANT_ID=aaaaaaaa-0000-0000-0000-000000000001  # default; override per deployment for multi-tenant
@@ -488,16 +488,19 @@ sessions           -- per-phone (customer: phone, admin: 'admin:phone'):
                    -- tenant_id UUID (DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001')
                    -- UNIQUE(tenant_id, phone)
 pending_payments   -- Cardcom: phone, cardcom_code, return_value, order_data, expires_at
+                   -- tenant_id UUID (DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001') — real column (2026-05-26)
+                   -- INDEX: idx_pending_payments_tenant
 push_subscriptions -- endpoint, p256dh, auth, user_agent
 admin_users        -- phone (unique per tenant), name, role ('admin'|'manager'), created_at
                    -- tenant_id UUID (DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001')
 tenant_users       -- per-tenant dashboard credentials (created on approve)
-                   -- tenant_id UUID, username TEXT, password TEXT, role TEXT
+                   -- tenant_id UUID, username TEXT, password TEXT (bcrypt hash), role TEXT
 orders             -- order_number (seq 1000+), items JSONB, status, payment_method, payment_status,
                    -- cardcom_code, cardcom_deal_number, refund_status,
                    -- cancelled_by, cancel_reason, dispute_status, dispute_item,
                    -- destination_type, courier_notes,
                    -- tenant_id UUID (DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001')
+                   -- INDEXES: idx_orders_tenant, idx_orders_tenant_status, idx_orders_tenant_created
 customers          -- VIEW over orders
 clients            -- platform clients: name, contact_phone, plan, status, notes, tenant_id
                    -- plan: 'trial'|'basic'|'pro'|'enterprise'
@@ -509,7 +512,8 @@ onboarding_sessions -- client onboarding state machine
                    --   delivery_enabled, pickup_enabled, payment_cash/credit/bit/paybox,
                    --   business_hours JSONB, delivery_zones JSONB, admin_phones TEXT[]
                    -- tech fields: green_api_instance, green_api_token, cardcom_terminal, cardcom_username
-                   -- approval: approved_username, approved_password, webhook_url
+                   -- business fields also: bit_phone TEXT (seeded into settings on approve)
+                   -- approval: approved_username, approved_password (bcrypt hash), webhook_url
                    -- audit: updated_at TIMESTAMPTZ, updated_by TEXT ('client'|'vendor')
                    -- expires_at, checklist JSONB
 api_usage          -- Claude API token logging per call:
@@ -562,13 +566,15 @@ api_usage          -- Claude API token logging per call:
 - **Bit payment flow:** bot emits `SAVE_ORDER` with `payment_method='bit'`, `payment_status='pending'`; sends customer Bit phone + amount; dashboard shows teal "ממתין לBit" badge + "אשר קבלת תשלום Bit" button → `POST /api/orders/:id/confirm-payment` sets `payment_status='paid'`. `bit_phone` stored in settings, shown/hidden in Settings page when Bit toggle is on.
 - **Admin bot Bit confirmation:** `CONFIRM_PAYMENT` action in admin-handler.js — "קיבלתי Bit #1042" → sets `payment_status='paid'`, sends WhatsApp to customer. Bit-pending orders show `💳 ממתין לBit` in the admin prompt order list.
 - **Comprehensive test suite (2026-05-25):** 96 tests across 9 files — auth, session isolation, all admin bot actions, webhook routing, onboarding flow (both sides), payment webhook, audit trail. `supertest` used for HTTP-level integration tests. `npm test -- --forceExit` is the run command.
+- **Security hardening (2026-05-26):** JWT_SECRET + dashboard passwords rotated to random values. bcrypt hashing for `tenant_users.password`. Rate limiting on login (10/15min) and public onboarding endpoint (20/hr). Green API webhook instanceId verification. `_tenantCreds()` throws on missing credentials. tenant_id passed to `saveOrder()` from all payment confirmation paths. Session pruning job (90-day TTL, runs daily).
 
 ### ❌ Missing / needs work
 | Item | Notes |
 |------|-------|
-| Cardcom production | Test terminal 1000 — switch to prod terminal before go-live |
+| Cardcom credentials | Per-tenant — each client provides their own via onboarding (cardcom_terminal + cardcom_username) |
 | Cardcom auto-refund blind spot | Orders confirmed via success-redirect or polling have no `cardcom_deal_number` → manual refund |
 | Paybox | Settings toggle only — no payment flow yet |
+| UptimeRobot | Set up free monitor on `https://www.jasell.com/health` every 5 min |
 
 ---
 
@@ -808,3 +814,33 @@ Some GET routes filter with `.neq('status', 'approved')`. If the mock's builder 
 
 ### setInterval in index.js keeps Jest open — use --forceExit
 `index.js` starts `setInterval(pollPendingPayments, 2 * 60 * 1000)` at module scope. This timer keeps the Node.js event loop alive after tests finish, causing Jest to hang. Run with `npm test -- --forceExit` to terminate cleanly. The interval is only an issue in tests — in production it runs forever as intended.
+
+### Every new setInterval function must be mocked in all test files that require index.js
+When adding a new function to `setInterval` in `index.js` (e.g. `pruneOldSessions`), every test file that `require('../src/index')` must include it in the supabase mock or Jest throws `TypeError: The "callback" argument must be of type function. Received undefined`. Affected test files: `webhook-routing.test.js`, `payment-webhook.test.js`, `audit-trail.test.js`, `onboarding.test.js`. Always add `newFunction: jest.fn(async () => {})` to all four mocks simultaneously.
+
+### tenant_id must be passed explicitly to saveOrder() from payment paths
+`confirmPending()` in `payment.js` and the polling loop in `index.js` both call `saveOrder()`. Neither receives `tenantId` as a function argument — they must extract it from `orderData.tenant_id` (stored there by `ai-handler.js` at pending payment creation time). Pattern: `tenant_id: orderData.tenant_id || process.env.TENANT_ID`. Omitting this silently saves all paid orders under DEFAULT_TENANT_ID regardless of which tenant processed the payment.
+
+### pending_payments.tenant_id is now a real column, not just inside order_data JSON
+Previously `tenant_id` was only stored inside the `order_data` JSONB field. As of 2026-05-26 it's a proper column with DEFAULT and index. `savePendingPayment()` in supabase.js writes it from `orderData.tenant_id`. Always pass `tenant_id` as a real column — don't rely on `order_data->>'tenant_id'` for filtering.
+
+### bcrypt for tenant_users — existing plaintext users need manual reset
+`tenant_users.password` is now bcrypt-hashed on creation. Any user created before 2026-05-26 has a plaintext password in the DB — `bcrypt.compare()` will always fail for them. If such users exist, reset their password via a direct DB UPDATE with a new hash. There are no pre-existing users in this deployment.
+
+### Rate limiting uses express-rate-limit (in-memory store)
+`loginLimiter` and `onboardingLimiter` use the default in-memory store. On Render, each deploy resets all counters. This is acceptable — the window is short (15min / 1hr). Do not add a Redis store unless the service scales to multiple instances.
+
+### Green API webhook — verified via instanceId, not HMAC
+Green API doesn't support HMAC signing. Verification is done by comparing `body.instanceData.idInstance` against the tenant's configured `green_api_instance` setting. Default tenant checks synchronously against `GREEN_API_INSTANCE_ID` env var. Per-tenant routes check async after the 200 ack. An attacker who knows both the tenant UUID and the instanceId could still forge requests — acceptable risk for current scale.
+
+### _tenantCreds() now throws instead of falling back to default instance
+Before 2026-05-26, `greenapi.js` `_tenantCreds()` silently fell back to the default instance if a tenant's Green API credentials were missing. Now it throws `Error: Missing Green API credentials for tenant X`. This means messages to/from a misconfigured tenant will fail loudly instead of leaking through the default bot — correct behavior. If provisioning is incomplete, fix the tenant settings rather than relying on fallback.
+
+### pruneOldSessions() — 90-day TTL, runs daily via setInterval
+`supabase.js` exports `pruneOldSessions()` which deletes all sessions with `updated_at < now() - 90 days`. Called from `setInterval` in `index.js` every 24h. Logs count of deleted rows. Adjust the cutoff if business/legal requirements change.
+
+### Render plan — Starter ($7/mo), no cold starts
+Service upgraded from Free to Starter on 2026-05-26. Free tier slept after 15 min inactivity causing 30-60s cold starts. Starter stays always-on. Do not downgrade to Free.
+
+### pg package removed — do not re-add
+`pg` was listed as a dependency but never worked (IPv6 blocks it everywhere). Removed 2026-05-26. If direct DB access is ever needed, use the Supabase Management API or SQL editor — never `pg` directly.
