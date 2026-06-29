@@ -126,24 +126,18 @@ async function savePendingPayment({ phone, cardcomCode, returnValue, orderData }
   return data.id;
 }
 
-async function getPendingByCardcomCode(cardcomCode) {
-  const { data, error } = await supabase
-    .from('pending_payments')
-    .select('*')
-    .eq('cardcom_code', cardcomCode)
-    .single();
-
+async function getPendingByCardcomCode(cardcomCode, tenantId) {
+  let q = supabase.from('pending_payments').select('*').eq('cardcom_code', cardcomCode);
+  if (tenantId) q = q.eq('tenant_id', tenantId);
+  const { data, error } = await q.single();
   if (error) return null;
   return data;
 }
 
-async function getPendingByReturnValue(returnValue) {
-  const { data, error } = await supabase
-    .from('pending_payments')
-    .select('*')
-    .eq('return_value', returnValue)
-    .single();
-
+async function getPendingByReturnValue(returnValue, tenantId) {
+  let q = supabase.from('pending_payments').select('*').eq('return_value', returnValue);
+  if (tenantId) q = q.eq('tenant_id', tenantId);
+  const { data, error } = await q.single();
   if (error) return null;
   return data;
 }
@@ -210,11 +204,12 @@ async function getOrderById(id) {
 }
 
 /** Get the most recent order for a phone number */
-async function getLastOrderByPhone(phone) {
+async function getLastOrderByPhone(phone, tenantId = DEFAULT_TENANT_ID) {
   const { data, error } = await supabase
     .from('orders')
     .select('*')
     .eq('phone', phone)
+    .eq('tenant_id', tenantId)
     .order('created_at', { ascending: false })
     .limit(1)
     .single();

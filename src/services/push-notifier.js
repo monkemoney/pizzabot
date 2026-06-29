@@ -22,12 +22,14 @@ function supabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 }
 
+const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
+
 /** Save or update a push subscription */
-async function saveSubscription(subscription, userAgent = '') {
+async function saveSubscription(subscription, userAgent = '', tenantId = DEFAULT_TENANT_ID) {
   const { endpoint, keys: { p256dh, auth } } = subscription;
   const db = supabase();
   const { error } = await db.from('push_subscriptions').upsert(
-    { endpoint, p256dh, auth, user_agent: userAgent },
+    { endpoint, p256dh, auth, user_agent: userAgent, tenant_id: tenantId },
     { onConflict: 'endpoint' }
   );
   if (error) throw new Error(error.message);
@@ -38,12 +40,13 @@ async function removeSubscription(endpoint) {
   await supabase().from('push_subscriptions').delete().eq('endpoint', endpoint);
 }
 
-/** Send a push to all subscribed dashboard browsers */
+/** Send a push to subscribed dashboard browsers for this tenant */
 async function notifyNewOrder(order) {
   configure();
   if (!configured) return;
 
-  const { data: subs } = await supabase().from('push_subscriptions').select('*');
+  const tenantId = order.tenant_id || DEFAULT_TENANT_ID;
+  const { data: subs } = await supabase().from('push_subscriptions').select('*').eq('tenant_id', tenantId);
   if (!subs || !subs.length) return;
 
   const payload = JSON.stringify({

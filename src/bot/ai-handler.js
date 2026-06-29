@@ -181,7 +181,7 @@ async function handleMessage(phone, userMessage, tenantId = null) {
   console.log(`[ai-handler] phone=${phone} tenant=${tid} historyLen=${history.length} msg="${userMessage.slice(0, 80)}"`);
 
   if (history.length === 0) {
-    const lastOrder = await getLastOrderByPhone(phone);
+    const lastOrder = await getLastOrderByPhone(phone, tid);
     if (lastOrder && lastOrder.status === 'new') {
       const minutesSince = (Date.now() - new Date(lastOrder.created_at).getTime()) / 60000;
       if (minutesSince <= 15) {

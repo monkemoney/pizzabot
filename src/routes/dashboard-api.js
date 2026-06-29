@@ -775,7 +775,7 @@ router.get('/push-vapid-key', requireAuth, (_req, res) => {
 // Save a new push subscription
 router.post('/push-subscribe', requireAuth, async (req, res) => {
   try {
-    await pushNotifier.saveSubscription(req.body, req.headers['user-agent'] || '');
+    await pushNotifier.saveSubscription(req.body, req.headers['user-agent'] || '', tid(req));
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
