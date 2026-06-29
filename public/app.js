@@ -100,7 +100,7 @@ function showTab(name) {
   if (name === 'customers') loadCustomers();
   if (name === 'settings')  { loadSettings(); loadAdminUsers(); }
   if (name === 'stats')     setPeriod(currentPeriod);
-  if (name === 'kitchen')   { window.scrollTo(0, 0); initKitchen(); }
+  if (name === 'kitchen')   { initKitchen(); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'instant' })); }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -2323,14 +2323,14 @@ function _kitchenCard(o) {
     ? `<button onclick="kitchenSetStatus('${o.id}','ready')" style="flex:1;padding:12px;border:none;border-radius:10px;background:#22c55e;color:#fff;font-size:.95rem;font-weight:700;cursor:pointer;letter-spacing:.3px">מוכן ✓</button>`
     : '';
 
-  return `<div id="kitchen-card-${o.id}" style="background:#fff;border-radius:14px;border-right:5px solid ${statusColor};box-shadow:0 2px 8px rgba(0,0,0,.08);padding:16px 18px;margin-bottom:14px">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-      <span style="font-size:1.4rem;font-weight:900;color:#111">#${o.order_number}</span>
-      <span style="font-size:1rem;color:#555;font-weight:600">${o.customer_name || ''}</span>
+  return `<div id="kitchen-card-${o.id}" style="background:#fff;border-radius:14px;border-right:5px solid ${statusColor};box-shadow:0 2px 10px rgba(0,0,0,.09);padding:18px 20px;margin-bottom:16px">
+    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:14px;border-bottom:2px solid #f3f3f3;padding-bottom:12px">
+      <span style="font-size:1.6rem;font-weight:900;color:#111;line-height:1">#${o.order_number}</span>
+      ${o.customer_name ? `<span style="font-size:1rem;color:#666;font-weight:600">${o.customer_name}</span>` : ''}
     </div>
-    <div style="margin-bottom:12px">${items}</div>
+    <div style="margin-bottom:${btn ? '16px' : '0'}">${items}</div>
     ${notes}
-    ${btn ? `<div style="display:flex;gap:8px;margin-top:14px">${btn}</div>` : ''}
+    ${btn ? `<div>${btn}</div>` : ''}
   </div>`;
 }
 

@@ -662,18 +662,18 @@ input[type=time] { direction: ltr; }
   </div>
 
   <!-- KITCHEN -->
-  <div id="page-kitchen" style="display:none">
-    <div class="page-header">
-      <div class="page-title">חלון מטבח</div>
+  <div id="page-kitchen" style="display:none;padding-top:4px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+      <h2 style="font-size:1.4rem;font-weight:800;color:var(--text);margin:0">חלון מטבח</h2>
       <div style="display:flex;align-items:center;gap:10px">
-        <span id="kitchen-dot" style="width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block;transition:background .3s"></span>
+        <span id="kitchen-dot" style="width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block;transition:background .3s;flex-shrink:0"></span>
         <span id="kitchen-conn" style="font-size:.8rem;color:var(--text-muted)">מתחבר…</span>
         <span id="kitchen-count" style="font-size:.8rem;color:var(--text-muted)"></span>
         <button onclick="loadKitchenOrders()" class="btn btn-ghost btn-sm" style="display:inline-flex;align-items:center;gap:5px">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.38-7.2"/></svg> רענן</button>
       </div>
     </div>
-    <div id="kitchen-feed" style="max-width:520px"></div>
+    <div id="kitchen-feed" style="max-width:480px;width:100%"></div>
   </div>
 
   <!-- STATS -->
