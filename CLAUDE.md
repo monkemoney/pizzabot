@@ -143,9 +143,10 @@ pizza-bot/
 │   │   ├── supabase.js           # All DB functions (sessions, orders, pending_payments)
 │   │   ├── cardcom.js            # Cardcom JSON API v11 — createPaymentPage; verifyPayment is no-op
 │   │   ├── push-notifier.js      # Web Push (VAPID) — saveSubscription, notifyNewOrder
-│   │   ├── settings.js           # Live settings from DB with 60s cache; isOpen() uses Asia/Jerusalem TZ
+│   │   ├── settings.js           # Live settings from DB with 60s cache; isOpen()/isDeliveryOpen() use Asia/Jerusalem TZ
 │   │   ├── menu-service.js       # Live products from DB with 60s cache
 │   │   ├── status-notifier.js    # Customer + courier WhatsApp notifications on status change
+│   │   ├── sse.js                # SSE broker — Map<tenantId, Set<res>>, broadcast(), subscribe()
 │   │   └── vendor-alerts.js      # Throttled WhatsApp alerts to vendor (errors, payments, restart)
 │   ├── routes/
 │   │   ├── dashboard-api.js      # All /api/* endpoints — tenant-scoped orders, vendor routes, etc.
@@ -155,11 +156,13 @@ pizza-bot/
 │   └── middleware/
 │       └── auth.js               # HMAC-SHA256 sign/verify, signDashboard(), requireAuth/Admin/Vendor
 ├── public/
-│   ├── index.html                # Login page — routes vendor→/admin, others→/dashboard.html
+│   ├── index.html                # Login page — routes vendor→/admin, kitchen→/kitchen, others→/dashboard.html
 │   ├── dashboard.html            # Business dashboard SPA (admin + manager roles)
 │   ├── app.js                    # Business dashboard JS
 │   ├── admin.html                # Vendor portal SPA (vendor role only)
 │   ├── admin.js                  # Vendor portal JS
+│   ├── kitchen.html              # Standalone kitchen SPA (kitchen role login)
+│   ├── kitchen.js                # Kitchen SPA JS — SSE client, order feed
 │   ├── menu.html                 # Public customer menu
 │   └── sw.js                     # Service Worker for push notifications
 ├── supabase/
@@ -193,6 +196,7 @@ pizza-bot/
 GET  /                    → index.html (login page)
 GET  /dashboard.html      → business SPA (admin/manager); vendor role redirected to /admin
 GET  /admin               → admin.html (vendor-only SPA); non-vendor redirected to /
+GET  /kitchen             → kitchen.html (kitchen role SPA); also embedded tab in dashboard
 GET  /menu.html           → public menu (no auth)
 GET  /onboarding/:token   → onboarding.html (public, client-facing, no auth)
 POST /webhook             → WhatsApp webhook — DEFAULT_TENANT_ID (backward compat)
@@ -499,8 +503,10 @@ orders             -- order_number (seq 1000+), items JSONB, status, payment_met
                    -- cardcom_code, cardcom_deal_number, refund_status,
                    -- cancelled_by, cancel_reason, dispute_status, dispute_item,
                    -- destination_type, courier_notes,
+                   -- status_history JSONB DEFAULT '[]' — [{status, at}] appended on every transition
                    -- tenant_id UUID (DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001')
                    -- INDEXES: idx_orders_tenant, idx_orders_tenant_status, idx_orders_tenant_created
+                   -- CHECK: orders_status_check — new|preparing|ready|out_for_delivery|delivered|done|cancelled
 customers          -- VIEW over orders
 clients            -- platform clients: name, contact_phone, plan, status, notes, tenant_id
                    -- plan: 'trial'|'basic'|'pro'|'enterprise'
@@ -522,7 +528,9 @@ api_usage          -- Claude API token logging per call:
                    -- Pricing (claude-opus-4-7): input=$15/MTok, output=$75/MTok, cache_read=$1.50/MTok
 ```
 
-**Order status:** `new → preparing → out_for_delivery → delivered → done` (auto 1h) | `cancelled`
+**Order status:** `new → preparing → ready → out_for_delivery → delivered → done` (auto 1h) | `cancelled`
+- `ready`: chef marked done in kitchen window. Pickup orders → WhatsApp to customer. Delivery orders → silent.
+- Kitchen window shows: `preparing` + `ready` only. `new` stays in dashboard until manager moves it.
 **Dispute status:** `pending` → `resolved` (cancelled | removed | replaced | continued)
 
 ---
@@ -568,6 +576,10 @@ api_usage          -- Claude API token logging per call:
 - **Comprehensive test suite (2026-05-25):** 96 tests across 9 files — auth, session isolation, all admin bot actions, webhook routing, onboarding flow (both sides), payment webhook, audit trail. `supertest` used for HTTP-level integration tests. `npm test -- --forceExit` is the run command.
 - **Security hardening (2026-05-26):** JWT_SECRET + dashboard passwords rotated to random values. bcrypt hashing for `tenant_users.password`. Rate limiting on login (10/15min) and public onboarding endpoint (20/hr). Green API webhook instanceId verification. `_tenantCreds()` throws on missing credentials. tenant_id passed to `saveOrder()` from all payment confirmation paths. Session pruning job (90-day TTL, runs daily).
 - **GDPR / privacy (2026-05-27):** `DELETE /api/customers/:phone` (requireAdmin) — deletes session row + anonymizes orders (phone→'deleted', customer_name→'[deleted]', address→'[deleted]', notes→null). First bot message appends italic privacy-policy link `_מדיניות הפרטיות: ${botUrl}/privacy.html_`. Public page: `public/privacy.html` (Hebrew, RTL, covers data collected, third parties, retention, rights, contact).
+- **Delivery hours (2026-06-29):** `delivery_hours` settings key — same structure as `business_hours` (`{sun:{is_open,open,close},...}`). `isDeliveryOpen(tenantId)` in `settings.js` checks current IL time against today's window. Customer bot gates delivery on `isDeliveryOpen()`. Admin bot shows today's delivery hours in system prompt and supports `SET_DELIVERY_HOURS` action ("משלוח עד 22:00", "סגור משלוח היום"). Dashboard Settings page has "שעות משלוח" card.
+- **Kitchen window (2026-06-29):** Tab in dashboard for admin/manager + standalone `/kitchen` route for `kitchen` role. Shows orders in `preparing` and `ready` status only (`new` stays in dashboard). Single vertical feed sorted oldest-first: order number, name, items+toppings, notes. "מוכן ✓" button → `ready`. SSE push — new orders appear instantly without polling. `GET /api/kitchen/orders`, `GET /api/sse` (token via `?token=` for EventSource). `requireKitchenOrAdmin` middleware. `status_history` JSONB column on orders — every status transition appended with timestamp.
+- **`ready` status (2026-06-29):** Added between `preparing` and `out_for_delivery`. WhatsApp to customer on `ready` only for pickup orders (`delivery_method='pickup'`). Delivery orders: silent (out_for_delivery message covers it). `orders_status_check` DB constraint updated to include `ready`.
+- **SSE broker (2026-06-29):** `src/services/sse.js` — `Map<tenantId, Set<res>>`, 25s keepalive ping. `broadcast(tenantId, event, data)` fires on `updateOrderStatus` and `saveOrder`. Events: `new_order`, `order_updated`.
 
 ### ❌ Missing / needs work
 | Item | Notes |
@@ -819,8 +831,8 @@ Some GET routes filter with `.neq('status', 'approved')`. If the mock's builder 
 ### Every new setInterval function must be mocked in all test files that require index.js
 When adding a new function to `setInterval` in `index.js` (e.g. `pruneOldSessions`), every test file that `require('../src/index')` must include it in the supabase mock or Jest throws `TypeError: The "callback" argument must be of type function. Received undefined`. Affected test files: `webhook-routing.test.js`, `payment-webhook.test.js`, `audit-trail.test.js`, `onboarding.test.js`. Always add `newFunction: jest.fn(async () => {})` to all four mocks simultaneously.
 
-### tenant_id must be passed explicitly to saveOrder() from payment paths
-`confirmPending()` in `payment.js` and the polling loop in `index.js` both call `saveOrder()`. Neither receives `tenantId` as a function argument — they must extract it from `orderData.tenant_id` (stored there by `ai-handler.js` at pending payment creation time). Pattern: `tenant_id: orderData.tenant_id || process.env.TENANT_ID`. Omitting this silently saves all paid orders under DEFAULT_TENANT_ID regardless of which tenant processed the payment.
+### tenant_id in payment paths — use pending.tenant_id as primary source
+`confirmPending()` in `payment.js` and the polling loop in `index.js` both call `saveOrder()` and `sendMessage()`. Use the real column `pending.tenant_id` as the primary source (set by `savePendingPayment()`, indexed). Fallback chain: `pending.tenant_id || orderData.tenant_id || process.env.TENANT_ID`. Pass the same tenantId to `sendMessage()` so the confirmation WhatsApp goes through the correct Green API instance. Omitting tenantId from `sendMessage()` silently routes all confirmation messages through the default tenant's Green API.
 
 ### GDPR erasure — delete session, anonymize orders (don't hard-delete)
 `DELETE /api/customers/:phone` deletes the session row (conversation history) and anonymizes order rows: `phone='deleted'`, `customer_name='[deleted]'`, `address='[deleted]'`, `notes=null`. Hard-deleting orders would break accounting and order-number sequences. The anonymization pattern satisfies GDPR right-to-erasure while keeping business records intact. Only `requireAdmin` — never expose this to manager role or public.
@@ -854,6 +866,28 @@ Service upgraded from Free to Starter on 2026-05-26. Free tier slept after 15 mi
 
 ### settings.set() already invalidates cache — no extra _clearCache() needed
 `settings.set()` does `_getCache(tenantId).time = 0` after every DB write. This causes `loadAll()` to reload from DB on the next `get()` call (since `Date.now() - 0 > CACHE_TTL`). Any call to `settings._clearCache()` immediately after `settings.set()` is redundant. The only difference: `_clearCache()` also sets `data = {}`, removing the fallback on reload error. For most cases `settings.set()` is sufficient — only call `_clearCache()` explicitly if you need to also eliminate the stale-data fallback.
+
+### Green API instance change — 4 steps required
+When switching a tenant's Green API instance: (1) update `GREEN_API_INSTANCE_ID` + `GREEN_API_TOKEN` env vars and sync to Render via `node scripts/sync-render-env.js` + trigger redeploy; (2) set the new instance's webhook URL via `POST /waInstance{id}/setSettings/{token}` with `{"webhookUrl":"https://www.jasell.com/webhook","incomingWebhook":"yes"}`; (3) verify instance is `authorized` via `GET /waInstance{id}/getStateInstance/{token}` — if `notAuthorized`, scan QR in Green API console; (4) update `bot_url` in settings table if it points to an old URL.
+
+### orders_status_check constraint must include all custom statuses
+The `orders` table has a `CHECK` constraint `orders_status_check` listing allowed status values. When adding a new status (e.g. `ready`), update the constraint via Management API:
+```bash
+curl ... -d '{"query": "ALTER TABLE orders DROP CONSTRAINT orders_status_check; ALTER TABLE orders ADD CONSTRAINT orders_status_check CHECK (status = ANY (ARRAY['"'"'new'"'"'::text, '"'"'preparing'"'"'::text, '"'"'ready'"'"'::text, '"'"'out_for_delivery'"'"'::text, '"'"'delivered'"'"'::text, '"'"'done'"'"'::text, '"'"'cancelled'"'"'::text]))"}'
+```
+Forgetting this causes `Failed to update order: new row for relation "orders" violates check constraint` on PATCH /orders/:id/status.
+
+### SSE (EventSource) cannot send Authorization headers — use ?token= query param
+`EventSource` in browsers doesn't support custom headers. The `/api/sse` endpoint accepts the JWT via `?token=` query param. `requireKitchenOrAdmin` middleware copies `req.query.token` → `req.headers.authorization` before calling `requireAuth`. All other endpoints use standard `Authorization: Bearer` header.
+
+### page-kitchen (and any new page) must be inside .main div
+All `page-*` divs must be children of `<div class="main">`. If a `</div>` is accidentally placed before a new page div (e.g. an extra closing tag after page-settings), the page lands outside `.main` and renders at the bottom of the document body, overlapping or below the sidebar. Always verify nesting depth after adding a page. Use a Python script to trace div depth if in doubt.
+
+### app.js uses api() not apiFetch() — kitchen.js uses apiFetch()
+`app.js` (dashboard) defines `async function api(method, path, body)` which calls `/api${path}` with the global `token` variable. `kitchen.js` (standalone kitchen SPA) defines `apiFetch(path, opts)`. Do not mix them — code copied from kitchen.js into app.js must be rewritten to use `api()`.
+
+### showTab() must sync both sidebar and mobile bottom-nav active states
+`showTab(name)` must call `classList.remove/add('active')` on both `#tab-${name}` (sidebar) and `#mobile-tab-${name}` (bottom nav). When adding a new tab, add the button to BOTH the `<nav>` inside `<aside>` AND the `<nav class="mobile-bottom-nav">`. Visibility (display:none/flex) for role-gated tabs must also be set in both places in app.js.
 
 ### Testing the admin bot or customer bot via curl — use instanceId in payload
 To send a simulated WhatsApp message directly to the webhook (bypassing Green API):
