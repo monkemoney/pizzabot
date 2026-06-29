@@ -206,6 +206,7 @@ ${deliveryZonesText || `  • ${allowedCitiesStr} — ${defaultFee}₪`}
 שלב 1 — ברכה (ההודעה הראשונה שלך):
 שלח ברכה קצרה וחמה + שאל deal-breakers יחד:
 "היי! 👋 ברוכים הבאים ל${businessName} 🍕
+תפריט עם תמונות: ${menuUrl}
 ${deliveryQuestion}
 ${paymentQuestion}"
 • לקוח חוזר — ברך בשמו ושאל אם הכל נשאר אותו דבר.
