@@ -30,7 +30,7 @@ function reply(phone, text, tenantId) {
 async function buildAdminPrompt(adminUser, tenantId = DEFAULT_TENANT_ID) {
   const [allSettings, activeOrders] = await Promise.all([
     settings.loadAll(tenantId),
-    getOrders().then(o => o.filter(x => !['done','cancelled'].includes(x.status) && (x.tenant_id === tenantId || !x.tenant_id)).slice(0, 20)),
+    supabase.from('orders').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(50).then(r => (r.data || []).filter(o => !['done','cancelled'].includes(o.status)).slice(0, 20)),
   ]);
 
   // Load products for this tenant
@@ -209,15 +209,23 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
         case 'SET_AVAILABLE': {
           const { type, name, available } = payload;
           if (type === 'topping') {
+            // Find product_ids for this tenant first, then filter additions
+            const { data: tenantProducts } = await supabase
+              .from('products').select('id').eq('tenant_id', tenantId).limit(1000);
+            const tenantProductIds = (tenantProducts || []).map(p => p.id);
+            if (!tenantProductIds.length) { results.push(`❌ לא נמצאו מוצרים לטנאנט זה`); break; }
             const { data: found } = await supabase
-              .from('product_additions').select('id,name_he').ilike('name_he', `%${name}%`).limit(5);
+              .from('product_additions').select('id,name_he')
+              .ilike('name_he', `%${name}%`)
+              .in('product_id', tenantProductIds)
+              .limit(5);
             if (!found?.length) { results.push(`❌ לא נמצאה תוספת "${name}"`); break; }
             for (const a of found) {
               await supabase.from('product_additions').update({ is_available: available }).eq('id', a.id);
             }
           } else {
             const { data: found } = await supabase
-              .from('products').select('id,name_he').ilike('name_he', `%${name}%`).limit(3);
+              .from('products').select('id,name_he').eq('tenant_id', tenantId).ilike('name_he', `%${name}%`).limit(3);
             if (!found?.length) { results.push(`❌ לא נמצא מוצר "${name}"`); break; }
             for (const p of found) {
               await supabase.from('products').update({ is_available: available }).eq('id', p.id);
@@ -232,7 +240,7 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
           const { order_number, status } = payload;
           const { data: orders } = await supabase
             .from('orders').select('id,order_number,phone,customer_name')
-            .eq('order_number', order_number).single();
+            .eq('order_number', order_number).eq('tenant_id', tenantId).single();
           if (!orders) { results.push(`❌ הזמנה #${order_number} לא נמצאה`); break; }
           await updateOrderStatus(orders.id, status);
           const STATUS_LABELS = { new:'חדשה', preparing:'בהכנה', out_for_delivery:'יצא למשלוח', delivered:'נמסרה', done:'הסתיימה', cancelled:'בוטלה' };
@@ -246,7 +254,7 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
         case 'CANCEL_ORDER': {
           const { order_number, reason, notify_customer = true } = payload;
           const { data: ord } = await supabase
-            .from('orders').select('*').eq('order_number', order_number).single();
+            .from('orders').select('*').eq('order_number', order_number).eq('tenant_id', tenantId).single();
           if (!ord) { results.push(`❌ הזמנה #${order_number} לא נמצאה`); break; }
           if (['cancelled','done'].includes(ord.status)) { results.push(`⚠️ הזמנה #${order_number} כבר ${ord.status}`); break; }
           await supabase.from('orders').update({
@@ -255,7 +263,7 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
           }).eq('id', ord.id);
           if (notify_customer) {
             const msg = `❌ הזמנה מספר *${order_number}* בוטלה על ידי העסק.${reason ? `\nסיבה: ${reason}` : ''}\n\nמצטערים על אי הנוחות 🙏`;
-            await sendMessage(ord.phone, msg).catch(() => {});
+            await sendMessage(ord.phone, msg, tenantId).catch(() => {});
           }
           results.push(`✅ הזמנה #${order_number} בוטלה`);
           break;
@@ -264,7 +272,7 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
         case 'DISPUTE': {
           const { order_number, missing = [] } = payload;
           const { data: ord } = await supabase
-            .from('orders').select('*').eq('order_number', order_number).single();
+            .from('orders').select('*').eq('order_number', order_number).eq('tenant_id', tenantId).single();
           if (!ord) { results.push(`❌ הזמנה #${order_number} לא נמצאה`); break; }
           const { updateSession: us } = require('../services/supabase');
           const items = missing.map(n => ({ type: 'item', name: n, price: 0, qty: 1 }));
@@ -337,7 +345,7 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
         case 'UPDATE_PRICE': {
           const { name, price } = payload;
           const { data: found } = await supabase
-            .from('products').select('id,name_he').ilike('name_he', `%${name}%`).limit(3);
+            .from('products').select('id,name_he').eq('tenant_id', tenantId).ilike('name_he', `%${name}%`).limit(3);
           if (!found?.length) { results.push(`❌ לא נמצא "${name}"`); break; }
           for (const p of found) {
             await supabase.from('products').update({ price, updated_at: new Date().toISOString() }).eq('id', p.id);
@@ -349,8 +357,10 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
 
         case 'LIST_ORDERS': {
           const { status = 'all' } = payload;
-          const orders = await getOrders(status === 'all' ? undefined : status);
-          const active = orders.filter(o => !['done','cancelled'].includes(o.status));
+          let q = supabase.from('orders').select('order_number,customer_name,status,total_price').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(50);
+          if (status !== 'all') q = q.eq('status', status);
+          const { data: rawOrders = [] } = await q;
+          const active = status === 'all' ? rawOrders.filter(o => !['done','cancelled'].includes(o.status)) : rawOrders;
           if (!active.length) { results.push('אין הזמנות פעילות כרגע.'); break; }
           const STATUS_L = { new:'חדשה', preparing:'בהכנה', out_for_delivery:'בדרך', delivered:'נמסרה' };
           const list = active.slice(0, 15).map(o =>
@@ -363,7 +373,7 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
         case 'CONFIRM_PAYMENT': {
           const { order_number } = payload;
           const { data: ord } = await supabase
-            .from('orders').select('*').eq('order_number', order_number).single();
+            .from('orders').select('*').eq('order_number', order_number).eq('tenant_id', tenantId).single();
           if (!ord) { results.push(`❌ הזמנה #${order_number} לא נמצאה`); break; }
           if (ord.payment_status === 'paid') { results.push(`⚠️ הזמנה #${order_number} כבר שולמה`); break; }
           await supabase.from('orders').update({

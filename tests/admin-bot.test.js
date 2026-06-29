@@ -28,6 +28,9 @@ jest.mock('@supabase/supabase-js', () => ({
       let ilikeCol   = null;
       let ilikeVal   = null;
 
+      let inCol = null;
+      let inVals = null;
+
       const b = {
         select: () => { mode = 'select'; return b; },
         update: (vals) => {
@@ -43,6 +46,11 @@ jest.mock('@supabase/supabase-js', () => ({
           filters[col] = val;
           return b;
         },
+        in: (col, vals) => {
+          inCol  = col;
+          inVals = vals;
+          return b;
+        },
         ilike: (col, pattern) => {
           ilikeCol = col;
           ilikeVal = pattern.replace(/%/g, '');
@@ -50,8 +58,14 @@ jest.mock('@supabase/supabase-js', () => ({
         },
         limit: async (n) => {
           let result = rows;
+          if (Object.keys(filters).length) {
+            result = result.filter(r => Object.entries(filters).every(([k, v]) => r[k] === v));
+          }
+          if (inCol && inVals) {
+            result = result.filter(r => inVals.includes(r[inCol]));
+          }
           if (ilikeCol) {
-            result = rows.filter(r => String(r[ilikeCol] || '').includes(ilikeVal));
+            result = result.filter(r => String(r[ilikeCol] || '').includes(ilikeVal));
           }
           return { data: result.slice(0, n) };
         },
@@ -111,7 +125,7 @@ const PHONE      = '972501234567';
 const TENANT     = 'aaaaaaaa-0000-0000-0000-000000000001';
 
 function seedProduct(id, name_he, is_available = true) {
-  dbRows.products.push({ id, name_he, price: 50, is_available });
+  dbRows.products.push({ id, name_he, price: 50, is_available, tenant_id: TENANT });
 }
 function seedTopping(id, product_id, name_he, is_available = true) {
   dbRows.product_additions.push({ id, product_id, name_he, price: 5, is_available });
@@ -126,6 +140,7 @@ function seedOrder(overrides = {}) {
     payment_method: 'cash',
     payment_status: 'paid',
     total_price:    60,
+    tenant_id:      TENANT,
     ...overrides,
   };
   dbRows.orders.push(order);
@@ -179,6 +194,7 @@ describe('SET_AVAILABLE — product', () => {
 // ── SET_AVAILABLE — topping ───────────────────────────────────────────────────
 describe('SET_AVAILABLE — topping', () => {
   test('marks a topping unavailable', async () => {
+    seedProduct('p-1', 'פיצה');
     seedTopping('t-1', 'p-1', 'בולגרית');
     mockClaudeReturn = '<!--ADMIN:SET_AVAILABLE:{"type":"topping","name":"בולגרית","available":false}-->';
 
