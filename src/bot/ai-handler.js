@@ -272,8 +272,13 @@ async function handleMessage(phone, userMessage, tenantId = null) {
   if (history.length === 0) {
     const botUrl = (await settings.get('bot_url', tid).catch(() => null)) || process.env.PUBLIC_URL || 'https://www.jasell.com';
     const privacyNotice = `\n\n_מדיניות הפרטיות שלנו: ${botUrl}/privacy.html_`;
-    await reply(phone, cleanText + privacyNotice, tid);
-  } else {
+    const allSettingsForName = await settings.loadAll(tid);
+    const bizName = allSettingsForName.business_name || 'פיצה דליבריס';
+    const menuUrl = botUrl + '/menu.html';
+    // Fallback greeting if Claude returned empty text on first message
+    const text = cleanText || `היי! 👋 ברוכים הבאים ל${bizName} 🍕\nמשלוח או איסוף? מזומן או אשראי?\nתפריט עם תמונות: ${menuUrl}`;
+    await reply(phone, text + privacyNotice, tid);
+  } else if (cleanText) {
     await reply(phone, cleanText, tid);
   }
 
