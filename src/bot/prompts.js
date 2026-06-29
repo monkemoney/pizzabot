@@ -5,12 +5,13 @@ const { buildMenuText } = require('../services/menu-service');
 
 async function buildSystemPrompt(customerProfile = null, tenantId = null) {
   const tid = tenantId || settings.DEFAULT_TENANT_ID;
-  const [allSettings, menuText] = await Promise.all([
+  const [allSettings, menuText, deliveryNowOpen] = await Promise.all([
     settings.loadAll(tid),
     settings.loadAll(tid).then((s) => buildMenuText(s, tid)),
+    settings.isDeliveryOpen(tid),
   ]);
 
-  const deliveryEnabled = allSettings.delivery_enabled !== false;
+  const deliveryEnabled = allSettings.delivery_enabled !== false && deliveryNowOpen;
   const pickupEnabled   = allSettings.pickup_enabled   !== false;
   const cashEnabled     = allSettings.payment_cash     !== false;
   const creditEnabled   = allSettings.payment_credit   !== false;

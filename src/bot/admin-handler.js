@@ -61,6 +61,19 @@ async function buildAdminPrompt(adminUser, tenantId = DEFAULT_TENANT_ID) {
 ══════════════════════════
 • בוט פתוח: ${allSettings.is_open !== false ? 'כן ✅' : 'לא ❌'}
 • משלוח: ${allSettings.delivery_enabled !== false ? 'כן' : 'לא'} | איסוף: ${allSettings.pickup_enabled !== false ? 'כן' : 'לא'}
+${(() => {
+  const dh = allSettings.delivery_hours;
+  if (!dh || Object.keys(dh).length === 0) return '• שעות משלוח: לא מוגדרות (פתוח תמיד)';
+  const days = ['sun','mon','tue','wed','thu','fri','sat'];
+  const DAY_HE = { sun:'ראשון', mon:'שני', tue:'שלישי', wed:'רביעי', thu:'חמישי', fri:'שישי', sat:'שבת' };
+  const nowIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  const today = days[nowIL.getDay()];
+  const todayH = dh[today];
+  const todayStr = todayH
+    ? (todayH.is_open === false ? 'סגור היום' : `${todayH.open}–${todayH.close}`)
+    : 'לא מוגדר';
+  return `• שעות משלוח היום (יום ${DAY_HE[today]}): ${todayStr}`;
+})()}
 
 ══════════════════════════
 תפריט נוכחי
@@ -92,6 +105,9 @@ ${orderList}
 **הגדרה:**
 <!--ADMIN:SET:{"key":"is_open|delivery_enabled|pickup_enabled|payment_cash|payment_credit","value":true|false}-->
 
+**שעות משלוח ליום ספציפי:**
+<!--ADMIN:SET_DELIVERY_HOURS:{"day":"today|sun|mon|tue|wed|thu|fri|sat","open":"HH:MM","close":"HH:MM","is_open":true|false}-->
+
 **עדכון מחיר:**
 <!--ADMIN:UPDATE_PRICE:{"name":"<שם מוצר>","price":<מחיר חדש>}-->
 
@@ -112,6 +128,8 @@ ${orderList}
 • "סגור" / "צאו" = SET is_open:false
 • "פתח" = SET is_open:true
 • "קיבלתי Bit" / "שילמו" / "אשר תשלום" + מספר הזמנה = CONFIRM_PAYMENT
+• "משלוח עד 22:00" / "פתח משלוח מ-12:00" = SET_DELIVERY_HOURS עם day:today
+• "סגור משלוח היום" = SET_DELIVERY_HOURS day:today is_open:false
 `;
 }
 
@@ -207,6 +225,30 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
           settings._clearCache(tenantId);
           const labels = { is_open:'בוט', delivery_enabled:'משלוח', pickup_enabled:'איסוף', payment_cash:'מזומן', payment_credit:'אשראי' };
           results.push(`${value ? '✅' : '❌'} *${labels[key] || key}* — ${value ? 'פועל' : 'מושבת'}`);
+          break;
+        }
+
+        case 'SET_DELIVERY_HOURS': {
+          const { day: rawDay, open: openTime, close: closeTime, is_open: dayOpen = true } = payload;
+          const sysdays = ['sun','mon','tue','wed','thu','fri','sat'];
+          const DAY_HE  = { sun:'ראשון', mon:'שני', tue:'שלישי', wed:'רביעי', thu:'חמישי', fri:'שישי', sat:'שבת' };
+          const nowIL   = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+          const targetDay = rawDay === 'today' ? sysdays[nowIL.getDay()] : rawDay;
+          if (!sysdays.includes(targetDay)) { results.push(`❌ יום לא חוקי: "${rawDay}"`); break; }
+          const current = (await settings.get('delivery_hours', tenantId)) || {};
+          current[targetDay] = {
+            is_open: dayOpen,
+            open:  openTime  || current[targetDay]?.open  || '10:00',
+            close: closeTime || current[targetDay]?.close || '23:00',
+          };
+          await settings.set('delivery_hours', current, tenantId);
+          settings._clearCache(tenantId);
+          const dayLabel = DAY_HE[targetDay] || targetDay;
+          if (!dayOpen) {
+            results.push(`❌ משלוח סגור ביום ${dayLabel}`);
+          } else {
+            results.push(`✅ שעות משלוח יום ${dayLabel}: ${current[targetDay].open}–${current[targetDay].close}`);
+          }
           break;
         }
 

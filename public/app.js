@@ -1880,23 +1880,26 @@ function showToast(msg) {
 
 // ── Render ──
 
-function renderSettingsForm(s) {
-  const hours = s.business_hours || {};
-
-  const hoursRows = DAY_ORDER.map((day) => {
-    const h = hours[day] || { open: '10:00', close: '23:00', is_open: true };
+function buildHoursRows(hoursObj, activeClass, inputClass) {
+  return DAY_ORDER.map((day) => {
+    const h = hoursObj[day] || { open: '10:00', close: '23:00', is_open: true };
     const open = h.is_open !== false;
     return `<div class="hours-row" style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:var(--primary-soft);border-radius:14px;margin-bottom:8px">
       <label class="toggle-switch">
-        <input type="checkbox" class="hours-active" data-day="${day}" ${open?'checked':''}>
+        <input type="checkbox" class="${activeClass}" data-day="${day}" ${open?'checked':''}>
         <span class="toggle-track"></span>
       </label>
       <span style="font-weight:700;font-size:.85rem;color:var(--text);min-width:62px">יום ${DAY_LABELS[day]}</span>
-      <input type="time" value="${h.open}"  data-day="${day}" data-field="open"  class="hours-input" style="width:110px" ${!open?'disabled':''}>
+      <input type="time" dir="ltr" value="${h.open}"  data-day="${day}" data-field="open"  class="${inputClass}" style="width:110px" ${!open?'disabled':''}>
       <span style="color:var(--text-muted);font-size:.82rem">—</span>
-      <input type="time" value="${h.close}" data-day="${day}" data-field="close" class="hours-input" style="width:110px" ${!open?'disabled':''}>
+      <input type="time" dir="ltr" value="${h.close}" data-day="${day}" data-field="close" class="${inputClass}" style="width:110px" ${!open?'disabled':''}>
     </div>`;
   }).join('');
+}
+
+function renderSettingsForm(s) {
+  const hoursRows         = buildHoursRows(s.business_hours  || {}, 'hours-active',          'hours-input');
+  const deliveryHoursRows = buildHoursRows(s.delivery_hours  || {}, 'delivery-hours-active', 'delivery-hours-input');
 
   const ico = (path, vb='0 0 24 24') =>
     `<svg width="16" height="16" viewBox="${vb}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-left:6px">${path}</svg>`;
@@ -1965,6 +1968,12 @@ function renderSettingsForm(s) {
       ${saveBtn('saveHours')}
     `)}
 
+    ${sCard(`${ICONS.truck} שעות משלוח`, `
+      <div style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">הגדר באילו שעות המשלוח זמין. בימים שאינם פעילים לא יוצע משלוח.</div>
+      <div>${deliveryHoursRows}</div>
+      ${saveBtn('saveDeliveryHours')}
+    `)}
+
     ${sCard(`${ICONS.pin} אזורי משלוח`, `
       <div id="zonesTable"></div>
       <div style="margin-top:12px">
@@ -2006,18 +2015,20 @@ function renderSettingsForm(s) {
     });
   }
 
-  // Sync hours-active toggle → enable/disable time inputs
-  document.querySelectorAll('.hours-active').forEach((cb) => {
-    cb.addEventListener('change', () => {
+  // Sync hours toggles → enable/disable time inputs (business hours + delivery hours)
+  function wireHoursToggle(activeClass, inputClass) {
+    document.querySelectorAll(`.${activeClass}`).forEach((cb) => {
       const day = cb.dataset.day;
-      document.querySelectorAll(`.hours-input[data-day="${day}"]`)
-        .forEach((inp) => { inp.disabled = !cb.checked; inp.style.opacity = cb.checked ? '1' : '.4'; });
+      const syncInputs = () => {
+        document.querySelectorAll(`.${inputClass}[data-day="${day}"]`)
+          .forEach((inp) => { inp.disabled = !cb.checked; inp.style.opacity = cb.checked ? '1' : '.4'; });
+      };
+      cb.addEventListener('change', syncInputs);
+      syncInputs();
     });
-    // Set initial opacity
-    const day = cb.dataset.day;
-    document.querySelectorAll(`.hours-input[data-day="${day}"]`)
-      .forEach(inp => inp.style.opacity = cb.checked ? '1' : '.4');
-  });
+  }
+  wireHoursToggle('hours-active',          'hours-input');
+  wireHoursToggle('delivery-hours-active', 'delivery-hours-input');
 }
 
 // ── Section save functions ──
@@ -2070,6 +2081,17 @@ async function saveHours() {
     businessHours[day] = { open, close, is_open: active };
   });
   await saveSection({ business_hours: businessHours });
+}
+
+async function saveDeliveryHours() {
+  const deliveryHours = {};
+  DAY_ORDER.forEach((day) => {
+    const active = document.querySelector(`.delivery-hours-active[data-day="${day}"]`)?.checked ?? true;
+    const open   = document.querySelector(`.delivery-hours-input[data-day="${day}"][data-field="open"]`)?.value || '10:00';
+    const close  = document.querySelector(`.delivery-hours-input[data-day="${day}"][data-field="close"]`)?.value || '23:00';
+    deliveryHours[day] = { open, close, is_open: active };
+  });
+  await saveSection({ delivery_hours: deliveryHours });
 }
 
 // ── Delivery Zones ──

@@ -81,9 +81,30 @@ async function isOpen(tenantId = DEFAULT_TENANT_ID) {
   return nowMinutes >= openMinutes && nowMinutes <= closeMinutes;
 }
 
+function _checkHoursWindow(hours, day) {
+  if (!hours) return true;
+  const todayHours = hours[day];
+  if (!todayHours || todayHours.is_open === false) return false;
+  const [openH, openM]   = (todayHours.open  || '00:00').split(':').map(Number);
+  const [closeH, closeM] = (todayHours.close || '23:59').split(':').map(Number);
+  const nowIL  = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  const nowMin = nowIL.getHours() * 60 + nowIL.getMinutes();
+  return nowMin >= openH * 60 + openM && nowMin <= closeH * 60 + closeM;
+}
+
+async function isDeliveryOpen(tenantId = DEFAULT_TENANT_ID) {
+  const deliveryEnabled = await get('delivery_enabled', tenantId);
+  if (deliveryEnabled === false) return false;
+  const hours = await get('delivery_hours', tenantId);
+  if (!hours || Object.keys(hours).length === 0) return true;
+  const days = ['sun','mon','tue','wed','thu','fri','sat'];
+  const nowIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  return _checkHoursWindow(hours, days[nowIL.getDay()]);
+}
+
 function _clearCache(tenantId = DEFAULT_TENANT_ID) {
   _getCache(tenantId).time = 0;
   _getCache(tenantId).data = {};
 }
 
-module.exports = { get, set, loadAll, isOpen, _clearCache, DEFAULT_TENANT_ID };
+module.exports = { get, set, loadAll, isOpen, isDeliveryOpen, _clearCache, DEFAULT_TENANT_ID };
