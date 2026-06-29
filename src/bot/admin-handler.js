@@ -78,7 +78,19 @@ async function buildAdminPrompt(adminUser, tenantId = DEFAULT_TENANT_ID) {
 סטטוס המסעדה
 ══════════════════════════
 • בוט פתוח: ${allSettings.is_open !== false ? 'כן ✅' : 'לא ❌'}
-• משלוח: ${allSettings.delivery_enabled !== false ? 'כן' : 'לא'} | איסוף: ${allSettings.pickup_enabled !== false ? 'כן' : 'לא'}${deliveryHoursLine}}
+• משלוח: ${allSettings.delivery_enabled !== false ? 'כן' : 'לא'} | איסוף: ${allSettings.pickup_enabled !== false ? 'כן' : 'לא'}${deliveryHoursLine}
+${(() => {
+  const bh = allSettings.business_hours;
+  if (!bh || Object.keys(bh).length === 0) return '';
+  const days = ['sun','mon','tue','wed','thu','fri','sat'];
+  const DAY_HE = { sun:'ראשון', mon:'שני', tue:'שלישי', wed:'רביעי', thu:'חמישי', fri:'שישי', sat:'שבת' };
+  const nowIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  const today = days[nowIL.getDay()];
+  const todayH = bh[today];
+  if (!todayH) return '';
+  const status = todayH.is_open === false ? 'סגור היום' : `${todayH.open}–${todayH.close}`;
+  return `• שעות פעילות היום (יום ${DAY_HE[today]}): ${status}`;
+})()}}
 
 ══════════════════════════
 תפריט נוכחי
