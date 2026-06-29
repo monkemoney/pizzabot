@@ -19,6 +19,12 @@ if (role === 'admin') {
   });
 }
 
+// Kitchen link — visible to admin and manager
+if (role === 'admin' || role === 'manager') {
+  const kitchenBtn = document.getElementById('tab-kitchen');
+  if (kitchenBtn) kitchenBtn.style.display = 'flex';
+}
+
 function logout() {
   localStorage.clear();
   window.location.href = '/';
