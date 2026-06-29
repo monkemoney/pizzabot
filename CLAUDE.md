@@ -580,6 +580,7 @@ api_usage          -- Claude API token logging per call:
 - **Kitchen window (2026-06-29):** Tab in dashboard for admin/manager + standalone `/kitchen` route for `kitchen` role. Shows orders in `preparing` and `ready` status only (`new` stays in dashboard). Single vertical feed sorted oldest-first: order number, name, items+toppings, notes. "מוכן ✓" button → `ready`. SSE push — new orders appear instantly without polling. `GET /api/kitchen/orders`, `GET /api/sse` (token via `?token=` for EventSource). `requireKitchenOrAdmin` middleware. `status_history` JSONB column on orders — every status transition appended with timestamp.
 - **`ready` status (2026-06-29):** Added between `preparing` and `out_for_delivery`. WhatsApp to customer on `ready` only for pickup orders (`delivery_method='pickup'`). Delivery orders: silent (out_for_delivery message covers it). `orders_status_check` DB constraint updated to include `ready`.
 - **SSE broker (2026-06-29):** `src/services/sse.js` — `Map<tenantId, Set<res>>`, 25s keepalive ping. `broadcast(tenantId, event, data)` fires on `updateOrderStatus` and `saveOrder`. Events: `new_order`, `order_updated`.
+- **Tenant isolation audit (2026-06-29):** Full audit of all DB queries and WhatsApp sends. 22 HIGH + 4 MEDIUM issues found and fixed. See "Tenant Isolation Rules" in Operational Rules.
 
 ### ❌ Missing / needs work
 | Item | Notes |
@@ -601,8 +602,92 @@ api_usage          -- Claude API token logging per call:
 6. **delivery_zones** is authoritative; `saveZones()` syncs `delivery_cities`; bot reads zones first
 7. **Admin users added via dashboard Settings** → "מנהלי וואצפ" section, stored in `admin_users` table
 8. **Vendor portal** is at `/admin` (admin.html + admin.js) — completely separate from business dashboard; any change to one does NOT affect the other
-9. **Multi-tenant rule:** every new DB query on a tenant-scoped table must include `.eq('tenant_id', tenantId)`. Every new service function must accept `tenantId = DEFAULT_TENANT_ID`.
-10. **Always update CLAUDE.md** when architecture changes
+9. **Always update CLAUDE.md** when architecture changes
+
+---
+
+## Tenant Isolation Rules — MANDATORY
+
+כל שינוי קוד שנוגע ב-DB, WhatsApp, או settings חייב לעמוד ב-5 כללים אלו. דפוסים שגויים אלו גרמו ל-26 בעיות בביקורת 2026-06-29.
+
+### כלל 1 — כל query על טבלה tenant-scoped חייב `.eq('tenant_id', tenantId)`
+
+טבלאות tenant-scoped: `orders`, `products`, `categories`, `settings`, `sessions`, `admin_users`, `pending_payments`, `push_subscriptions`
+
+```js
+// ❌ אסור
+supabase.from('orders').select('*')
+supabase.from('products').insert({ name_he, price })
+
+// ✅ חייב
+supabase.from('orders').select('*').eq('tenant_id', tid(req))       // ב-routes
+supabase.from('products').insert({ name_he, price, tenant_id: tid(req) })
+supabase.from('orders').select('*').eq('tenant_id', tenantId)        // ב-services
+```
+
+`product_additions` אין לה `tenant_id` ישיר — מסננים לפי `product_id IN (רשימת IDs של הטנאנט)`.
+
+### כלל 2 — כל `sendMessage()` חייב לקבל tenantId
+
+```js
+// ❌ אסור — שולח דרך Green API של DEFAULT_TENANT
+await sendMessage(phone, text)
+
+// ✅ חייב — שולח דרך ה-instance הנכון של הטנאנט
+await sendMessage(phone, text, tenantId)
+await sendMessage(order.phone, text, order.tenant_id)
+```
+
+### כלל 3 — כל `settings.loadAll()` / `settings.get()` / `settings.set()` חייב tenantId
+
+```js
+// ❌ אסור — קורא הגדרות של DEFAULT_TENANT_ID
+await settings.loadAll()
+await settings.get('is_open')
+
+// ✅ חייב
+await settings.loadAll(tenantId)
+await settings.get('is_open', tenantId)
+await settings.set('is_open', true, tenantId)
+```
+
+יוצא דופן: `vendor-alerts.js` תמיד משתמש ב-`DEFAULT_TENANT_ID` מפורש — vendor alerts הם platform-level.
+
+### כלל 4 — כל פונקציית service חדשה חייבת לקבל `tenantId = DEFAULT_TENANT_ID`
+
+```js
+// ❌ אסור
+async function getOrders(status) {
+  return supabase.from('orders').select('*')...
+}
+
+// ✅ חייב
+async function getOrders(status, tenantId = DEFAULT_TENANT_ID) {
+  return supabase.from('orders').select('*').eq('tenant_id', tenantId)...
+}
+```
+
+### כלל 5 — כל `notifyStatusChange()` חייב להעביר tenantId
+
+```js
+// ❌ אסור
+await notifyStatusChange(order.phone, status, 'he', order.order_number, order)
+
+// ✅ חייב
+await notifyStatusChange(order.phone, status, 'he', order.order_number, order, tenantId)
+// או
+await notifyStatusChange(order.phone, status, 'he', order.order_number, order, order.tenant_id)
+```
+
+### Checklist לפני PR
+
+לפני כל commit שנוגע ב-DB/WhatsApp/settings — בדוק:
+- [ ] כל `supabase.from('TABLE')` על טבלה tenant-scoped כולל `.eq('tenant_id', ...)`
+- [ ] כל `insert()` על טבלה tenant-scoped כולל `tenant_id` בשדות
+- [ ] כל `sendMessage()` מעביר את ה-tenantId הנכון
+- [ ] כל `settings.loadAll/get/set` מעביר tenantId
+- [ ] כל פונקציה חדשה ב-supabase.js מקבלת `tenantId = DEFAULT_TENANT_ID`
+- [ ] כל קריאה ל-`notifyStatusChange` מעבירה tenantId
 
 ---
 
@@ -888,6 +973,24 @@ All `page-*` divs must be children of `<div class="main">`. If a `</div>` is acc
 
 ### showTab() must sync both sidebar and mobile bottom-nav active states
 `showTab(name)` must call `classList.remove/add('active')` on both `#tab-${name}` (sidebar) and `#mobile-tab-${name}` (bottom nav). When adding a new tab, add the button to BOTH the `<nav>` inside `<aside>` AND the `<nav class="mobile-bottom-nav">`. Visibility (display:none/flex) for role-gated tabs must also be set in both places in app.js.
+
+### Tenant isolation audit (2026-06-29) — 26 issues found and fixed
+Full audit of all Supabase queries, sendMessage calls, and settings access. Root causes:
+- Legacy code written before multi-tenant was added — queries had no `.eq('tenant_id', ...)`
+- `getOrders()` in `supabase.js` had no tenantId param — callers assumed it was scoped
+- `sendMessage()` calls in dashboard-api.js forgotten without tenantId — always sent via DEFAULT instance
+- `settings.loadAll()` called without tenantId — read DEFAULT tenant settings for all tenants
+- `notifyStatusChange()` had no tenantId param — couriers from wrong tenant got notifications
+- `push_subscriptions` had no `tenant_id` column — all browsers got notified on every order
+- `product_additions` has no `tenant_id` — must filter via `product_id IN (tenant_products_ids)`
+
+Fixed pattern: every function now accepts `tenantId = DEFAULT_TENANT_ID`, every query scoped, every sendMessage/settings call passes tenantId. See "Tenant Isolation Rules" section above.
+
+### Tenant isolation — admin bot had cross-tenant queries too
+`admin-handler.js` `dispatchActions()` had all DB queries without `.eq('tenant_id', tenantId)`:
+`SET_AVAILABLE`, `ORDER_STATUS`, `CANCEL_ORDER`, `DISPUTE`, `UPDATE_PRICE`, `LIST_ORDERS`, `CONFIRM_PAYMENT` — all could touch data of other tenants. Fixed 2026-06-29 — each case now filters by `tenantId`.
+
+For SET_AVAILABLE on toppings: first fetch `products.id` for the tenant, then filter `product_additions` by `product_id IN [...]`. This is the correct pattern since `product_additions` has no `tenant_id` column.
 
 ### Testing the admin bot or customer bot via curl — use instanceId in payload
 To send a simulated WhatsApp message directly to the webhook (bypassing Green API):
