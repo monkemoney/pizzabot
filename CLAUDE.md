@@ -581,6 +581,11 @@ api_usage          -- Claude API token logging per call:
 - **`ready` status (2026-06-29):** Added between `preparing` and `out_for_delivery`. WhatsApp to customer on `ready` only for pickup orders (`delivery_method='pickup'`). Delivery orders: silent (out_for_delivery message covers it). `orders_status_check` DB constraint updated to include `ready`.
 - **SSE broker (2026-06-29):** `src/services/sse.js` — `Map<tenantId, Set<res>>`, 25s keepalive ping. `broadcast(tenantId, event, data)` fires on `updateOrderStatus` and `saveOrder`. Events: `new_order`, `order_updated`.
 - **Tenant isolation audit (2026-06-29):** Full audit of all DB queries and WhatsApp sends. 22 HIGH + 4 MEDIUM issues found and fixed. See "Tenant Isolation Rules" in Operational Rules.
+- **Scheduled orders (2026-06-29):** Customer can request "לשעה 21:30" → bot saves `status='scheduled'`, `scheduled_for=ISO`. Scheduler in `index.js` (every 60s) moves orders to `preparing` when `scheduled_for - prep_lead_time <= now`. WhatsApp sent to customer. `prep_lead_time` setting (default 45 min, min 15, max 120) — configurable in dashboard Settings card "הזמנות מתוזמנות". Minimum scheduling distance enforced in ai-handler.js.
+- **Customer bot — live state in system prompt (2026-06-29):** Every message rebuilds prompt with "מצב נוכחי" section: current IL time, is_open, today's business hours, delivery hours, delivery/pickup availability, payment methods. Bot answers questions about hours/status from this section only, not from training data.
+- **Customer bot — business_name from settings (2026-06-29):** Both bots (customer + admin) now use `allSettings.business_name` instead of hardcoded "פיצה דליבריס". Every tenant's bot introduces itself with the correct business name.
+- **Customer bot — mid-conversation availability check (2026-06-29):** Before every Claude call (when history > 0), ai-handler queries DB for unavailable `product_additions` of this tenant, checks if any were mentioned in customer messages. If yes → injects `⚠️ התראת מלאי` into system prompt. Bot must notify customer and cannot include unavailable items in SAVE_ORDER.
+- **Customer bot — greeting with menu link (2026-06-29):** First message always includes `menuUrl` in the greeting template. Privacy notice only appended when Claude produced non-empty text; empty-text fallback greeting sent if Claude returns only an ACTION block.
 
 ### ❌ Missing / needs work
 | Item | Notes |
@@ -991,6 +996,27 @@ Fixed pattern: every function now accepts `tenantId = DEFAULT_TENANT_ID`, every 
 `SET_AVAILABLE`, `ORDER_STATUS`, `CANCEL_ORDER`, `DISPUTE`, `UPDATE_PRICE`, `LIST_ORDERS`, `CONFIRM_PAYMENT` — all could touch data of other tenants. Fixed 2026-06-29 — each case now filters by `tenantId`.
 
 For SET_AVAILABLE on toppings: first fetch `products.id` for the tenant, then filter `product_additions` by `product_id IN [...]`. This is the correct pattern since `product_additions` has no `tenant_id` column.
+
+### Customer bot system prompt must include live state — not hardcoded values
+Both bots hardcoded "פיצה דליבריס" instead of `allSettings.business_name`. For multi-tenant, every bot must read ALL dynamic values from `allSettings`. The "מצב נוכחי" section in the customer prompt is rebuilt on every message with the current tenant's settings (hours, open/closed, payment methods). Never hardcode business names, hours, or payment info in the prompt string.
+
+### Customer bot: business hours were missing from system prompt entirely
+`business_hours` was never included in `buildSystemPrompt()`. The bot had no way to answer "מאיזה שעה אתם פתוחים?" correctly — it would answer from training data. Fix: added "מצב נוכחי" section with today's hours, current time, delivery status. Instruction added: "ענה על שאלות שעות/זמינות לפי סקשן זה בלבד — אל תמציא מידע."
+
+### Settings cache invalidation is immediate — no TTL wait needed
+`settings.set()` always calls `_getCache(tenantId).time = 0`. After any settings change (dashboard PATCH or admin bot SET action), the next customer message reloads fresh from DB. The 60s cache TTL only applies when no change occurred. Testing showed 0-second delay between admin toggling `is_open=false` and the customer bot seeing it on the next message.
+
+### Mid-conversation availability change: prompt instruction alone is insufficient
+Adding "if a topping in history isn't in current menu, tell customer" to the prompt was NOT enough — Claude continued the conversation flow without proactively scanning. Fix: code-level check in ai-handler.js before every Claude call queries `product_additions` for `is_available=false` items matching tenant's products, checks if any appear in customer's messages, and injects explicit `⚠️ התראת מלאי` into the system prompt. This forces Claude to address it on the very next response.
+
+### Simulating mid-conversation DB changes requires going through the app API
+Direct SQL UPDATE via Supabase Management API does NOT call `invalidateCache()`. The in-memory menu cache stays warm (up to 60s). Always simulate admin actions via the app's API endpoints (PATCH /api/products/:id/additions/:addId) or via the admin bot webhook, which call `invalidateCache(tenantId)`.
+
+### Privacy notice sent alone when Claude returns only an ACTION block
+When `history.length === 0` and Claude's response was only an ACTION block (e.g. `<!--ACTION:RESET-->`), `cleanText` was empty and only `\n\n_מדיניות הפרטיות_` was sent. Fix: added `if (cleanText)` guard + fallback greeting with business name and menu URL when `cleanText` is empty on first message. Privacy notice is now always appended to non-empty text, never sent alone.
+
+### Admin bot — empty prompt section causes hallucinated suggestions
+When a settings section showed "לא מוגדרות (פתוח תמיד)" for unset hours, Claude interpreted this as an invitation to volunteer help configuring them — even when not asked. Fix: removed explanatory strings for empty/unset values; sections only appear when they have actual data. Also added "ענה רק על מה שנשאלת — אל תציע עזרה שלא ביקשו" to admin rules.
 
 ### Testing the admin bot or customer bot via curl — use instanceId in payload
 To send a simulated WhatsApp message directly to the webhook (bypassing Green API):
