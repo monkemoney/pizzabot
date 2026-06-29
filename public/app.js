@@ -2313,9 +2313,7 @@ function _kitchenCard(o) {
 
   const statusColor = o.status === 'new' ? '#f59e0b' : o.status === 'preparing' ? '#3b82f6' : '#22c55e';
 
-  const btn = o.status === 'new'
-    ? `<button onclick="kitchenSetStatus('${o.id}','preparing')" style="flex:1;padding:12px;border:none;border-radius:10px;background:#3b82f6;color:#fff;font-size:.95rem;font-weight:700;cursor:pointer;letter-spacing:.3px">בהכנה</button>`
-    : o.status === 'preparing'
+  const btn = o.status === 'preparing'
     ? `<button onclick="kitchenSetStatus('${o.id}','ready')" style="flex:1;padding:12px;border:none;border-radius:10px;background:#22c55e;color:#fff;font-size:.95rem;font-weight:700;cursor:pointer;letter-spacing:.3px">מוכן ✓</button>`
     : '';
 
@@ -2364,11 +2362,11 @@ function _kitchenConnectSSE() {
   _kitchenSSE = es;
   es.addEventListener('new_order', (e) => {
     const o = JSON.parse(e.data);
-    if (['new','preparing','ready'].includes(o.status)) { _kitchenOrders[o.id] = o; renderKitchen(); showToast(`📦 הזמנה חדשה #${o.order_number}`); }
+    if (['preparing','ready'].includes(o.status)) { _kitchenOrders[o.id] = o; renderKitchen(); showToast(`🔥 הזמנה #${o.order_number} עברה להכנה`); }
   });
   es.addEventListener('order_updated', (e) => {
     const o = JSON.parse(e.data);
-    if (['new','preparing','ready'].includes(o.status)) _kitchenOrders[o.id] = o;
+    if (['preparing','ready'].includes(o.status)) _kitchenOrders[o.id] = o;
     else delete _kitchenOrders[o.id];
     renderKitchen();
   });

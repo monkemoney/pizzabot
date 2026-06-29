@@ -685,14 +685,14 @@ router.post('/customers/broadcast', requireAdmin, async (req, res) => {
 
 // ─── Kitchen Window ───────────────────────────────────────────────────────────
 
-// GET /api/kitchen/orders — active orders for the kitchen (new, preparing, ready)
+// GET /api/kitchen/orders — orders in active kitchen statuses (preparing, ready)
 router.get('/kitchen/orders', requireKitchenOrAdmin, async (req, res) => {
   const tid = req.user.tenant_id;
   const { data, error } = await supabase
     .from('orders')
     .select('*')
     .eq('tenant_id', tid)
-    .in('status', ['new', 'preparing', 'ready'])
+    .in('status', ['preparing', 'ready'])
     .order('created_at', { ascending: true });
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
