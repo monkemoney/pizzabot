@@ -100,7 +100,7 @@ function showTab(name) {
   if (name === 'customers') loadCustomers();
   if (name === 'settings')  { loadSettings(); loadAdminUsers(); }
   if (name === 'stats')     setPeriod(currentPeriod);
-  if (name === 'kitchen')   initKitchen();
+  if (name === 'kitchen')   { window.scrollTo(0, 0); initKitchen(); }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
