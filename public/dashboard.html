@@ -668,30 +668,12 @@ input[type=time] { direction: ltr; }
       <div style="display:flex;align-items:center;gap:10px">
         <span id="kitchen-dot" style="width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block;transition:background .3s"></span>
         <span id="kitchen-conn" style="font-size:.8rem;color:var(--text-muted)">מתחבר…</span>
+        <span id="kitchen-count" style="font-size:.8rem;color:var(--text-muted)"></span>
         <button onclick="loadKitchenOrders()" class="btn btn-ghost btn-sm" style="display:inline-flex;align-items:center;gap:5px">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.38-7.2"/></svg> רענן</button>
       </div>
     </div>
-    <div id="kitchen-board" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
-      <div>
-        <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fef3c7;color:#92400e;border-radius:12px;font-weight:700;font-size:.85rem;margin-bottom:12px">
-          ⏰ ממתין להכנה <span id="kitchen-badge-new" style="margin-right:auto;background:rgba(0,0,0,.12);border-radius:999px;padding:1px 8px;font-size:.75rem">0</span>
-        </div>
-        <div id="kitchen-col-new"></div>
-      </div>
-      <div>
-        <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#dbeafe;color:#1e40af;border-radius:12px;font-weight:700;font-size:.85rem;margin-bottom:12px">
-          🔥 בהכנה <span id="kitchen-badge-preparing" style="margin-right:auto;background:rgba(0,0,0,.12);border-radius:999px;padding:1px 8px;font-size:.75rem">0</span>
-        </div>
-        <div id="kitchen-col-preparing"></div>
-      </div>
-      <div>
-        <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#dcfce7;color:#166534;border-radius:12px;font-weight:700;font-size:.85rem;margin-bottom:12px">
-          ✅ מוכן <span id="kitchen-badge-ready" style="margin-right:auto;background:rgba(0,0,0,.12);border-radius:999px;padding:1px 8px;font-size:.75rem">0</span>
-        </div>
-        <div id="kitchen-col-ready"></div>
-      </div>
-    </div>
+    <div id="kitchen-feed" style="max-width:520px"></div>
   </div>
 
   <!-- STATS -->
