@@ -70,27 +70,64 @@ async function buildAdminPrompt(adminUser, tenantId = DEFAULT_TENANT_ID) {
   return todayStr ? `\n• שעות משלוח היום: ${todayStr}` : '';
 })();
 
+  const DAY_HE  = { sun:'ראשון', mon:'שני', tue:'שלישי', wed:'רביעי', thu:'חמישי', fri:'שישי', sat:'שבת' };
+  const DAYS    = ['sun','mon','tue','wed','thu','fri','sat'];
+  const nowIL   = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  const todayKey = DAYS[nowIL.getDay()];
+
+  function hoursText(hoursObj) {
+    if (!hoursObj || !Object.keys(hoursObj).length) return '(לא מוגדרות)';
+    return DAYS.map(d => {
+      const h = hoursObj[d];
+      if (!h) return null;
+      const mark = d === todayKey ? ' ← היום' : '';
+      return `  ${DAY_HE[d]}: ${h.is_open === false ? 'סגור' : `${h.open}–${h.close}`}${mark}`;
+    }).filter(Boolean).join('\n');
+  }
+
+  const zonesText = (() => {
+    const zones = Array.isArray(allSettings.delivery_zones) ? allSettings.delivery_zones : [];
+    if (!zones.length) return `  מחיר בסיס: ${allSettings.delivery_price ?? 30}₪`;
+    return zones.map(z => `  ${z.city}${z.area ? ` (${z.area})` : ''}: ${z.fee}₪, מינ' ${z.min_order ?? 0}₪${z.eta_minutes ? `, ~${z.eta_minutes} דק'` : ''}`).join('\n');
+  })();
+
+  const couriersText = (() => {
+    const list = Array.isArray(allSettings.couriers) ? allSettings.couriers.filter(c => c?.phone) : [];
+    if (!list.length) return '  אין שליחים';
+    return list.map(c => `  ${c.name || '—'}: ${c.phone}`).join('\n');
+  })();
+
   return `אתה עוזר ניהול של פיצה דליבריס.
 המנהל שמדבר איתך: *${adminUser.name}* (${adminUser.role})
 שפה: עברית. תשובות קצרות ומהירות. ענה רק על מה שנשאלת — אל תציע עזרה שלא ביקשו.
 
 ══════════════════════════
-סטטוס המסעדה
+סטטוס ופעולות
 ══════════════════════════
-• בוט פתוח: ${allSettings.is_open !== false ? 'כן ✅' : 'לא ❌'}
-• משלוח: ${allSettings.delivery_enabled !== false ? 'כן' : 'לא'} | איסוף: ${allSettings.pickup_enabled !== false ? 'כן' : 'לא'}${deliveryHoursLine}
-${(() => {
-  const bh = allSettings.business_hours;
-  if (!bh || Object.keys(bh).length === 0) return '';
-  const days = ['sun','mon','tue','wed','thu','fri','sat'];
-  const DAY_HE = { sun:'ראשון', mon:'שני', tue:'שלישי', wed:'רביעי', thu:'חמישי', fri:'שישי', sat:'שבת' };
-  const nowIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
-  const today = days[nowIL.getDay()];
-  const todayH = bh[today];
-  if (!todayH) return '';
-  const status = todayH.is_open === false ? 'סגור היום' : `${todayH.open}–${todayH.close}`;
-  return `• שעות פעילות היום (יום ${DAY_HE[today]}): ${status}`;
-})()}}
+• בוט: ${allSettings.is_open !== false ? 'פתוח ✅' : 'סגור ❌'}
+• משלוח: ${allSettings.delivery_enabled !== false ? 'כן' : 'לא'} | איסוף: ${allSettings.pickup_enabled !== false ? 'כן' : 'לא'}
+• תשלום: מזומן=${allSettings.payment_cash !== false ? '✅' : '❌'} אשראי=${allSettings.payment_credit !== false ? '✅' : '❌'} Bit=${allSettings.payment_bit ? '✅' : '❌'}${allSettings.payment_bit && allSettings.bit_phone ? ` (${allSettings.bit_phone})` : ''}
+
+══════════════════════════
+שעות פעילות (business_hours)
+══════════════════════════
+${hoursText(allSettings.business_hours)}
+
+══════════════════════════
+שעות משלוח (delivery_hours)
+══════════════════════════
+${hoursText(allSettings.delivery_hours)}${deliveryHoursLine}
+
+══════════════════════════
+אזורי משלוח
+══════════════════════════
+${zonesText}
+
+══════════════════════════
+שליחים
+══════════════════════════
+${couriersText}
+התראה לשליח בסטטוס: ${allSettings.courier_notify_on_status || 'out_for_delivery'} | פעיל: ${allSettings.courier_notify_enabled ? 'כן' : 'לא'}
 
 ══════════════════════════
 תפריט נוכחי
@@ -119,10 +156,13 @@ ${orderList}
 **פתח/סגור מחלוקת:**
 <!--ADMIN:DISPUTE:{"order_number":<מספר>,"missing":["<פריט1>","<פריט2>"]}-->
 
-**הגדרה:**
-<!--ADMIN:SET:{"key":"is_open|delivery_enabled|pickup_enabled|payment_cash|payment_credit","value":true|false}-->
+**הגדרה (toggle):**
+<!--ADMIN:SET:{"key":"is_open|delivery_enabled|pickup_enabled|payment_cash|payment_credit|payment_bit|payment_paybox","value":true|false}-->
 
-**שעות משלוח ליום ספציפי:**
+**שעות פעילות (business_hours) ליום:**
+<!--ADMIN:SET_BUSINESS_HOURS:{"day":"today|sun|mon|tue|wed|thu|fri|sat","open":"HH:MM","close":"HH:MM","is_open":true|false}-->
+
+**שעות משלוח (delivery_hours) ליום:**
 <!--ADMIN:SET_DELIVERY_HOURS:{"day":"today|sun|mon|tue|wed|thu|fri|sat","open":"HH:MM","close":"HH:MM","is_open":true|false}-->
 
 **עדכון מחיר:**
@@ -148,6 +188,8 @@ ${orderList}
 • "קיבלתי Bit" / "שילמו" / "אשר תשלום" + מספר הזמנה = CONFIRM_PAYMENT
 • "משלוח עד 22:00" / "פתח משלוח מ-12:00" = SET_DELIVERY_HOURS עם day:today
 • "סגור משלוח היום" = SET_DELIVERY_HOURS day:today is_open:false
+• "שנה שעות פתיחה ביום ראשון ל-11:00 עד 23:00" = SET_BUSINESS_HOURS
+• "פתח Bit" / "סגור Bit" = SET key:payment_bit value:true|false
 `;
 }
 
@@ -237,12 +279,34 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
 
         case 'SET': {
           const { key, value } = payload;
-          const allowed = ['is_open','delivery_enabled','pickup_enabled','payment_cash','payment_credit','payment_bit','payment_paybox'];
+          const allowed = ['is_open','delivery_enabled','pickup_enabled','payment_cash','payment_credit','payment_bit','payment_paybox','courier_notify_enabled'];
           if (!allowed.includes(key)) { results.push(`❌ מפתח "${key}" לא מורשה`); break; }
           await settings.set(key, value, tenantId);
           settings._clearCache(tenantId);
-          const labels = { is_open:'בוט', delivery_enabled:'משלוח', pickup_enabled:'איסוף', payment_cash:'מזומן', payment_credit:'אשראי' };
+          const labels = { is_open:'בוט', delivery_enabled:'משלוח', pickup_enabled:'איסוף', payment_cash:'מזומן', payment_credit:'אשראי', payment_bit:'Bit', payment_paybox:'Paybox', courier_notify_enabled:'התראות שליח' };
           results.push(`${value ? '✅' : '❌'} *${labels[key] || key}* — ${value ? 'פועל' : 'מושבת'}`);
+          break;
+        }
+
+        case 'SET_BUSINESS_HOURS': {
+          const { day: rawDay, open: openTime, close: closeTime, is_open: dayOpen = true } = payload;
+          const sysdays = ['sun','mon','tue','wed','thu','fri','sat'];
+          const DAY_HEB  = { sun:'ראשון', mon:'שני', tue:'שלישי', wed:'רביעי', thu:'חמישי', fri:'שישי', sat:'שבת' };
+          const nowILbh  = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+          const targetDay = rawDay === 'today' ? sysdays[nowILbh.getDay()] : rawDay;
+          if (!sysdays.includes(targetDay)) { results.push(`❌ יום לא חוקי: "${rawDay}"`); break; }
+          const current = (await settings.get('business_hours', tenantId)) || {};
+          current[targetDay] = {
+            is_open: dayOpen,
+            open:  openTime  || current[targetDay]?.open  || '10:00',
+            close: closeTime || current[targetDay]?.close || '23:00',
+          };
+          await settings.set('business_hours', current, tenantId);
+          settings._clearCache(tenantId);
+          const dayLabel = DAY_HEB[targetDay] || targetDay;
+          results.push(dayOpen === false
+            ? `❌ יום ${dayLabel} — סגור`
+            : `✅ שעות פעילות יום ${dayLabel}: ${current[targetDay].open}–${current[targetDay].close}`);
           break;
         }
 
