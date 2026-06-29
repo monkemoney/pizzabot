@@ -70,4 +70,17 @@ function requireVendor(req, res, next) {
   });
 }
 
-module.exports = { sign, verify, signDashboard, requireAuth, requireAdmin, requireVendor, DEFAULT_TENANT_ID };
+/** Require kitchen, admin, or vendor role. Also accepts ?token= for SSE (EventSource can't set headers). */
+function requireKitchenOrAdmin(req, res, next) {
+  // Allow token via query param for EventSource connections
+  if (!req.headers['authorization'] && req.query.token) {
+    req.headers['authorization'] = `Bearer ${req.query.token}`;
+  }
+  requireAuth(req, res, () => {
+    const allowed = ['kitchen', 'admin', 'vendor'];
+    if (!allowed.includes(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+    next();
+  });
+}
+
+module.exports = { sign, verify, signDashboard, requireAuth, requireAdmin, requireVendor, requireKitchenOrAdmin, DEFAULT_TENANT_ID };

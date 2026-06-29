@@ -6,7 +6,8 @@ const path       = require('path');
 const rateLimit  = require('express-rate-limit');
 const bcrypt     = require('bcryptjs');
 const { createClient } = require('@supabase/supabase-js');
-const { signDashboard, requireAuth, requireAdmin, requireVendor, DEFAULT_TENANT_ID } = require('../middleware/auth');
+const { signDashboard, requireAuth, requireAdmin, requireVendor, requireKitchenOrAdmin, DEFAULT_TENANT_ID } = require('../middleware/auth');
+const sse = require('../services/sse');
 const { cancelDeal } = require('../services/cardcom');
 const { getOrders, getOrderById, updateOrderStatus, updateOrder, updateSession,
         autoCompleteDeliveredOrders }      = require('../services/supabase');
@@ -120,7 +121,7 @@ router.get('/orders/:id', requireAuth, async (req, res) => {
   res.json(order);
 });
 
-const STATUS_ORDER = ['new','preparing','out_for_delivery','delivered','done','cancelled'];
+const STATUS_ORDER = ['new','preparing','ready','out_for_delivery','delivered','done','cancelled'];
 
 router.patch('/orders/:id/status', requireAuth, async (req, res) => {
   const { status } = req.body;
@@ -132,6 +133,7 @@ router.patch('/orders/:id/status', requireAuth, async (req, res) => {
     if (!assertTenant(existing, req)) return res.status(404).json({ error: 'Not found' });
     const order = await updateOrderStatus(req.params.id, status);
     await notifyStatusChange(order.phone, status, 'he', order.order_number, order);
+    sse.broadcast(order.tenant_id || req.user.tenant_id, 'order_updated', order);
     res.json({ success: true, order });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -679,6 +681,28 @@ router.post('/customers/broadcast', requireAdmin, async (req, res) => {
     }
   }
   res.json(results);
+});
+
+// ─── Kitchen Window ───────────────────────────────────────────────────────────
+
+// GET /api/kitchen/orders — active orders for the kitchen (new, preparing, ready)
+router.get('/kitchen/orders', requireKitchenOrAdmin, async (req, res) => {
+  const tid = req.user.tenant_id;
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('tenant_id', tid)
+    .in('status', ['new', 'preparing', 'ready'])
+    .order('created_at', { ascending: true });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// SSE endpoint — real-time push to kitchen / dashboard
+router.get('/sse', requireKitchenOrAdmin, (req, res) => {
+  const tid     = req.user.tenant_id;
+  const cleanup = sse.subscribe(tid, res);
+  req.on('close', cleanup);
 });
 
 // ─── Public menu (no auth) ────────────────────────────────────────────────────

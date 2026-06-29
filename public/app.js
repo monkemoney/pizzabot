@@ -118,6 +118,7 @@ function formatDate(iso) {
 const STATUS_LABELS = {
   new:              'חדשה',
   preparing:        'בהכנה',
+  ready:            'מוכן',
   out_for_delivery: 'יצא למשלוח',
   delivered:        'נמסרה',
   done:             'הסתיימה',
@@ -127,6 +128,7 @@ const STATUS_LABELS = {
 function statusBadge(status) {
   const cls = {
     new: 'badge-new', preparing: 'badge-preparing',
+    ready: 'badge-done',
     out_for_delivery: 'badge-delivery', delivered: 'badge-delivered',
     done: 'badge-done', cancelled: 'badge-cancelled',
   }[status] || 'badge-done';
@@ -236,7 +238,7 @@ function exportOrdersCSV() {
   if (!list.length) { showToast('אין הזמנות לייצוא'); return; }
 
   const statusHe = {
-    new:'חדשה', preparing:'בהכנה', out_for_delivery:'יצא למשלוח',
+    new:'חדשה', preparing:'בהכנה', ready:'מוכן', out_for_delivery:'יצא למשלוח',
     delivered:'נמסרה', done:'הסתיימה', cancelled:'בוטלה',
   };
 

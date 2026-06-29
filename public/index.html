@@ -137,7 +137,8 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     localStorage.setItem('token', data.token);
     localStorage.setItem('role', data.role);
     localStorage.setItem('username', data.username);
-    window.location.href = data.role === 'vendor' ? '/admin' : '/dashboard.html';
+    const dest = data.role === 'vendor' ? '/admin' : data.role === 'kitchen' ? '/kitchen' : '/dashboard.html';
+    window.location.href = dest;
   } catch (err) {
     errorMsg.textContent = err.message;
     errorMsg.style.display = 'block';

@@ -179,6 +179,9 @@ async function saveOrder(orderData) {
     console.error('[push] notifyNewOrder error:', err.message)
   );
 
+  // Broadcast to kitchen SSE connections
+  require('./sse').broadcast(orderData.tenant_id, 'new_order', data);
+
   return { id: data.id, orderNumber: data.order_number };
 }
 
@@ -221,11 +224,16 @@ async function getLastOrderByPhone(phone) {
 }
 
 async function updateOrderStatus(id, status) {
+  const { data: current } = await supabase
+    .from('orders').select('status_history').eq('id', id).single();
+  const history = Array.isArray(current?.status_history) ? current.status_history : [];
+  history.push({ status, at: new Date().toISOString() });
+
   const { data, error } = await supabase
     .from('orders')
-    .update({ status, updated_at: new Date().toISOString() })
+    .update({ status, updated_at: new Date().toISOString(), status_history: history })
     .eq('id', id)
-    .select('id, order_number, phone, status, delivery_method')
+    .select('id, order_number, phone, status, delivery_method, tenant_id, customer_name, items, notes, total_price, payment_method, address, status_history')
     .single();
 
   if (error) throw new Error('Failed to update order: ' + error.message);

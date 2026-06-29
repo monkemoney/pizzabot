@@ -39,6 +39,11 @@ app.get('/onboarding/:token', (_req, res) =>
   res.sendFile(path.join(__dirname, '..', 'public', 'onboarding.html'))
 );
 
+// ─── Kitchen window ───────────────────────────────────────────────────────────
+app.get('/kitchen', (_req, res) =>
+  res.sendFile(path.join(__dirname, '..', 'public', 'kitchen.html'))
+);
+
 // ─── Dashboard API ────────────────────────────────────────────────────────────
 app.use('/api', dashboardApi);
 
@@ -191,13 +196,15 @@ async function pollPendingPayments() {
         cardcom_code:    pending.cardcom_code,
         total_price:     orderData.total,
         status:          'new',
-        tenant_id:       orderData.tenant_id      || process.env.TENANT_ID,
+        tenant_id:       pending.tenant_id || orderData.tenant_id || process.env.TENANT_ID,
       });
 
       await deletePendingPayment(pending.id);
 
+      const tenantId = pending.tenant_id || orderData.tenant_id || null;
       await sendMessage(pending.phone,
-        `✅ התשלום התקבל! הזמנה מספר *${orderNumber}* בדרך 🍕\nנעדכן אותך על כל שינוי בסטטוס.`
+        `✅ התשלום התקבל! הזמנה מספר *${orderNumber}* בדרך 🍕\nנעדכן אותך על כל שינוי בסטטוס.`,
+        tenantId
       ).catch(() => {});
 
       console.log(`[poll] ✅ Order #${orderNumber} created for ${pending.phone}`);

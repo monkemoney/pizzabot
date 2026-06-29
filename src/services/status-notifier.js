@@ -8,6 +8,10 @@ const STATUS_MESSAGES = {
     he: '⏳ ההזמנה שלך בהכנה! נעדכן אותך כשתצא למשלוח.',
     en: "⏳ Your order is being prepared! We'll update you when it's on its way.",
   },
+  ready: {
+    he: '✅ ההזמנה שלך מוכנה! אפשר לאסוף 🏍️',
+    en: '✅ Your order is ready for pickup! 🏍️',
+  },
   out_for_delivery: {
     he: '🛵 ההזמנה שלך יצאה למשלוח! זמן הגעה משוער: 30-45 דקות.',
     en: '🛵 Your order is on its way! Estimated arrival: 30-45 minutes.',
@@ -34,7 +38,9 @@ const STATUS_MESSAGES = {
 async function notifyStatusChange(phone, status, lang = 'he', orderNumber, order = null) {
   // ── Customer notification ──────────────────────────────────────────────────
   const msgs = STATUS_MESSAGES[status];
-  if (msgs) {
+  // 'ready' notification only for pickup orders
+  const skipNotify = status === 'ready' && order?.delivery_method !== 'pickup';
+  if (msgs && !skipNotify) {
     const text   = msgs[lang] || msgs.he;
     const prefix = lang === 'en'
       ? `*Order #${orderNumber}*\n`
