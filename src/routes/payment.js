@@ -46,13 +46,14 @@ async function confirmPending(pending, source = 'webhook', dealNumber = null) {
       cardcom_deal_number:  dealNumber || null,
       total_price:          orderData.total,
       status:               'new',
-      tenant_id:            orderData.tenant_id       || process.env.TENANT_ID,
+      tenant_id:            pending.tenant_id || orderData.tenant_id || process.env.TENANT_ID,
     });
 
     await deletePendingPayment(pending.id);
 
+    const tenantId = pending.tenant_id || orderData.tenant_id || null;
     const msg = `✅ התשלום התקבל! הזמנה מספר *${orderNumber}* בדרך 🍕\nנעדכן אותך על כל שינוי בסטטוס.`;
-    await sendMessage(pending.phone, msg).catch((err) =>
+    await sendMessage(pending.phone, msg, tenantId).catch((err) =>
       console.error(`[payment:${source}] WhatsApp notify error:`, err.message)
     );
 

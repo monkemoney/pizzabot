@@ -295,4 +295,16 @@ module.exports = {
   updateOrderStatus,
   updateOrder,
   autoCompleteDeliveredOrders,
+  getScheduledOrdersDue,
 };
+
+async function getScheduledOrdersDue(leadMinutes) {
+  const cutoff = new Date(Date.now() + leadMinutes * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('orders')
+    .select('id, order_number, phone, tenant_id, scheduled_for')
+    .eq('status', 'scheduled')
+    .lte('scheduled_for', cutoff);
+  if (error) { console.error('[scheduler] query error:', error.message); return []; }
+  return data || [];
+}

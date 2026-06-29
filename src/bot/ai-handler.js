@@ -277,6 +277,19 @@ async function handleMessage(phone, userMessage, tenantId = null) {
         }, tid);
       }
 
+      // Parse scheduled_for: "HH:MM" → full ISO timestamp in Israel TZ
+      let scheduledFor = null;
+      if (payload.scheduled_for && /^\d{1,2}:\d{2}$/.test(String(payload.scheduled_for))) {
+        const [hh, mm] = String(payload.scheduled_for).split(':').map(Number);
+        const nowIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+        const sched = new Date(nowIL);
+        sched.setHours(hh, mm, 0, 0);
+        if (sched <= nowIL) sched.setDate(sched.getDate() + 1); // next day if past
+        scheduledFor = sched.toISOString();
+      }
+
+      const isScheduled = !!scheduledFor;
+
       const { orderNumber } = await saveOrder({
         phone,
         customer_name:   payload.customer_name   || null,
@@ -288,13 +301,22 @@ async function handleMessage(phone, userMessage, tenantId = null) {
         payment_method:  isBit ? 'bit' : 'cash',
         payment_status:  isBit ? 'pending' : 'paid',
         total_price:     payload.total,
-        status:          'new',
+        status:          isScheduled ? 'scheduled' : 'new',
+        scheduled_for:   scheduledFor,
         tenant_id:       tid,
       });
 
       const lang = detectLang(userMessage, history);
 
-      if (isBit) {
+      if (isScheduled) {
+        const timeStr = payload.scheduled_for;
+        const allSettings = await settings.loadAll(tid);
+        const lead = allSettings.prep_lead_time ?? 45;
+        const confirmMsg = lang === 'en'
+          ? `🕐 Order *#${orderNumber}* scheduled for ${timeStr}!\nWe'll start preparing ${lead} min before.`
+          : `🕐 הזמנה מספר *${orderNumber}* תוזמנה לשעה ${timeStr}!\nנתחיל להכין ${lead} דקות לפני 🍕`;
+        await reply(phone, confirmMsg, tid);
+      } else if (isBit) {
         const allSettings = await settings.loadAll(tid);
         const bitPhone = allSettings.bit_phone ? String(allSettings.bit_phone).replace(/"/g, '') : null;
         const confirmMsg = lang === 'en'

@@ -130,6 +130,7 @@ function formatDate(iso) {
 
 const STATUS_LABELS = {
   new:              'חדשה',
+  scheduled:        'מתוזמן',
   preparing:        'בהכנה',
   ready:            'מוכן',
   out_for_delivery: 'יצא למשלוח',
@@ -138,14 +139,17 @@ const STATUS_LABELS = {
   cancelled:        'בוטלה',
 };
 
-function statusBadge(status) {
+function statusBadge(status, order) {
   const cls = {
-    new: 'badge-new', preparing: 'badge-preparing',
-    ready: 'badge-done',
+    new: 'badge-new', scheduled: 'badge-scheduled',
+    preparing: 'badge-preparing', ready: 'badge-done',
     out_for_delivery: 'badge-delivery', delivered: 'badge-delivered',
     done: 'badge-done', cancelled: 'badge-cancelled',
   }[status] || 'badge-done';
-  return `<span class="badge ${cls}">${STATUS_LABELS[status] || status}</span>`;
+  const extra = status === 'scheduled' && order?.scheduled_for
+    ? ' 🕐 ' + new Date(order.scheduled_for).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false })
+    : '';
+  return `<span class="badge ${cls}">${STATUS_LABELS[status] || status}${extra}</span>`;
 }
 
 // ─── ORDERS ───────────────────────────────────────────────────────────────────
@@ -488,7 +492,7 @@ function renderOrderRow(o) {
       </span>
       <div style="font-weight:800;font-size:.95rem">₪${(parseFloat(o.total_price)||0).toFixed(0)}</div>
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">
-        ${statusBadge(o.status)}
+        ${statusBadge(o.status, o)}
         ${o.refund_status==='manual'?`<span style="background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:999px;padding:2px 8px;font-size:.66rem;font-weight:700;color:#e0004d;white-space:nowrap;display:inline-flex;align-items:center;gap:3px">${SVG.creditCard} זיכוי ידני</span>`:''}
       </div>
       <div style="display:flex;align-items:center;justify-content:flex-end">${chevron}</div>
@@ -1957,6 +1961,16 @@ function renderSettingsForm(s) {
       ${saveBtn('saveOrderTypes')}
     `)}
 
+    ${sCard(`🕐 הזמנות מתוזמנות`, `
+      <div style="font-size:.84rem;color:var(--text-muted);margin-bottom:14px">כמה דקות לפני השעה המבוקשת להעביר את ההזמנה להכנה</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <input type="number" id="prepLeadTime" value="${s.prep_lead_time ?? 45}" min="15" max="120"
+          style="width:80px;padding:8px 12px;border-radius:10px;border:2px solid var(--border);font-family:inherit;font-size:1rem;font-weight:700;text-align:center">
+        <span style="font-size:.88rem;color:var(--text)">דקות לפני</span>
+      </div>
+      ${saveBtn('savePrepLeadTime')}
+    `)}
+
     ${sCard(`${ICONS.edit} הגדרות שינוי הזמנות`, `
       ${sToggle('allow_order_edits', 'אפשר ללקוח לשנות/לבטל הזמנה', s.allow_order_edits !== false)}
       <div style="margin-top:14px;padding:14px;background:#faf8ff;border-radius:12px">
@@ -2065,6 +2079,11 @@ async function savePayments() {
   const bitPhone = document.getElementById('bit_phone')?.value?.trim();
   if (bitPhone !== undefined) updates.bit_phone = bitPhone;
   await saveSection(updates);
+}
+
+async function savePrepLeadTime() {
+  const val = parseInt(document.getElementById('prepLeadTime')?.value) || 45;
+  await saveSection({ prep_lead_time: Math.max(15, Math.min(120, val)) });
 }
 
 async function saveOrderTypes() {

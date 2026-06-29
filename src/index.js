@@ -13,7 +13,9 @@ const { handleAdminMessage }   = require('./bot/admin-handler');
 const { getAdminUser }         = require('./services/supabase');
 const { formatPhone }          = require('./services/greenapi');
 const { DEFAULT_TENANT_ID }    = require('./services/settings');
-const { autoCompleteDeliveredOrders, pruneOldSessions } = require('./services/supabase');
+const { autoCompleteDeliveredOrders, pruneOldSessions, getScheduledOrdersDue, updateOrderStatus } = require('./services/supabase');
+const sse      = require('./services/sse');
+const settings = require('./services/settings');
 const { createClient: createSB }       = require('@supabase/supabase-js');
 const vendorAlerts                     = require('./services/vendor-alerts');
 
@@ -156,6 +158,28 @@ app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 // ─── Auto-complete delivered orders hourly ────────────────────────────────────
 setInterval(autoCompleteDeliveredOrders, 60 * 60 * 1000);
 setInterval(pruneOldSessions, 24 * 60 * 60 * 1000); // daily
+
+// ─── Scheduled orders — check every minute ───────────────────────────────────
+async function processScheduledOrders() {
+  try {
+    const lead = (await settings.get('prep_lead_time')) ?? 45;
+    const due  = await getScheduledOrdersDue(Number(lead));
+    for (const order of due) {
+      const updated = await updateOrderStatus(order.id, 'preparing');
+      sse.broadcast(order.tenant_id, 'order_updated', updated);
+      const { sendMessage } = require('./services/greenapi');
+      const timeStr = order.scheduled_for
+        ? new Date(order.scheduled_for).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem', hour12: false })
+        : '';
+      await sendMessage(order.phone, `🍕 הזמנה מספר *${order.order_number}* נכנסה להכנה${timeStr ? ` לקראת השעה ${timeStr}` : ''}!`, order.tenant_id)
+        .catch(e => console.error('[scheduler] WhatsApp notify error:', e.message));
+      console.log(`[scheduler] order #${order.order_number} → preparing`);
+    }
+  } catch (err) {
+    console.error('[scheduler] error:', err.message);
+  }
+}
+setInterval(processScheduledOrders, 60 * 1000); // every minute
 
 // ─── Pending payment polling (every 2 min) ───────────────────────────────────
 // Safety net: if success-redirect and IndicatorUrl both missed, confirm after 5 min.

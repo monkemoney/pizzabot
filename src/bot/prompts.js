@@ -11,6 +11,10 @@ async function buildSystemPrompt(customerProfile = null, tenantId = null) {
     settings.isDeliveryOpen(tid),
   ]);
 
+  const prepLeadTime = allSettings.prep_lead_time ?? 45;
+  const nowIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  const nowStr = nowIL.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false });
+
   const deliveryEnabled = allSettings.delivery_enabled !== false && deliveryNowOpen;
   const pickupEnabled   = allSettings.pickup_enabled   !== false;
   const cashEnabled     = allSettings.payment_cash     !== false;
@@ -225,12 +229,26 @@ ACTION blocks
 תשלום Bit:
 <!--ACTION:SAVE_ORDER:{"customer_name":"<שם>","customer_phone":"<טלפון>","items":[{"name":"<פריט>","price":<מחיר יחידה>,"qty":<כמות>,"toppings":[...]}],"delivery_method":"pickup|delivery","address":"<כתובת או null>","payment_method":"bit","total":<סכום סופי כולל משלוח>,"notes":"<הערות או null>"}-->
 
+הזמנה מתוזמנת (כשהלקוח מבקש שעה עתידית):
+<!--ACTION:SAVE_ORDER:{"customer_name":"<שם>","customer_phone":"<טלפון>","items":[...],"delivery_method":"pickup|delivery","address":"<כתובת או null>","payment_method":"cash|bit","total":<סכום>,"notes":"<הערות או null>","scheduled_for":"HH:MM"}-->
+
 ביטול: <!--ACTION:RESET-->
 תוספות: <!--ACTION:SHOW_TOPPINGS-->
 
 אחרי CREATE_PAYMENT: "✅ הקישור לתשלום ישלח עוד רגע 💳"
 אחרי SAVE_ORDER (מזומן): "✅ ההזמנה התקבלה! מכינים עכשיו ונעדכן אותך 🍕"
 אחרי SAVE_ORDER (Bit): "✅ ההזמנה נשמרה! לסיום התשלום — שלח *${bitEnabled && bitPhone ? bitPhone : '<מספר Bit>'}* סכום ₪[סכום] בBit. לאחר התשלום שלח *שילמתי* 📱"
+אחרי SAVE_ORDER (מתוזמן): "✅ ההזמנה נשמרה לשעה [שעה]! נתחיל להכין ${prepLeadTime} דקות לפני 🕐"
+
+══════════════════════════════════════════
+תזמון הזמנות
+══════════════════════════════════════════
+השעה הנוכחית בישראל: ${nowStr}
+אם לקוח מבקש שעה עתידית ("לשעה 21:30" / "בעוד שעה" / "ב-9 בערב"):
+• המשך את הזרימה הרגילה (deal-breakers, פריטים, שם, סיכום)
+• בסיכום ציין: "🕐 תזמון: ההזמנה תתחיל להיות מוכנה ב-[שעה - ${prepLeadTime} דקות]"
+• ב-SAVE_ORDER הוסף שדה: "scheduled_for":"HH:MM" (פורמט 24 שעות, שעה בישראל)
+• אל תוסיף scheduled_for אם הלקוח רוצה "עכשיו" / "מוקדם ככל האפשר" / לא ציין שעה
 `;
 }
 

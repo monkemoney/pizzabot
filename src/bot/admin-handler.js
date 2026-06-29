@@ -45,9 +45,13 @@ async function buildAdminPrompt(adminUser, tenantId = DEFAULT_TENANT_ID) {
     return `• ${p.name_he} — ₪${p.price} [${p.is_available ? '✅ זמין' : '❌ לא זמין'}]${tops ? '\n' + tops : ''}`;
   }).join('\n');
 
+  const STATUS_HE = { new:'חדשה', scheduled:'מתוזמן', preparing:'בהכנה', ready:'מוכן', out_for_delivery:'יצא למשלוח', delivered:'נמסרה' };
   const orderList = activeOrders.map(o => {
     const bitPending = o.payment_method === 'bit' && o.payment_status !== 'paid' ? ' 💳 ממתין לBit' : '';
-    return `• #${o.order_number} — ${o.customer_name || '—'} — ${o.status} — ₪${o.total_price}${bitPending}`;
+    const schedTime  = o.status === 'scheduled' && o.scheduled_for
+      ? ` 🕐 ${new Date(o.scheduled_for).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jerusalem',hour12:false})}`
+      : '';
+    return `• #${o.order_number} — ${o.customer_name || '—'} — ${STATUS_HE[o.status]||o.status}${schedTime} — ₪${o.total_price}${bitPending}`;
   }).join('\n') || 'אין הזמנות פעילות';
 
   const STATUS_MAP = { new:'חדשה', preparing:'בהכנה', out_for_delivery:'יצא למשלוח', delivered:'נמסרה', done:'הסתיימה', cancelled:'בוטלה' };

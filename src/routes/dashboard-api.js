@@ -121,7 +121,7 @@ router.get('/orders/:id', requireAuth, async (req, res) => {
   res.json(order);
 });
 
-const STATUS_ORDER = ['new','preparing','ready','out_for_delivery','delivered','done','cancelled'];
+const STATUS_ORDER = ['new','scheduled','preparing','ready','out_for_delivery','delivered','done','cancelled'];
 
 router.patch('/orders/:id/status', requireAuth, async (req, res) => {
   const { status } = req.body;
