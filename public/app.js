@@ -73,7 +73,7 @@ async function api(method, path, body) {
 
 // ─── Tab navigation ───────────────────────────────────────────────────────────
 
-const TABS = ['orders', 'products', 'customers', 'stats', 'settings'];
+const TABS = ['orders', 'products', 'customers', 'stats', 'settings', 'kitchen'];
 
 function showTab(name) {
   TABS.forEach((t) => {
@@ -94,6 +94,7 @@ function showTab(name) {
   if (name === 'customers') loadCustomers();
   if (name === 'settings')  { loadSettings(); loadAdminUsers(); }
   if (name === 'stats')     setPeriod(currentPeriod);
+  if (name === 'kitchen')   initKitchen();
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -2289,6 +2290,134 @@ function toggleNotifPanel() {
   showTab('orders');
   const sf = document.getElementById('statusFilter');
   if (sf) { sf.value = 'new'; filterOrders(); }
+}
+
+// ─── Kitchen Window ───────────────────────────────────────────────────────────
+
+let _kitchenOrders = {};
+let _kitchenSSE    = null;
+let _kitchenTimer  = null;
+let _kitchenInited = false;
+
+function _kitchenElapsed(createdAt) {
+  const mins = Math.floor((Date.now() - new Date(createdAt)) / 60000);
+  if (mins < 1)  return 'הרגע';
+  if (mins < 60) return `${mins} דק'`;
+  return `${Math.floor(mins / 60)}ש' ${mins % 60}דק'`;
+}
+
+function _kitchenCard(order) {
+  const isUrgent = (Date.now() - new Date(order.created_at)) > 20 * 60000;
+  const items = (order.items || []).map(it => {
+    const qty  = it.quantity || it.qty || 1;
+    const tops = (it.toppings || []).map(t => t.name || t.name_he).filter(Boolean).join(', ');
+    return `<li style="padding:3px 0;border-bottom:1px dashed #f1f5f9;font-size:.85rem;color:#374151">
+      <span style="font-weight:700;color:#1a1a2e;margin-left:4px">×${qty}</span>${it.name || it.name_he}
+      ${tops ? `<span style="font-size:.77rem;color:#6b7280;margin-right:6px">(${tops})</span>` : ''}
+    </li>`;
+  }).join('');
+
+  const method = order.delivery_method === 'pickup'
+    ? '<span style="display:inline-flex;align-items:center;gap:4px;font-size:.74rem;font-weight:600;padding:2px 8px;border-radius:999px;background:#fce7f3;color:#9d174d;margin-bottom:10px">🏍️ איסוף</span>'
+    : '<span style="display:inline-flex;align-items:center;gap:4px;font-size:.74rem;font-weight:600;padding:2px 8px;border-radius:999px;background:#ede9fe;color:#5b21b6;margin-bottom:10px">🛵 משלוח</span>';
+
+  const notes = order.notes
+    ? `<div style="font-size:.8rem;background:#fffbeb;border-radius:8px;padding:6px 10px;color:#78350f;margin-bottom:10px">📝 ${order.notes}</div>` : '';
+
+  let btn = '';
+  if (order.status === 'new')      btn = `<button onclick="kitchenSetStatus('${order.id}','preparing')" style="width:100%;padding:9px;border:none;border-radius:10px;background:#3b82f6;color:#fff;font-size:.82rem;font-weight:700;cursor:pointer">🔥 בתנור</button>`;
+  if (order.status === 'preparing') btn = `<button onclick="kitchenSetStatus('${order.id}','ready')"    style="width:100%;padding:9px;border:none;border-radius:10px;background:#22c55e;color:#fff;font-size:.82rem;font-weight:700;cursor:pointer">✅ מוכן</button>`;
+
+  return `<div id="kitchen-card-${order.id}" style="background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:16px;border-top:4px solid ${order.status==='new'?'#f59e0b':order.status==='preparing'?'#3b82f6':'#22c55e'};margin-bottom:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <span style="font-weight:800;font-size:1rem;color:#1a1a2e">#${order.order_number}</span>
+      <span style="font-size:.75rem;color:${isUrgent?'#ef4444':'#94a3b8'};background:${isUrgent?'#fee2e2':'#f1f5f9'};padding:2px 8px;border-radius:999px" class="kitchen-timer" data-id="${order.id}">${_kitchenElapsed(order.created_at)}</span>
+    </div>
+    ${method}
+    <ul style="list-style:none;margin-bottom:10px">${items || '<li style="font-size:.85rem;color:#94a3b8">—</li>'}</ul>
+    ${notes}
+    ${btn}
+  </div>`;
+}
+
+function renderKitchen() {
+  const cols = { new: [], preparing: [], ready: [] };
+  for (const o of Object.values(_kitchenOrders)) {
+    if (cols[o.status] !== undefined) cols[o.status].push(o);
+  }
+  for (const list of Object.values(cols)) list.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+  for (const [status, list] of Object.entries(cols)) {
+    const el = document.getElementById(`kitchen-col-${status}`);
+    if (!el) return;
+    el.innerHTML = list.length ? list.map(_kitchenCard).join('') : '<div style="text-align:center;padding:24px;color:#94a3b8;font-size:.85rem">אין הזמנות</div>';
+    document.getElementById(`kitchen-badge-${status}`).textContent = list.length;
+  }
+}
+
+async function kitchenSetStatus(id, status) {
+  const btn = document.querySelector(`#kitchen-card-${id} button`);
+  if (btn) btn.disabled = true;
+  const data = await apiFetch(`/api/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
+  if (!data || data.error) { showToast(data?.error || 'שגיאה'); if (btn) btn.disabled = false; return; }
+  if (data.order) { _kitchenOrders[id] = data.order; renderKitchen(); }
+  showToast(status === 'preparing' ? '🔥 עברה להכנה' : '✅ מוכנה');
+}
+
+async function loadKitchenOrders() {
+  const data = await apiFetch('/api/kitchen/orders');
+  if (!data) return;
+  _kitchenOrders = {};
+  for (const o of data) _kitchenOrders[o.id] = o;
+  renderKitchen();
+}
+
+function _kitchenConnectSSE() {
+  if (_kitchenSSE) { _kitchenSSE.close(); _kitchenSSE = null; }
+  const es = new EventSource(`/api/sse?token=${encodeURIComponent(localStorage.getItem('dashboard_token') || '')}`);
+  _kitchenSSE = es;
+
+  es.addEventListener('new_order', (e) => {
+    const o = JSON.parse(e.data);
+    if (['new','preparing','ready'].includes(o.status)) { _kitchenOrders[o.id] = o; renderKitchen(); showToast(`📦 הזמנה חדשה #${o.order_number}`); }
+  });
+  es.addEventListener('order_updated', (e) => {
+    const o = JSON.parse(e.data);
+    if (['new','preparing','ready'].includes(o.status)) _kitchenOrders[o.id] = o;
+    else delete _kitchenOrders[o.id];
+    renderKitchen();
+  });
+  es.onopen = () => {
+    const dot = document.getElementById('kitchen-dot');
+    const lbl = document.getElementById('kitchen-conn');
+    if (dot) dot.style.background = '#22c55e';
+    if (lbl) lbl.textContent = 'מחובר';
+  };
+  es.onerror = () => {
+    const dot = document.getElementById('kitchen-dot');
+    const lbl = document.getElementById('kitchen-conn');
+    if (dot) dot.style.background = '#ef4444';
+    if (lbl) lbl.textContent = 'מתחבר מחדש…';
+  };
+}
+
+function initKitchen() {
+  if (_kitchenInited) return;
+  _kitchenInited = true;
+  loadKitchenOrders();
+  _kitchenConnectSSE();
+  // Refresh elapsed timers every 60s
+  _kitchenTimer = setInterval(() => {
+    document.querySelectorAll('.kitchen-timer').forEach(el => {
+      const id = el.dataset.id;
+      const o  = _kitchenOrders[id];
+      if (!o) return;
+      const mins = Math.floor((Date.now() - new Date(o.created_at)) / 60000);
+      el.textContent = mins < 1 ? 'הרגע' : mins < 60 ? `${mins} דק'` : `${Math.floor(mins/60)}ש' ${mins%60}דק'`;
+      el.style.color      = mins > 20 ? '#ef4444' : '#94a3b8';
+      el.style.background = mins > 20 ? '#fee2e2' : '#f1f5f9';
+    });
+  }, 60_000);
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
