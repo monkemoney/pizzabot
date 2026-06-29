@@ -215,6 +215,43 @@ async function handleMessage(phone, userMessage, tenantId = null) {
     systemPrompt = 'You are a pizza ordering assistant. Help the customer order pizza.';
   }
 
+  // ── Mid-conversation availability check ──────────────────────────────────────
+  // Scan customer messages for topping names, then verify they're still available.
+  // Inject an explicit alert if any became unavailable mid-conversation.
+  if (history.length > 0) {
+    try {
+      const customerText = history
+        .filter(m => m.role === 'user')
+        .map(m => (typeof m.content === 'string' ? m.content : ''))
+        .join(' ')
+        .toLowerCase();
+
+      // Fetch all topping names mentioned by customer that now have is_available=false
+      const { createClient: mkSB } = require('@supabase/supabase-js');
+      const sb = mkSB(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+      const { data: unavailableToppings } = await sb
+        .from('product_additions')
+        .select('name_he')
+        .eq('is_available', false)
+        .in('product_id',
+          await sb.from('products').select('id').eq('tenant_id', tid)
+            .then(r => (r.data || []).map(p => p.id))
+        );
+
+      const nowUnavailable = (unavailableToppings || [])
+        .filter(a => customerText.includes((a.name_he || '').toLowerCase()))
+        .map(a => a.name_he);
+
+      if (nowUnavailable.length > 0) {
+        const names = [...new Set(nowUnavailable)].join(', ');
+        systemPrompt += `\n\n⚠️ התראת מלאי — חשוב לפני שממשיכים:\nהתוספות הבאות הוזכרו בשיחה אך **אינן זמינות כעת** (אזלו מהמלאי): ${names}.\nחובה להודיע ללקוח **עכשיו** לפני כל שלב נוסף, להציע חלופה, ולא לכלול אותן ב-SAVE_ORDER/CREATE_PAYMENT.`;
+        console.log(`[ai-handler] availability alert ${phone}: ${names}`);
+      }
+    } catch (e) {
+      console.error('[ai-handler] availability check error:', e.message);
+    }
+  }
+
   let assistantText;
   try {
     assistantText = await callClaude(systemPrompt, history, userMessage);
