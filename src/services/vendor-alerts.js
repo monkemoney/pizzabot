@@ -17,12 +17,14 @@ function getSupabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 }
 
+const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
+
 async function getVendorPhone() {
   if (_vendorPhone) return _vendorPhone;
   try {
     const sb = getSupabase();
     const { data } = await sb.from('settings')
-      .select('value').eq('key', 'vendor_phone').single();
+      .select('value').eq('key', 'vendor_phone').eq('tenant_id', DEFAULT_TENANT_ID).single();
     _vendorPhone = data?.value ? String(data.value).replace(/"/g, '') : null;
     return _vendorPhone;
   } catch { return null; }
@@ -50,7 +52,7 @@ async function alert(type, emoji, title, detail = '') {
   // Check if this alert type is enabled in settings
   const settingKey = ALERT_SETTING[type];
   if (settingKey) {
-    const enabled = await settings.get(settingKey).catch(() => true);
+    const enabled = await settings.get(settingKey, DEFAULT_TENANT_ID).catch(() => true);
     if (enabled === false || enabled === 'false') return;
   }
 

@@ -96,6 +96,7 @@ router.get('/orders', requireAuth, async (req, res) => {
     await autoCompleteDeliveredOrders();
 
     let query = supabase.from('orders').select('*')
+      .eq('tenant_id', tid(req))
       .order('created_at', { ascending: false });
 
     const { status, date_from, date_to } = req.query;
@@ -132,7 +133,7 @@ router.patch('/orders/:id/status', requireAuth, async (req, res) => {
     const existing = await getOrderById(req.params.id);
     if (!assertTenant(existing, req)) return res.status(404).json({ error: 'Not found' });
     const order = await updateOrderStatus(req.params.id, status);
-    await notifyStatusChange(order.phone, status, 'he', order.order_number, order);
+    await notifyStatusChange(order.phone, status, 'he', order.order_number, order, tid(req));
     sse.broadcast(order.tenant_id || req.user.tenant_id, 'order_updated', order);
     res.json({ success: true, order });
   } catch (err) {
@@ -220,7 +221,7 @@ router.post('/orders/:id/cancel-refund', requireAdmin, async (req, res) => {
       `\n\nמצטערים על אי הנוחות 🙏`;
   }
 
-  await sendMessage(order.phone, customerMsg).catch((err) =>
+  await sendMessage(order.phone, customerMsg, tid(req)).catch((err) =>
     console.error('[refund] WhatsApp notify failed:', err.message)
   );
 
@@ -250,7 +251,7 @@ router.post('/orders/:id/confirm-payment', requireAdmin, async (req, res) => {
 
   // Notify customer
   const method = order.payment_method === 'bit' ? 'Bit' : 'מזומן';
-  await sendMessage(order.phone, `✅ קיבלנו את התשלום ב${method}! ההזמנה מספר *${order.order_number}* אושרה — מתחילים להכין 🍕`).catch(() => {});
+  await sendMessage(order.phone, `✅ קיבלנו את התשלום ב${method}! ההזמנה מספר *${order.order_number}* אושרה — מתחילים להכין 🍕`, tid(req)).catch(() => {});
 
   console.log(`[confirm-payment] Order #${order.order_number} payment confirmed by admin`);
   res.json({ success: true });
@@ -293,7 +294,7 @@ router.post('/orders/:id/item-dispute', requireAdmin, async (req, res) => {
       refund:       Math.round(refund * 100) / 100,
       created_at:   new Date().toISOString(),
     },
-  });
+  }, tid(req));
 
   // Build WhatsApp message
   const greeting  = order.customer_name ? `שלום ${order.customer_name}! 🙏` : `שלום! 🙏`;
@@ -315,7 +316,7 @@ router.post('/orders/:id/item-dispute', requireAdmin, async (req, res) => {
     `*3* — להחליף בפריט אחר (כתוב מה תרצה)\n\n` +
     `שלח את המספר המתאים 👆`;
 
-  await sendMessage(order.phone, msg).catch(err =>
+  await sendMessage(order.phone, msg, tid(req)).catch(err =>
     console.error('[dispute] WhatsApp failed:', err.message)
   );
 
@@ -362,6 +363,7 @@ router.get('/stats', requireAdmin, async (req, res) => {
     const { data: dayOrders } = await supabase
       .from('orders')
       .select('total_price, items, status, created_at, updated_at, delivery_method, payment_status')
+      .eq('tenant_id', tid(req))
       .gte('created_at', start)
       .lt('created_at', end);
 
@@ -425,6 +427,7 @@ router.get('/stats', requireAdmin, async (req, res) => {
     const { count: conversationsStarted } = await supabase
       .from('sessions')
       .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tid(req))
       .gte('updated_at', start)
       .lt('updated_at', end);
 
@@ -467,7 +470,7 @@ router.get('/stats', requireAdmin, async (req, res) => {
 // ─── Categories ───────────────────────────────────────────────────────────────
 
 router.get('/categories', requireAuth, async (req, res) => {
-  const { data, error } = await supabase.from('categories').select('*').order('sort_order');
+  const { data, error } = await supabase.from('categories').select('*').eq('tenant_id', tid(req)).order('sort_order');
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
@@ -476,10 +479,10 @@ router.post('/categories', requireAdmin, async (req, res) => {
   const { name_he, name_en, emoji, has_toppings, sort_order } = req.body;
   const { data, error } = await supabase.from('categories')
     .insert({ name_he, name_en: name_en || name_he, emoji: emoji || '🍽️',
-              has_toppings: !!has_toppings, sort_order: sort_order || 99 })
+              has_toppings: !!has_toppings, sort_order: sort_order || 99, tenant_id: tid(req) })
     .select().single();
   if (error) return res.status(400).json({ error: error.message });
-  invalidateCache();
+  invalidateCache(tid(req));
   res.status(201).json(data);
 });
 
@@ -487,20 +490,19 @@ router.patch('/categories/:id', requireAdmin, async (req, res) => {
   const updates = { ...req.body };
   delete updates.id; delete updates.created_at;
   const { data, error } = await supabase.from('categories')
-    .update(updates).eq('id', req.params.id).select().single();
+    .update(updates).eq('id', req.params.id).eq('tenant_id', tid(req)).select().single();
   if (error) return res.status(400).json({ error: error.message });
-  invalidateCache();
+  invalidateCache(tid(req));
   res.json(data);
 });
 
 router.delete('/categories/:id', requireAdmin, async (req, res) => {
-  // Prevent deleting categories that still have products
   const { count } = await supabase.from('products').select('*', { count: 'exact', head: true })
-    .eq('category_id', req.params.id);
+    .eq('category_id', req.params.id).eq('tenant_id', tid(req));
   if (count > 0) return res.status(400).json({ error: `יש ${count} מוצרים בקטגוריה זו. העבר אותם קודם.` });
-  const { error } = await supabase.from('categories').delete().eq('id', req.params.id);
+  const { error } = await supabase.from('categories').delete().eq('id', req.params.id).eq('tenant_id', tid(req));
   if (error) return res.status(400).json({ error: error.message });
-  invalidateCache();
+  invalidateCache(tid(req));
   res.json({ success: true });
 });
 
@@ -533,15 +535,18 @@ router.post('/upload-image', requireAdmin, upload.single('image'), async (req, r
 // GET /products — returns products grouped by category with nested additions
 router.get('/products', requireAuth, async (req, res) => {
   const { data: categories, error: cErr } = await supabase
-    .from('categories').select('*').order('sort_order');
+    .from('categories').select('*').eq('tenant_id', tid(req)).order('sort_order');
   if (cErr) return res.status(500).json({ error: cErr.message });
 
   const { data: products, error: pErr } = await supabase
-    .from('products').select('*').order('sort_order');
+    .from('products').select('*').eq('tenant_id', tid(req)).order('sort_order');
   if (pErr) return res.status(500).json({ error: pErr.message });
 
-  const { data: additions, error: aErr } = await supabase
-    .from('product_additions').select('*').order('sort_order');
+  // product_additions are filtered via product_id FK (products already scoped to tenant)
+  const tenantProductIds = (products || []).map(p => p.id);
+  const { data: additions, error: aErr } = tenantProductIds.length
+    ? await supabase.from('product_additions').select('*').in('product_id', tenantProductIds).order('sort_order')
+    : { data: [], error: null };
   if (aErr) return res.status(500).json({ error: aErr.message });
 
   const addMap = {};
@@ -572,10 +577,10 @@ router.get('/products', requireAuth, async (req, res) => {
 router.post('/products', requireAdmin, async (req, res) => {
   const { name_he, name_en, price, category_id, sort_order, image_url, description } = req.body;
   const { data, error } = await supabase.from('products')
-    .insert({ name_he, name_en: name_en || name_he, price, category_id, sort_order: sort_order || 0, image_url, description: description || null })
+    .insert({ name_he, name_en: name_en || name_he, price, category_id, sort_order: sort_order || 0, image_url, description: description || null, tenant_id: tid(req) })
     .select().single();
   if (error) return res.status(400).json({ error: error.message });
-  invalidateCache();
+  invalidateCache(tid(req));
   res.status(201).json({ ...data, additions: [] });
 });
 
@@ -583,16 +588,16 @@ router.patch('/products/:id', requireAdmin, async (req, res) => {
   const updates = { ...req.body, updated_at: new Date().toISOString() };
   delete updates.id; delete updates.created_at; delete updates.additions;
   const { data, error } = await supabase.from('products')
-    .update(updates).eq('id', req.params.id).select().single();
+    .update(updates).eq('id', req.params.id).eq('tenant_id', tid(req)).select().single();
   if (error) return res.status(400).json({ error: error.message });
-  invalidateCache();
+  invalidateCache(tid(req));
   res.json(data);
 });
 
 router.delete('/products/:id', requireAdmin, async (req, res) => {
-  const { error } = await supabase.from('products').delete().eq('id', req.params.id);
+  const { error } = await supabase.from('products').delete().eq('id', req.params.id).eq('tenant_id', tid(req));
   if (error) return res.status(400).json({ error: error.message });
-  invalidateCache();
+  invalidateCache(tid(req));
   res.json({ success: true });
 });
 
@@ -635,7 +640,7 @@ router.delete('/products/:id/additions/:addId', requireAdmin, async (req, res) =
 
 router.get('/customers', requireAdmin, async (req, res) => {
   const { returning } = req.query;
-  let query = supabase.from('customers').select('*').order('last_order_at', { ascending: false });
+  let query = supabase.from('customers').select('*').eq('tenant_id', tid(req)).order('last_order_at', { ascending: false });
   if (returning === '1') query = query.gte('order_count', 2);
   const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
@@ -673,7 +678,7 @@ router.post('/customers/broadcast', requireAdmin, async (req, res) => {
   const results = { sent: 0, failed: 0 };
   for (const phone of phones) {
     try {
-      await sendMessage(phone, message);
+      await sendMessage(phone, message, tid(req));
       results.sent++;
       await new Promise((r) => setTimeout(r, 300)); // gentle rate limiting
     } catch {
@@ -709,12 +714,16 @@ router.get('/sse', requireKitchenOrAdmin, (req, res) => {
 
 router.get('/public-menu', async (req, res) => {
   try {
-    const [allSettings, categoriesRes, productsRes, additionsRes] = await Promise.all([
-      settings.loadAll(),
-      supabase.from('categories').select('*').order('sort_order'),
-      supabase.from('products').select('*').eq('is_available', true).order('sort_order'),
-      supabase.from('product_additions').select('*').eq('is_available', true).order('sort_order'),
+    const publicTid = req.query.tenant || DEFAULT_TENANT_ID;
+    const [allSettings, categoriesRes, productsRes] = await Promise.all([
+      settings.loadAll(publicTid),
+      supabase.from('categories').select('*').eq('tenant_id', publicTid).order('sort_order'),
+      supabase.from('products').select('*').eq('tenant_id', publicTid).eq('is_available', true).order('sort_order'),
     ]);
+    const productIds = (productsRes.data || []).map(p => p.id);
+    const additionsRes = productIds.length
+      ? await supabase.from('product_additions').select('*').in('product_id', productIds).eq('is_available', true).order('sort_order')
+      : { data: [] };
 
     const categories = categoriesRes.data || [];
     const products   = productsRes.data   || [];
@@ -786,7 +795,7 @@ router.post('/push-unsubscribe', requireAuth, async (req, res) => {
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 router.get('/settings', requireAdmin, async (req, res) => {
-  const all = await settings.loadAll();
+  const all = await settings.loadAll(tid(req));
   res.json(all);
 });
 
@@ -794,7 +803,7 @@ router.patch('/settings', requireAdmin, async (req, res) => {
   const updates = req.body;
   try {
     for (const [key, value] of Object.entries(updates)) {
-      await settings.set(key, value);
+      await settings.set(key, value, tid(req));
     }
     res.json({ success: true });
   } catch (err) {
@@ -806,9 +815,9 @@ router.patch('/settings', requireAdmin, async (req, res) => {
 
 // admin_users table is created via supabase/schema.sql (run once in Supabase SQL editor)
 
-router.get('/admin-users', requireAdmin, async (_req, res) => {
+router.get('/admin-users', requireAdmin, async (req, res) => {
   const { data, error } = await supabase
-    .from('admin_users').select('*').order('created_at');
+    .from('admin_users').select('*').eq('tenant_id', tid(req)).order('created_at');
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
@@ -817,13 +826,12 @@ router.post('/admin-users', requireAdmin, async (req, res) => {
   const { phone, name, role = 'admin' } = req.body;
   if (!phone || !name) return res.status(400).json({ error: 'phone ו-name הם שדות חובה' });
 
-  // Normalise phone: strip non-digits, ensure no leading +
   const normalised = phone.replace(/\D/g, '');
   if (normalised.length < 9) return res.status(400).json({ error: 'מספר טלפון לא תקין' });
 
   const { data, error } = await supabase
     .from('admin_users')
-    .insert({ phone: normalised, name: name.trim(), role })
+    .insert({ phone: normalised, name: name.trim(), role, tenant_id: tid(req) })
     .select().single();
   if (error) {
     const msg = error.code === '23505' ? 'מספר טלפון זה כבר קיים' : error.message;
@@ -834,7 +842,7 @@ router.post('/admin-users', requireAdmin, async (req, res) => {
 
 router.delete('/admin-users/:id', requireAdmin, async (req, res) => {
   const { error } = await supabase
-    .from('admin_users').delete().eq('id', req.params.id);
+    .from('admin_users').delete().eq('id', req.params.id).eq('tenant_id', tid(req));
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
 });

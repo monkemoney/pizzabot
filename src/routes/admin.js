@@ -4,7 +4,10 @@
 // New dashboard uses /api/* via dashboard-api.js
 
 const express = require('express');
-const { getOrders } = require('../services/supabase');
+const { createClient } = require('@supabase/supabase-js');
+
+const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
 const router = express.Router();
 
@@ -25,7 +28,9 @@ function maskPhone(phone) {
 router.get('/orders', async (req, res) => {
   try {
     const { status = 'pending' } = req.query;
-    const rawOrders = await getOrders(status === 'all' ? null : status);
+    let q = supabase.from('orders').select('*').eq('tenant_id', DEFAULT_TENANT_ID).order('created_at', { ascending: false });
+    if (status && status !== 'all') q = q.eq('status', status);
+    const { data: rawOrders = [] } = await q;
     const orders = rawOrders.map((o) => ({
       id:              o.id,
       order_number:    o.order_number,

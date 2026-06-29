@@ -2,6 +2,7 @@
 
 const { sendMessage } = require('./greenapi');
 const settings        = require('./settings');
+const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
 
 const STATUS_MESSAGES = {
   preparing: {
@@ -35,7 +36,9 @@ const STATUS_MESSAGES = {
  * @param {number} orderNumber human-readable order number
  * @param {object} order       full order row (needed for courier message)
  */
-async function notifyStatusChange(phone, status, lang = 'he', orderNumber, order = null) {
+async function notifyStatusChange(phone, status, lang = 'he', orderNumber, order = null, tenantId = DEFAULT_TENANT_ID) {
+  const tid = order?.tenant_id || tenantId;
+
   // ── Customer notification ──────────────────────────────────────────────────
   const msgs = STATUS_MESSAGES[status];
   // 'ready' notification only for pickup orders
@@ -45,16 +48,16 @@ async function notifyStatusChange(phone, status, lang = 'he', orderNumber, order
     const prefix = lang === 'en'
       ? `*Order #${orderNumber}*\n`
       : `*הזמנה מספר ${orderNumber}*\n`;
-    await sendMessage(phone, prefix + text).catch(err =>
+    await sendMessage(phone, prefix + text, tid).catch(err =>
       console.error(`[notifier] Customer notify failed ${phone}:`, err.message)
     );
-    console.log(`[notifier] "${status}" → customer ${phone}`);
+    console.log(`[notifier] "${status}" → customer ${phone} (tenant ${tid})`);
   }
 
   // ── Courier notification ───────────────────────────────────────────────────
   if (!order) return;
   try {
-    const cfg = await settings.loadAll();
+    const cfg = await settings.loadAll(tid);
     if (!cfg.courier_notify_enabled) return;
 
     const triggerStatus = cfg.courier_notify_on_status || 'out_for_delivery';
@@ -65,7 +68,7 @@ async function notifyStatusChange(phone, status, lang = 'he', orderNumber, order
 
     const msg = buildCourierMessage(order);
     for (const c of couriers) {
-      await sendMessage(c.phone, msg).catch(err =>
+      await sendMessage(c.phone, msg, tid).catch(err =>
         console.error(`[notifier] Courier ${c.phone} failed:`, err.message)
       );
       console.log(`[notifier] "${status}" → courier ${c.phone} (${c.name || ''})`);
