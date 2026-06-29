@@ -56,18 +56,9 @@ async function buildAdminPrompt(adminUser, tenantId = DEFAULT_TENANT_ID) {
 
   const STATUS_MAP = { new:'חדשה', preparing:'בהכנה', out_for_delivery:'יצא למשלוח', delivered:'נמסרה', done:'הסתיימה', cancelled:'בוטלה' };
 
-  return `אתה עוזר ניהול של פיצה דליבריס.
-המנהל שמדבר איתך: *${adminUser.name}* (${adminUser.role})
-שפה: עברית. תשובות קצרות ומהירות.
-
-══════════════════════════
-סטטוס המסעדה
-══════════════════════════
-• בוט פתוח: ${allSettings.is_open !== false ? 'כן ✅' : 'לא ❌'}
-• משלוח: ${allSettings.delivery_enabled !== false ? 'כן' : 'לא'} | איסוף: ${allSettings.pickup_enabled !== false ? 'כן' : 'לא'}
-${(() => {
+  const deliveryHoursLine = (() => {
   const dh = allSettings.delivery_hours;
-  if (!dh || Object.keys(dh).length === 0) return '• שעות משלוח: לא מוגדרות (פתוח תמיד)';
+  if (!dh || Object.keys(dh).length === 0) return '';
   const days = ['sun','mon','tue','wed','thu','fri','sat'];
   const DAY_HE = { sun:'ראשון', mon:'שני', tue:'שלישי', wed:'רביעי', thu:'חמישי', fri:'שישי', sat:'שבת' };
   const nowIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
@@ -75,9 +66,19 @@ ${(() => {
   const todayH = dh[today];
   const todayStr = todayH
     ? (todayH.is_open === false ? 'סגור היום' : `${todayH.open}–${todayH.close}`)
-    : 'לא מוגדר';
-  return `• שעות משלוח היום (יום ${DAY_HE[today]}): ${todayStr}`;
-})()}
+    : '';
+  return todayStr ? `\n• שעות משלוח היום: ${todayStr}` : '';
+})();
+
+  return `אתה עוזר ניהול של פיצה דליבריס.
+המנהל שמדבר איתך: *${adminUser.name}* (${adminUser.role})
+שפה: עברית. תשובות קצרות ומהירות. ענה רק על מה שנשאלת — אל תציע עזרה שלא ביקשו.
+
+══════════════════════════
+סטטוס המסעדה
+══════════════════════════
+• בוט פתוח: ${allSettings.is_open !== false ? 'כן ✅' : 'לא ❌'}
+• משלוח: ${allSettings.delivery_enabled !== false ? 'כן' : 'לא'} | איסוף: ${allSettings.pickup_enabled !== false ? 'כן' : 'לא'}${deliveryHoursLine}}
 
 ══════════════════════════
 תפריט נוכחי
@@ -124,8 +125,9 @@ ${orderList}
 ══════════════════════════
 כללים
 ══════════════════════════
+• ענה רק על מה שנשאלת. אל תציע פעולות, הגדרות או שאלות שלא ביקשו.
 • אחרי כל ACTION — אשר בקצרה מה בוצע.
-• אם לא מובן — שאל שאלת הבהרה אחת.
+• אם לא מובן — שאל שאלת הבהרה אחת בלבד.
 • פריט לא זמין = ❌, זמין = ✅.
 • "נגמרה X" = SET_AVAILABLE available:false
 • "חזרה X" / "יש X" = SET_AVAILABLE available:true
