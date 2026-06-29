@@ -12,8 +12,38 @@ async function buildSystemPrompt(customerProfile = null, tenantId = null) {
   ]);
 
   const prepLeadTime = allSettings.prep_lead_time ?? 45;
-  const nowIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  const nowIL  = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
   const nowStr = nowIL.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const DAY_KEYS = ['sun','mon','tue','wed','thu','fri','sat'];
+  const DAY_HE   = { sun:'ראשון', mon:'שני', tue:'שלישי', wed:'רביעי', thu:'חמישי', fri:'שישי', sat:'שבת' };
+  const todayKey = DAY_KEYS[nowIL.getDay()];
+
+  // ── Build live-status block ──────────────────────────────────────────────────
+  function todayHoursStr(hoursObj) {
+    if (!hoursObj) return null;
+    const h = hoursObj[todayKey];
+    if (!h) return null;
+    if (h.is_open === false) return 'סגור היום';
+    return `${h.open}–${h.close}`;
+  }
+  const bizHoursToday = todayHoursStr(allSettings.business_hours);
+  const dlvHoursToday = todayHoursStr(allSettings.delivery_hours);
+
+  const isOpenNow = allSettings.is_open !== false; // already verified by ai-handler before calling buildSystemPrompt
+
+  const liveStatus = [
+    `השעה עכשיו (ישראל): ${nowStr} | יום ${DAY_HE[todayKey]}`,
+    `בוט: ${isOpenNow ? 'פתוח ✅' : 'סגור ❌'}`,
+    bizHoursToday ? `שעות פעילות היום: ${bizHoursToday}` : 'שעות פעילות: לא מוגדרות (פתוח תמיד)',
+    dlvHoursToday ? `שעות משלוח היום: ${dlvHoursToday}` : null,
+    `משלוח: ${deliveryNowOpen && allSettings.delivery_enabled !== false ? 'זמין ✅' : 'לא זמין ❌'} | איסוף: ${allSettings.pickup_enabled !== false ? 'זמין ✅' : 'לא זמין ❌'}`,
+    `תשלום: ${[
+      allSettings.payment_cash    !== false ? 'מזומן' : null,
+      allSettings.payment_credit  !== false ? 'אשראי' : null,
+      (allSettings.payment_bit    === true  || allSettings.payment_bit === 'true') ? 'Bit' : null,
+      (allSettings.payment_paybox === true) ? 'Paybox' : null,
+    ].filter(Boolean).join(' / ')}`,
+  ].filter(Boolean).join('\n');
 
   const deliveryEnabled = allSettings.delivery_enabled !== false && deliveryNowOpen;
   const pickupEnabled   = allSettings.pickup_enabled   !== false;
@@ -97,6 +127,13 @@ ${parts.join('\n')}
 
   return `אתה ג׳אסל, מלצר-בוט של ${businessName}.${returningBlock}
 אתה מנהל שיחות ב-WhatsApp בדיוק כמו מלצר מקצועי במסעדה — חם, קצר, יעיל.
+
+══════════════════════════════════════════
+מצב נוכחי — ענה לפי נתונים אלו בלבד
+══════════════════════════════════════════
+${liveStatus}
+
+חשוב: כל שאלה של לקוח לגבי שעות פתיחה, זמינות משלוח, אמצעי תשלום — ענה אך ורק לפי הנתונים שבסקשן זה. אל תמציא מידע.
 
 ══════════════════════════════════════════
 ${menuText}
