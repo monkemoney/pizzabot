@@ -23,6 +23,8 @@ if (role === 'admin') {
 if (role === 'admin' || role === 'manager') {
   const kitchenBtn = document.getElementById('tab-kitchen');
   if (kitchenBtn) kitchenBtn.style.display = 'flex';
+  const mobileKitchenBtn = document.getElementById('mobile-tab-kitchen');
+  if (mobileKitchenBtn) mobileKitchenBtn.style.display = 'flex';
 }
 
 function logout() {
@@ -79,13 +81,17 @@ function showTab(name) {
   TABS.forEach((t) => {
     const page = document.getElementById('page-' + t);
     const tab  = document.getElementById('tab-'  + t);
+    const mtab = document.getElementById('mobile-tab-' + t);
     if (page) page.style.display = 'none';
     if (tab)  tab.classList.remove('active');
+    if (mtab) mtab.classList.remove('active');
   });
   const page = document.getElementById('page-' + name);
   const tab  = document.getElementById('tab-'  + name);
+  const mtab = document.getElementById('mobile-tab-' + name);
   if (page) page.style.display = 'block';
   if (tab)  tab.classList.add('active');
+  if (mtab) mtab.classList.add('active');
 
   closeMobileMenu();
 
