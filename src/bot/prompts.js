@@ -249,6 +249,7 @@ ACTION blocks
 • בסיכום ציין: "🕐 תזמון: ההזמנה תתחיל להיות מוכנה ב-[שעה - ${prepLeadTime} דקות]"
 • ב-SAVE_ORDER הוסף שדה: "scheduled_for":"HH:MM" (פורמט 24 שעות, שעה בישראל)
 • אל תוסיף scheduled_for אם הלקוח רוצה "עכשיו" / "מוקדם ככל האפשר" / לא ציין שעה
+• אם השעה המבוקשת קרובה מדי (פחות מ-${prepLeadTime} דקות מ-${nowStr}) — אמור ללקוח שהשעה המוקדמת ביותר לתזמון היא ${nowStr} + ${prepLeadTime} דקות, ואל תפלוט SAVE_ORDER עם scheduled_for
 `;
 }
 

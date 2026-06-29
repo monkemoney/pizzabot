@@ -280,11 +280,21 @@ async function handleMessage(phone, userMessage, tenantId = null) {
       // Parse scheduled_for: "HH:MM" → full ISO timestamp in Israel TZ
       let scheduledFor = null;
       if (payload.scheduled_for && /^\d{1,2}:\d{2}$/.test(String(payload.scheduled_for))) {
+        const allSettingsForSched = await settings.loadAll(tid);
+        const lead = Number(allSettingsForSched.prep_lead_time ?? 45);
         const [hh, mm] = String(payload.scheduled_for).split(':').map(Number);
         const nowIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
         const sched = new Date(nowIL);
         sched.setHours(hh, mm, 0, 0);
         if (sched <= nowIL) sched.setDate(sched.getDate() + 1); // next day if past
+        const minFromNow = (sched - nowIL) / 60000;
+        if (minFromNow < lead) {
+          const earliest = new Date(nowIL.getTime() + lead * 60000);
+          const earliestStr = earliest.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false });
+          await reply(phone, `⚠️ לא ניתן לתזמן הזמנה בפחות מ-${lead} דקות מראש.\nהשעה המוקדמת ביותר שניתן לתזמן כרגע: *${earliestStr}*.`, tid);
+          await updateSession(phone, { conversation_history: updatedHistory }, tid);
+          return;
+        }
         scheduledFor = sched.toISOString();
       }
 
