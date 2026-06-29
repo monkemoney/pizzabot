@@ -229,14 +229,17 @@ async function handleMessage(phone, userMessage, tenantId = null) {
       // Fetch all topping names mentioned by customer that now have is_available=false
       const { createClient: mkSB } = require('@supabase/supabase-js');
       const sb = mkSB(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-      const { data: unavailableToppings } = await sb
-        .from('product_additions')
-        .select('name_he')
-        .eq('is_available', false)
-        .in('product_id',
-          await sb.from('products').select('id').eq('tenant_id', tid)
-            .then(r => (r.data || []).map(p => p.id))
-        );
+
+      // Step 1: product IDs for this tenant
+      const { data: tenantProds } = await sb
+        .from('products').select('id').eq('tenant_id', tid);
+      const productIds = (tenantProds || []).map(p => p.id);
+
+      // Step 2: unavailable toppings for those products
+      const { data: unavailableToppings } = productIds.length
+        ? await sb.from('product_additions').select('name_he')
+            .eq('is_available', false).in('product_id', productIds)
+        : { data: [] };
 
       const nowUnavailable = (unavailableToppings || [])
         .filter(a => customerText.includes((a.name_he || '').toLowerCase()))
