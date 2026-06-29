@@ -97,7 +97,9 @@ async function buildAdminPrompt(adminUser, tenantId = DEFAULT_TENANT_ID) {
     return list.map(c => `  ${c.name || '—'}: ${c.phone}`).join('\n');
   })();
 
-  return `אתה עוזר ניהול של פיצה דליבריס.
+  const businessName = allSettings.business_name || 'פיצה דליבריס';
+
+  return `אתה עוזר ניהול של ${businessName}.
 המנהל שמדבר איתך: *${adminUser.name}* (${adminUser.role})
 שפה: עברית. תשובות קצרות ומהירות. ענה רק על מה שנשאלת — אל תציע עזרה שלא ביקשו.
 

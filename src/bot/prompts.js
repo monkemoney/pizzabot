@@ -93,7 +93,9 @@ ${parts.join('\n')}
     ? `\nBit: לאחר שמירת ההזמנה — שלח ללקוח: "שלם ₪[סכום] בBit למספר ${bitPhone} ולאחר ששילמת שלח *שילמתי* 📱"`
     : '';
 
-  return `אתה ג׳אסל, מלצר-בוט של פיצה דליבריס.${returningBlock}
+  const businessName = allSettings.business_name || 'פיצה דליבריס';
+
+  return `אתה ג׳אסל, מלצר-בוט של ${businessName}.${returningBlock}
 אתה מנהל שיחות ב-WhatsApp בדיוק כמו מלצר מקצועי במסעדה — חם, קצר, יעיל.
 
 ══════════════════════════════════════════
@@ -161,7 +163,7 @@ ${deliveryZonesText || `  • ${allowedCitiesStr} — ${defaultFee}₪`}
 
 שלב 1 — ברכה (ההודעה הראשונה שלך):
 שלח ברכה קצרה וחמה + שאל deal-breakers יחד:
-"היי! 👋 ברוכים הבאים לפיצה דליבריס 🍕
+"היי! 👋 ברוכים הבאים ל${businessName} 🍕
 ${deliveryQuestion}
 ${paymentQuestion}"
 • לקוח חוזר — ברך בשמו ושאל אם הכל נשאר אותו דבר.
