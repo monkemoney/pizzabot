@@ -2349,22 +2349,30 @@ function renderKitchen() {
 async function kitchenSetStatus(id, status) {
   const btn = document.querySelector(`#kitchen-card-${id} button`);
   if (btn) { btn.disabled = true; btn.style.opacity = '.5'; }
-  const data = await apiFetch(`/api/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
-  if (!data || data.error) { showToast(data?.error || 'שגיאה'); if (btn) { btn.disabled = false; btn.style.opacity = '1'; } return; }
-  if (data.order) { _kitchenOrders[id] = data.order; renderKitchen(); }
+  try {
+    const data = await api('PATCH', `/orders/${id}/status`, { status });
+    if (data?.order) { _kitchenOrders[id] = data.order; renderKitchen(); }
+  } catch (e) {
+    showToast(e.message || 'שגיאה');
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+  }
 }
 
 async function loadKitchenOrders() {
-  const data = await apiFetch('/api/kitchen/orders');
-  if (!data) return;
-  _kitchenOrders = {};
-  for (const o of data) _kitchenOrders[o.id] = o;
-  renderKitchen();
+  try {
+    const data = await api('GET', '/kitchen/orders');
+    if (!Array.isArray(data)) return;
+    _kitchenOrders = {};
+    for (const o of data) _kitchenOrders[o.id] = o;
+    renderKitchen();
+  } catch (e) {
+    console.error('[kitchen] loadKitchenOrders:', e.message);
+  }
 }
 
 function _kitchenConnectSSE() {
   if (_kitchenSSE) { _kitchenSSE.close(); _kitchenSSE = null; }
-  const es = new EventSource(`/api/sse?token=${encodeURIComponent(localStorage.getItem('dashboard_token') || '')}`);
+  const es = new EventSource(`/api/sse?token=${encodeURIComponent(token || '')}`);
   _kitchenSSE = es;
   es.addEventListener('new_order', (e) => {
     const o = JSON.parse(e.data);
@@ -2391,9 +2399,9 @@ function _kitchenConnectSSE() {
 }
 
 function initKitchen() {
+  loadKitchenOrders();
   if (_kitchenInited) return;
   _kitchenInited = true;
-  loadKitchenOrders();
   _kitchenConnectSSE();
 }
 
