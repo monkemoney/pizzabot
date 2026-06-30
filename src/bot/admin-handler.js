@@ -185,6 +185,7 @@ ${orderList}
 • פריט לא זמין = ❌, זמין = ✅.
 • "נגמרה X" = SET_AVAILABLE available:false
 • "חזרה X" / "יש X" = SET_AVAILABLE available:true
+• שם תוספת (כמו "בולגרית") יכול להופיע מספר פעמים ברשימה — פעם אחת כמוצר עצמאי ופעם נוספת כתוספת מקוננת תחת כל פיצה בנפרד. לפני שאתה אומר "כבר זמין, אין צורך לעדכן" — בדוק את **כל** המופעים של השם בכל הרשימה (מוצר + כל תוספת מקוננת תחת כל מוצר). אם ולו מופע אחד מסומן ❌ — חובה לשלוח SET_AVAILABLE עם type:"topping" כדי לתקן את כולם (הפעולה מעדכנת את כל הרשומות התואמות בבת אחת). אל תניח שמוצר עצמאי זמין ✅ אומר שגם התוספת בכל הפיצות זמינה.
 • "סגור" / "צאו" = SET is_open:false
 • "פתח" = SET is_open:true
 • "קיבלתי Bit" / "שילמו" / "אשר תשלום" + מספר הזמנה = CONFIRM_PAYMENT
@@ -220,21 +221,23 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
               .from('product_additions').select('id,name_he')
               .ilike('name_he', `%${name}%`)
               .in('product_id', tenantProductIds)
-              .limit(5);
+              .limit(500);
             if (!found?.length) { results.push(`❌ לא נמצאה תוספת "${name}"`); break; }
             for (const a of found) {
               await supabase.from('product_additions').update({ is_available: available }).eq('id', a.id);
             }
+            console.log(`[admin-bot] SET_AVAILABLE topping "${name}" available=${available} — updated ${found.length} row(s): ${found.map(a => a.id).join(', ')}`);
           } else {
             const { data: found } = await supabase
-              .from('products').select('id,name_he').eq('tenant_id', tenantId).ilike('name_he', `%${name}%`).limit(3);
+              .from('products').select('id,name_he').eq('tenant_id', tenantId).ilike('name_he', `%${name}%`).limit(100);
             if (!found?.length) { results.push(`❌ לא נמצא מוצר "${name}"`); break; }
             for (const p of found) {
               await supabase.from('products').update({ is_available: available }).eq('id', p.id);
             }
+            console.log(`[admin-bot] SET_AVAILABLE product "${name}" available=${available} — updated ${found.length} row(s): ${found.map(p => p.id).join(', ')}`);
           }
           invalidateCache(tenantId);
-          results.push(`${available ? '✅' : '❌'} *${name}* — ${available ? 'מוחזר לתפריט' : 'סומן כאזל'}`);
+          results.push(`${available ? '✅' : '❌'} *${name}* — ${available ? 'מוחזר לתפריט' : 'סומן כאזל'} (${type === 'topping' ? 'בכל המוצרים הרלוונטיים' : ''})`);
           break;
         }
 
