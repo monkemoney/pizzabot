@@ -64,7 +64,7 @@ async function handleDisputeResponse(phone, userMessage, session, tenantId) {
     const order = await getOrderById(dispute.order_id);
     if (!order || ['cancelled', 'done'].includes(order.status)) {
       await updateSession(phone, { pending_dispute: null }, tenantId);
-      await reply(phone, 'ההזמנה כבר אינה פעילה. 🙏', tenantId);
+      await reply(phone, 'ההזמנה כבר אינה פעילה.', tenantId);
       return;
     }
     await updateOrder(order.id, { dispute_status: 'resolved', dispute_resolution: 'replaced' });
@@ -83,7 +83,7 @@ async function handleDisputeResponse(phone, userMessage, session, tenantId) {
   const order = await getOrderById(dispute.order_id);
   if (!order || ['cancelled', 'done'].includes(order.status)) {
     await updateSession(phone, { pending_dispute: null }, tenantId);
-    await reply(phone, 'ההזמנה כבר אינה פעילה. תודה! 🙏', tenantId);
+    await reply(phone, 'ההזמנה כבר אינה פעילה. תודה!', tenantId);
     return;
   }
 
@@ -93,7 +93,7 @@ async function handleDisputeResponse(phone, userMessage, session, tenantId) {
     await updateSession(phone, { pending_dispute: null, conversation_history: [], pending_order: {} }, tenantId);
     const refundNote = order.payment_method === 'credit'
       ? '\nהתשלום יזוכה לכרטיסך תוך 3-5 ימי עסקים.' : '';
-    await reply(phone, `✅ הזמנה מספר *${dispute.order_number}* בוטלה.${refundNote}\n\nמצטערים על אי הנוחות 🙏`, tenantId);
+    await reply(phone, `הזמנה מספר *${dispute.order_number}* בוטלה.${refundNote}\n\nמצטערים על אי הנוחות`, tenantId);
     return;
   }
 
@@ -128,8 +128,8 @@ async function handleDisputeResponse(phone, userMessage, session, tenantId) {
       ? `\nהחזר של ₪${removed.toFixed(0)} יזוכה לכרטיסך.` : '';
 
     await reply(phone,
-      `✅ ההזמנה עודכנה — הוסרו: *${removedList}*.\n` +
-      `סכום מעודכן: ₪${newTotal.toFixed(0)}.${refundNote}\nתודה על ההבנה! 🙏`,
+      `ההזמנה עודכנה — הוסרו: *${removedList}*.\n` +
+      `סכום מעודכן: ₪${newTotal.toFixed(0)}.${refundNote}\nתודה על ההבנה!`,
       tenantId
     );
     return;
@@ -137,7 +137,7 @@ async function handleDisputeResponse(phone, userMessage, session, tenantId) {
 
   // ── 3: Replace with something else ──
   await updateSession(phone, { pending_dispute: { ...dispute, awaiting_replacement: true } }, tenantId);
-  await reply(phone, `מה תרצה במקום ${namesStr}? 😊\n\nכתוב מה תרצה להחליף ואנחנו נבדוק שיש לנו.`, tenantId);
+  await reply(phone, `מה תרצה במקום ${namesStr}?\n\nכתוב מה תרצה להחליף ואנחנו נבדוק שיש לנו.`, tenantId);
 }
 
 // ─── Main handler ────────────────────────────────────────────────────────────
@@ -154,8 +154,8 @@ async function handleMessage(phone, userMessage, tenantId = null) {
   if (!open) {
     const lang = session.language || 'he';
     await reply(phone, lang === 'en'
-      ? "Sorry, we're currently closed. Please try again during business hours 🕐"
-      : 'מצטערים, אנחנו כרגע סגורים. אנא נסה שוב בשעות הפתיחה 🕐', tid);
+      ? "Sorry, we're currently closed. Please try again during business hours"
+      : 'מצטערים, אנחנו כרגע סגורים. אנא נסה שוב בשעות הפתיחה', tid);
     return;
   }
 
@@ -191,8 +191,8 @@ async function handleMessage(phone, userMessage, tenantId = null) {
         if (wantsCancel) {
           await updateOrderStatus(lastOrder.id, 'cancelled');
           const msg = lang === 'en'
-            ? `✅ Order #${lastOrder.order_number} has been cancelled. Want to place a new order?`
-            : `✅ הזמנה מספר ${lastOrder.order_number} בוטלה. רוצה להזמין מחדש?`;
+            ? `Order #${lastOrder.order_number} has been cancelled. Want to place a new order?`
+            : `הזמנה מספר ${lastOrder.order_number} בוטלה. רוצה להזמין מחדש?`;
           await reply(phone, msg, tid);
           return;
         }
@@ -247,7 +247,7 @@ async function handleMessage(phone, userMessage, tenantId = null) {
 
       if (nowUnavailable.length > 0) {
         const names = [...new Set(nowUnavailable)].join(', ');
-        systemPrompt += `\n\n⚠️ התראת מלאי — חשוב לפני שממשיכים:\nהתוספות הבאות הוזכרו בשיחה אך **אינן זמינות כעת** (אזלו מהמלאי): ${names}.\nחובה להודיע ללקוח **עכשיו** לפני כל שלב נוסף, להציע חלופה, ולא לכלול אותן ב-SAVE_ORDER/CREATE_PAYMENT.`;
+        systemPrompt += `\n\nהתראת מלאי — חשוב לפני שממשיכים:\nהתוספות הבאות הוזכרו בשיחה אך **אינן זמינות כעת** (אזלו מהמלאי): ${names}.\nחובה להודיע ללקוח **עכשיו** לפני כל שלב נוסף, להציע חלופה, ולא לכלול אותן ב-SAVE_ORDER/CREATE_PAYMENT.`;
         console.log(`[ai-handler] availability alert ${phone}: ${names}`);
       }
     } catch (e) {
@@ -261,7 +261,7 @@ async function handleMessage(phone, userMessage, tenantId = null) {
   } catch (err) {
     console.error('[ai-handler] Claude error:', err.message);
     require('../services/vendor-alerts').alerts.botError(phone, err).catch(() => {});
-    await reply(phone, 'מצטערים, אירעה שגיאה זמנית. אנא נסה שוב. 🙏', tid);
+    await reply(phone, 'מצטערים, אירעה שגיאה זמנית. אנא נסה שוב.', tid);
     return;
   }
 
@@ -276,7 +276,7 @@ async function handleMessage(phone, userMessage, tenantId = null) {
     const bizName = allSettingsForName.business_name || 'פיצה דליבריס';
     const menuUrl = botUrl + '/menu.html?tenant=' + tid;
     // Fallback greeting if Claude returned empty text on first message
-    const text = cleanText || `היי! 👋 ברוכים הבאים ל${bizName} 🍕\nמשלוח או איסוף? מזומן או אשראי?\nתפריט עם תמונות: ${menuUrl}`;
+    const text = cleanText || `היי! ברוכים הבאים ל${bizName}\nמשלוח או איסוף? מזומן או אשראי?\nתפריט עם תמונות: ${menuUrl}`;
     await reply(phone, text + privacyNotice, tid);
   } else if (cleanText) {
     await reply(phone, cleanText, tid);
@@ -336,7 +336,7 @@ async function handleMessage(phone, userMessage, tenantId = null) {
         if (minFromNow < lead) {
           const earliest = new Date(nowIL.getTime() + lead * 60000);
           const earliestStr = earliest.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false });
-          await reply(phone, `⚠️ לא ניתן לתזמן הזמנה בפחות מ-${lead} דקות מראש.\nהשעה המוקדמת ביותר שניתן לתזמן כרגע: *${earliestStr}*.`, tid);
+          await reply(phone, `לא ניתן לתזמן הזמנה בפחות מ-${lead} דקות מראש.\nהשעה המוקדמת ביותר שניתן לתזמן כרגע: *${earliestStr}*.`, tid);
           await updateSession(phone, { conversation_history: updatedHistory }, tid);
           return;
         }
@@ -368,27 +368,27 @@ async function handleMessage(phone, userMessage, tenantId = null) {
         const allSettings = await settings.loadAll(tid);
         const lead = allSettings.prep_lead_time ?? 45;
         const confirmMsg = lang === 'en'
-          ? `🕐 Order *#${orderNumber}* scheduled for ${timeStr}!\nWe'll start preparing ${lead} min before.`
-          : `🕐 הזמנה מספר *${orderNumber}* תוזמנה לשעה ${timeStr}!\nנתחיל להכין ${lead} דקות לפני 🍕`;
+          ? `Order *#${orderNumber}* scheduled for ${timeStr}!\nWe'll start preparing ${lead} min before.`
+          : `הזמנה מספר *${orderNumber}* תוזמנה לשעה ${timeStr}!\nנתחיל להכין ${lead} דקות לפני`;
         await reply(phone, confirmMsg, tid);
       } else if (isBit) {
         const allSettings = await settings.loadAll(tid);
         const bitPhone = allSettings.bit_phone ? String(allSettings.bit_phone).replace(/"/g, '') : null;
         const confirmMsg = lang === 'en'
-          ? `🍕 Order *#${orderNumber}* saved!\nPlease send ₪${payload.total} via Bit${bitPhone ? ` to ${bitPhone}` : ''}.\nOnce paid, reply *paid* 📱`
-          : `🍕 הזמנה מספר *${orderNumber}* נשמרה!\nלסיום — שלח *₪${payload.total}* בBit${bitPhone ? ` למספר ${bitPhone}` : ''}.\nלאחר התשלום שלח *שילמתי* 📱`;
+          ? `Order *#${orderNumber}* saved!\nPlease send ₪${payload.total} via Bit${bitPhone ? ` to ${bitPhone}` : ''}.\nOnce paid, reply *paid*`
+          : `הזמנה מספר *${orderNumber}* נשמרה!\nלסיום — שלח *₪${payload.total}* בBit${bitPhone ? ` למספר ${bitPhone}` : ''}.\nלאחר התשלום שלח *שילמתי*`;
         await reply(phone, confirmMsg, tid);
       } else {
         const confirmMsg = lang === 'en'
-          ? `🍕 Order *#${orderNumber}* confirmed!\nWe'll start preparing it now.`
-          : `🍕 הזמנה מספר *${orderNumber}* אושרה!\nמתחילים להכין עכשיו.`;
+          ? `Order *#${orderNumber}* confirmed!\nWe'll start preparing it now.`
+          : `הזמנה מספר *${orderNumber}* אושרה!\nמתחילים להכין עכשיו.`;
         await reply(phone, confirmMsg, tid);
       }
 
       await updateSession(phone, { conversation_history: [], pending_order: {} }, tid);
     } catch (err) {
       console.error('[ai-handler] saveOrder error:', err.message);
-      await reply(phone, 'אירעה שגיאה בשמירת ההזמנה. אנא נסה שוב. 🙏', tid);
+      await reply(phone, 'אירעה שגיאה בשמירת ההזמנה. אנא נסה שוב.', tid);
       await updateSession(phone, { conversation_history: updatedHistory }, tid);
     }
     return;
@@ -429,8 +429,8 @@ async function handleMessage(phone, userMessage, tenantId = null) {
 
       const lang = detectLang(userMessage, history);
       const linkMsg = lang === 'en'
-        ? `💳 Please complete your payment here:\n${paymentUrl}\n\nThe link is valid for 30 minutes.`
-        : `💳 לסיום ביצוע ההזמנה, שלם כאן:\n${paymentUrl}\n\nהקישור בתוקף ל-30 דקות.`;
+        ? `Please complete your payment here:\n${paymentUrl}\n\nThe link is valid for 30 minutes.`
+        : `לסיום ביצוע ההזמנה, שלם כאן:\n${paymentUrl}\n\nהקישור בתוקף ל-30 דקות.`;
 
       await reply(phone, linkMsg, tid);
     } catch (err) {
