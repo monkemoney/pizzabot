@@ -300,7 +300,7 @@ async function handleMessage(phone, userMessage, tenantId = null) {
   if (actionType === 'SHOW_TOPPINGS') {
     const lang = detectLang(userMessage, history);
     const productName = userMessage.length < 80 ? userMessage : null;
-    await sendToppingsPoll(phone, lang, productName).catch(() => {});
+    await sendToppingsPoll(phone, lang, productName, tid).catch(() => {});
     await updateSession(phone, { conversation_history: updatedHistory }, tid);
     return;
   }

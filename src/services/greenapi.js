@@ -2,10 +2,18 @@
 
 require('dotenv').config();
 const axios = require('axios');
+const metaWA = require('./meta-whatsapp');
 
 const BASE_URL    = process.env.GREEN_API_BASE_URL || 'https://api.green-api.com';
 const INSTANCE_ID = process.env.GREEN_API_INSTANCE_ID;
 const TOKEN       = process.env.GREEN_API_TOKEN;
+const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
+
+// Default tenant now sends via the official Meta WhatsApp Cloud API.
+// Other tenants stay on Green API until migrated individually.
+function _isMetaTenant(tenantId) {
+  return !tenantId || tenantId === DEFAULT_TENANT_ID;
+}
 
 function apiUrl(method, instanceId = INSTANCE_ID, token = TOKEN) {
   return `${BASE_URL}/waInstance${instanceId}/${method}/${token}`;
@@ -42,6 +50,8 @@ async function _tenantCreds(tenantId) {
 }
 
 async function sendMessage(phone, message, tenantId = null) {
+  if (_isMetaTenant(tenantId)) return metaWA.sendMessage(phone, message);
+
   const chatId = toChatId(phone);
   const { instanceId, token } = await _tenantCreds(tenantId);
   try {
@@ -193,14 +203,14 @@ async function sendCategoryPoll(phone, categoryId, lang = 'he') {
  * 1. If productName is given → look for product_additions for that product first.
  * 2. Fallback: use the global is_topping_addon category products.
  */
-async function sendToppingsPoll(phone, lang = 'he', productName = null) {
+async function sendToppingsPoll(phone, lang = 'he', productName = null, tenantId = null) {
   const { createClient } = require('@supabase/supabase-js');
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
   const { getProducts } = require('./menu-service');
   const { categories, byCategory, main } = await getProducts();
 
   const isHe = lang !== 'en';
-  let toppingOptions = [];
+  let toppingRows = []; // [{ name_he, price }]
 
   // 1. Try per-product additions if productName given
   if (productName) {
@@ -214,23 +224,26 @@ async function sendToppingsPoll(phone, lang = 'he', productName = null) {
         .eq('product_id', product.id)
         .eq('is_available', true)
         .order('sort_order');
-      if (additions && additions.length) {
-        toppingOptions = additions.map((a) => `${a.name_he} — +${a.price}₪`);
-      }
+      if (additions && additions.length) toppingRows = additions;
     }
   }
 
   // 2. Fallback: global is_topping_addon category
-  if (!toppingOptions.length) {
+  if (!toppingRows.length) {
     const toppingCat = categories.find((c) => c.is_topping_addon);
-    const toppings   = toppingCat ? (byCategory[toppingCat.id]?.items || []) : [];
-    toppingOptions   = toppings.map((t) => `${t.name_he} — +${t.price}₪`);
+    toppingRows = toppingCat ? (byCategory[toppingCat.id]?.items || []) : [];
   }
 
-  if (!toppingOptions.length) {
-    await sendMessage(phone, isHe ? 'אין תוספות זמינות כרגע.' : 'No toppings available right now.');
+  if (!toppingRows.length) {
+    await sendMessage(phone, isHe ? 'אין תוספות זמינות כרגע.' : 'No toppings available right now.', tenantId);
     return;
   }
+
+  if (_isMetaTenant(tenantId)) {
+    return metaWA.sendToppingsList(phone, lang, toppingRows);
+  }
+
+  const toppingOptions = toppingRows.map((a) => `${a.name_he} — +${a.price}₪`);
 
   const noTop   = isHe ? CTRL_NO_TOP  : CTRL_NO_TOP_EN;
   const confirm = isHe ? CTRL_CONFIRM : CTRL_CONFIRM_EN;

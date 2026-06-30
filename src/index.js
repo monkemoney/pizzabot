@@ -12,6 +12,7 @@ const { handleMessage }        = require('./bot/handler');
 const { handleAdminMessage }   = require('./bot/admin-handler');
 const { getAdminUser }         = require('./services/supabase');
 const { formatPhone }          = require('./services/greenapi');
+const metaWA                   = require('./services/meta-whatsapp');
 const { DEFAULT_TENANT_ID }    = require('./services/settings');
 const { autoCompleteDeliveredOrders, pruneOldSessions, getScheduledOrdersDue, updateOrderStatus } = require('./services/supabase');
 const sse      = require('./services/sse');
@@ -64,7 +65,36 @@ if (process.env.GREEN_API_BUSINESS_INSTANCE_ID) {
 
 // ─── WhatsApp webhook handler (shared for default + per-tenant routes) ───────
 
+// Meta Cloud API webhook (default tenant only, for now)
+function handleMetaWebhook(req, res) {
+  res.sendStatus(200); // ack immediately
+
+  const parsed = metaWA.parseIncoming(req.body);
+  if (!parsed) return;
+  const { phone, textMessage, phoneNumberId } = parsed;
+
+  if (phoneNumberId && metaWA.PHONE_NUMBER_ID && phoneNumberId !== metaWA.PHONE_NUMBER_ID) {
+    console.warn(`[webhook:meta] phone_number_id mismatch — got ${phoneNumberId}, expected ${metaWA.PHONE_NUMBER_ID}. Dropping.`);
+    return;
+  }
+
+  const verifyAndHandle = async () => {
+    const adminUser = await getAdminUser(phone, DEFAULT_TENANT_ID);
+    if (adminUser) return handleAdminMessage(phone, textMessage, adminUser, DEFAULT_TENANT_ID);
+    return handleMessage(phone, textMessage, DEFAULT_TENANT_ID);
+  };
+
+  verifyAndHandle().catch((err) =>
+    console.error(`[webhook:meta] handler error for ${phone}:`, err.message)
+  );
+}
+
 function handleWebhook(req, res, tenantId) {
+  // Meta Cloud API payloads have a distinct top-level shape — route separately.
+  if (req.body?.object === 'whatsapp_business_account') {
+    return handleMetaWebhook(req, res);
+  }
+
   res.sendStatus(200); // ack immediately — Green API retries on non-200
 
   const body = req.body;
@@ -145,6 +175,15 @@ function handleWebhook(req, res, tenantId) {
     console.error(`[webhook:${tenantId}] handler error for ${phone}:`, err.message)
   );
 }
+
+// Meta Cloud API webhook verification handshake (GET)
+function handleMetaVerify(req, res) {
+  const challenge = metaWA.verifyWebhook(req.query);
+  if (challenge) return res.status(200).send(challenge);
+  res.sendStatus(403);
+}
+app.get('/webhook', handleMetaVerify);
+app.get('/webhook/:tenantId', handleMetaVerify);
 
 // Default tenant webhook (backward compat)
 app.post('/webhook', (req, res) => handleWebhook(req, res, DEFAULT_TENANT_ID));
