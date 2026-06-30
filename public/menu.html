@@ -443,8 +443,12 @@ let menuData = null;
 
 async function loadMenu() {
   try {
-    const tenant = new URLSearchParams(location.search).get('tenant');
-    const url    = tenant ? `/api/public-menu?tenant=${encodeURIComponent(tenant)}` : '/api/public-menu';
+    const params = new URLSearchParams(location.search);
+    const biz    = params.get('biz');
+    const tenant = params.get('tenant');
+    const url    = biz    ? `/api/public-menu?biz=${encodeURIComponent(biz)}`
+                 : tenant ? `/api/public-menu?tenant=${encodeURIComponent(tenant)}`
+                 : '/api/public-menu';
     const res    = await fetch(url);
     const data = await res.json();
     menuData = data;

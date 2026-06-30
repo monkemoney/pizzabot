@@ -714,7 +714,13 @@ router.get('/sse', requireKitchenOrAdmin, (req, res) => {
 
 router.get('/public-menu', async (req, res) => {
   try {
-    const publicTid = req.query.tenant || DEFAULT_TENANT_ID;
+    let publicTid = DEFAULT_TENANT_ID;
+    if (req.query.biz) {
+      const { resolveTenantBySlug } = require('../services/slug');
+      publicTid = (await resolveTenantBySlug(req.query.biz)) || DEFAULT_TENANT_ID;
+    } else if (req.query.tenant) {
+      publicTid = req.query.tenant; // legacy links
+    }
     const [allSettings, categoriesRes, productsRes] = await Promise.all([
       settings.loadAll(publicTid),
       supabase.from('categories').select('*').eq('tenant_id', publicTid).order('sort_order'),
@@ -805,6 +811,15 @@ router.patch('/settings', requireAdmin, async (req, res) => {
   try {
     for (const [key, value] of Object.entries(updates)) {
       await settings.set(key, value, tid(req));
+    }
+    if ('business_name' in updates || 'business_name_en' in updates) {
+      const { assignSlug } = require('../services/slug');
+      const all = await settings.loadAll(tid(req));
+      await assignSlug(tid(req), {
+        businessNameEn: all.business_name_en,
+        businessNameHe: all.business_name,
+      });
+      settings._clearCache(tid(req));
     }
     res.json({ success: true });
   } catch (err) {
@@ -1147,6 +1162,12 @@ router.post('/vendor/onboarding/:id/approve', requireVendor, async (req, res) =>
       );
     }
   }
+
+  const { assignSlug } = require('../services/slug');
+  await assignSlug(tenantId, {
+    businessNameEn: ob.business_name_en,
+    businessNameHe: ob.business_name || ob.clients?.name,
+  });
 
   // ── 2. Copy menu from default tenant ──────────────────────────────────────
   const { data: srcCats } = await supabase

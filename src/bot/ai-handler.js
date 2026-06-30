@@ -182,9 +182,16 @@ async function handleMessage(phone, userMessage, tenantId = null) {
 
   if (history.length === 0) {
     const lastOrder = await getLastOrderByPhone(phone, tid);
-    if (lastOrder && lastOrder.status === 'new') {
-      const minutesSince = (Date.now() - new Date(lastOrder.created_at).getTime()) / 60000;
-      if (minutesSince <= 15) {
+    const editsAllowed = await settings.get('allow_order_edits', tid);
+    if (lastOrder && lastOrder.status === 'new' && editsAllowed !== false) {
+      const editMode      = (await settings.get('edit_mode', tid)) || 'time';
+      const editTimeLimit = (await settings.get('edit_time_limit', tid)) ?? 15;
+      const minutesSince  = (Date.now() - new Date(lastOrder.created_at).getTime()) / 60000;
+      // 'status' mode: editable until kitchen starts (status leaves 'new'), no time cap.
+      // 'time' mode: editable only within editTimeLimit minutes (kitchen status is a secondary cap).
+      const withinWindow = editMode === 'status' || minutesSince <= editTimeLimit;
+
+      if (withinWindow) {
         const lang = detectLang(userMessage, []);
         const cancelKeywords = ['בטל', 'ביטול', 'לבטל', 'cancel', 'שנה', 'לשנות'];
         const wantsCancel = cancelKeywords.some((k) => userMessage.toLowerCase().includes(k));
@@ -196,9 +203,13 @@ async function handleMessage(phone, userMessage, tenantId = null) {
           await reply(phone, msg, tid);
           return;
         }
-        const msg = lang === 'en'
-          ? `Your order #${lastOrder.order_number} was placed ${Math.floor(minutesSince)} min ago and is being prepared.\nTo cancel, send *בטל* within ${Math.floor(15 - minutesSince)} more minutes.`
-          : `הזמנה מספר ${lastOrder.order_number} בוצעה לפני ${Math.floor(minutesSince)} דקות ונמצאת בטיפול.\nלביטול שלח *בטל* בתוך ${Math.floor(15 - minutesSince)} דקות נוספות.`;
+        const msg = editMode === 'status'
+          ? (lang === 'en'
+              ? `Your order #${lastOrder.order_number} hasn't started preparing yet.\nTo cancel, send *בטל*.`
+              : `הזמנה מספר ${lastOrder.order_number} עדיין לא נכנסה להכנה.\nלביטול שלח *בטל*.`)
+          : (lang === 'en'
+              ? `Your order #${lastOrder.order_number} was placed ${Math.floor(minutesSince)} min ago and is being prepared.\nTo cancel, send *בטל* within ${Math.max(0, Math.floor(editTimeLimit - minutesSince))} more minutes.`
+              : `הזמנה מספר ${lastOrder.order_number} בוצעה לפני ${Math.floor(minutesSince)} דקות ונמצאת בטיפול.\nלביטול שלח *בטל* בתוך ${Math.max(0, Math.floor(editTimeLimit - minutesSince))} דקות נוספות.`);
         await reply(phone, msg, tid);
         return;
       }
@@ -274,7 +285,8 @@ async function handleMessage(phone, userMessage, tenantId = null) {
     const privacyNotice = `\n\n_מדיניות הפרטיות שלנו: ${botUrl}/privacy.html_`;
     const allSettingsForName = await settings.loadAll(tid);
     const bizName = allSettingsForName.business_name || 'פיצה דליבריס';
-    const menuUrl = botUrl + '/menu.html?tenant=' + tid;
+    const menuSlug = allSettingsForName.public_slug || tid;
+    const menuUrl = botUrl + '/menu.html?biz=' + encodeURIComponent(menuSlug);
     // Fallback greeting if Claude returned empty text on first message
     const text = cleanText || `היי! ברוכים הבאים ל${bizName}\nמשלוח או איסוף? מזומן או אשראי?\nתפריט עם תמונות: ${menuUrl}`;
     await reply(phone, text + privacyNotice, tid);
