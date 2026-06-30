@@ -284,12 +284,32 @@ ai-handler.js handleMessage(phone, text):
   0. pending_dispute in session? → handleDisputeResponse()
   1. isOpen() — Asia/Jerusalem TZ
   2. Stale-session guard — reset if age > 3h or has old-flow markers
-  3. 15-min edit window check
+  3. Order edit/cancel window — see below
   4. buildSystemPrompt() — live menu + delivery_zones + settings
   5. callClaude() — claude-opus-4-7, history ≤40 msgs, system prompt cached
   6. Parse + strip ACTION blocks → send clean text to customer
   7. Dispatch: SHOW_TOPPINGS | SAVE_ORDER | CREATE_PAYMENT | RESET
 ```
+
+### Order Edit/Cancel Window (Customer Self-Service)
+
+Customer can change/cancel their own last order via WhatsApp only while it hasn't started preparing yet — **status-based, no time limit**:
+
+```
+ai-handler.js handleMessage(), when history.length === 0 (fresh conversation):
+  1. getLastOrderByPhone(phone, tid)
+  2. settings.get('allow_order_edits', tid) — master on/off toggle (default true)
+  3. if lastOrder.status ∈ {'new', 'scheduled'} and edits allowed:
+       - message contains cancel keyword (בטל/ביטול/לבטל/cancel/שנה/לשנות) → updateOrderStatus('cancelled'), reply, return
+       - otherwise → reply "still cancellable, send בטל", return (skip Claude entirely)
+  4. once status moves to 'preparing' (or beyond) → falls through to normal Claude flow, no edit offer
+```
+
+**Settings:** only `allow_order_edits` (bool) — the master toggle. No time-limit setting exists; the condition is purely the order's status.
+
+**Why both `'new'` AND `'scheduled'` are checked:** scheduled orders never pass through `'new'` — `processScheduledOrders()` in `index.js` (runs every minute) transitions them directly `'scheduled' → 'preparing'` when within `prep_lead_time` minutes of the requested time. Checking only `'new'` would make scheduled orders impossible to self-cancel from the moment they're placed.
+
+**Staff editing is unrestricted by design:** dashboard `PUT /orders/:id`, admin bot `ORDER_STATUS`/`CANCEL_ORDER` actions, and the dispute flow (`handleDisputeResponse`) all ignore `allow_order_edits` — that setting only gates the *customer's* self-service path. Staff can edit/cancel orders at any status.
 
 ### Admin Bot (admin-handler.js)
 
@@ -469,7 +489,7 @@ All loaded from `settings` table (key/value JSONB). Keys:
 `delivery_price`, `delivery_cities`, `delivery_zones[]`, `business_hours`,
 `pickup_address`, `business_name`, `bot_url`,
 `couriers[]`, `courier_notify_enabled`, `courier_notify_on_status`,
-`allow_order_edits`, `edit_time_limit`,
+`allow_order_edits`,
 `vendor_phone`, `vendor_name`, `vendor_alert_error`, `vendor_alert_payment`, `vendor_alert_restart`
 
 **`delivery_zones` vs `delivery_cities`:** Bot reads `delivery_zones` first. `saveZones()` auto-syncs `delivery_cities`.
@@ -1031,3 +1051,18 @@ curl -X POST "https://www.jasell.com/webhook" \
   }'
 ```
 The `idInstance` must match `GREEN_API_INSTANCE_ID` (default tenant) or the tenant's `green_api_instance` setting, otherwise the instanceId verification added 2026-05-26 will drop the message silently. To trigger the admin bot, use a phone that exists in `admin_users` for the target tenant.
+
+### Order edit window simplified to status-only (2026-06-30)
+Removed `edit_mode` / `edit_time_limit` settings entirely (they existed only briefly). The customer self-service cancel/edit condition is now exactly one rule: editable while `status ∈ {'new', 'scheduled'}`, locked the moment it becomes `'preparing'`. Only remaining setting is `allow_order_edits` (master on/off). See **Order Edit/Cancel Window** section above.
+
+### Scheduled orders skip 'new' entirely — must include 'scheduled' in any customer-facing status check
+`saveOrder()` sets `status: isScheduled ? 'scheduled' : 'new'`. `processScheduledOrders()` (runs every minute in `index.js`) transitions `'scheduled' → 'preparing'` directly when within `prep_lead_time` minutes of the requested time — it never passes through `'new'`. Any code gating customer-facing behavior on `order.status === 'new'` (e.g. "can I still cancel?") must also check `'scheduled'`, or customers with scheduled orders lose that capability from the moment they order. Found via live webhook test: a `'scheduled'` test order did not cancel on "בטל" until this was fixed.
+
+### System prompt text must be kept in sync with actual enforcement logic
+`prompts.js` had a hardcoded line telling Claude "cancellation window: 15 minutes from order" — this was *describing* behavior, not enforcing it (the real enforcement is the deterministic `status` check in `ai-handler.js`, which runs before Claude is even called for cancel requests). When the actual rule changed to status-based with no time limit, this prompt text became stale and would have caused Claude to tell customers wrong information if asked directly "how long do I have to cancel?". Any time enforcement logic changes in `ai-handler.js`, grep `prompts.js` for matching language describing the same rule.
+
+### Shared working directory between concurrent Claude sessions — commits can get swept together
+This project folder can have multiple Claude Code sessions working in it simultaneously (e.g. one in a chat, one via a scheduled task). They share the same working tree on disk, not separate git worktrees. If one session edits files but doesn't commit, and another session runs `git add -A && git commit`, the first session's uncommitted changes get bundled into the second session's commit under an unrelated message. Symptom: `git diff` shows nothing for a change you just made — it's already committed under someone else's commit hash. Check `git log -S"<unique string from your edit>"` to find which commit actually contains it. Not a bug to "fix" — just be aware when verifying whether your own changes are pushed.
+
+### Live webhook testing pattern — insert real test orders, simulate via curl, verify, clean up
+To verify order-status-dependent bot behavior end-to-end: (1) INSERT test orders directly via Supabase Management API with distinct phone numbers and target statuses, (2) POST simulated `incomingMessageReceived` webhooks to the local preview server for each phone, (3) wait ~3s for async processing (handler runs after `res.sendStatus(200)`), (4) SELECT the orders back to confirm expected status, (5) DELETE the test orders and matching `sessions` rows afterward. Remember: the local server only picks up code changes between restarts (plain `node`, not `nodemon` in `.claude/launch.json`) — restart `preview_start` after editing handler code before testing.
