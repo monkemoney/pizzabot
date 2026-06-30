@@ -183,9 +183,9 @@ async function handleMessage(phone, userMessage, tenantId = null) {
   if (history.length === 0) {
     const lastOrder = await getLastOrderByPhone(phone, tid);
     const editsAllowed = await settings.get('allow_order_edits', tid);
-    // Editable only while the order hasn't started preparing yet (status === 'new').
+    // Editable only while the order hasn't started preparing yet ('new' or 'scheduled').
     // The moment the kitchen moves it to 'preparing', the customer can no longer change/cancel it.
-    if (lastOrder && lastOrder.status === 'new' && editsAllowed !== false) {
+    if (lastOrder && ['new', 'scheduled'].includes(lastOrder.status) && editsAllowed !== false) {
       const lang = detectLang(userMessage, []);
       const cancelKeywords = ['בטל', 'ביטול', 'לבטל', 'cancel', 'שנה', 'לשנות'];
       const wantsCancel = cancelKeywords.some((k) => userMessage.toLowerCase().includes(k));
