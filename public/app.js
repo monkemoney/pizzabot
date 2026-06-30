@@ -1975,23 +1975,8 @@ function renderSettingsForm(s) {
 
     ${sCard(`${ICONS.edit} הגדרות שינוי הזמנות`, `
       ${sToggle('allow_order_edits', 'אפשר ללקוח לשנות/לבטל הזמנה', s.allow_order_edits !== false)}
-      <div style="margin-top:14px;padding:14px;background:#faf8ff;border-radius:12px">
-        <div style="font-weight:700;font-size:.85rem;margin-bottom:12px;color:var(--text)">תנאי לשינוי</div>
-        <label style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;font-size:.88rem">
-          <input type="radio" name="editMode" value="time" ${(s.edit_mode||'time')==='time'?'checked':''}
-            onchange="document.getElementById('editTimeLimitRow').style.display='inline-flex'">
-          בתוך
-          <span id="editTimeLimitRow" style="display:${(s.edit_mode||'time')==='time'?'inline-flex':'none'};align-items:center;gap:10px">
-            <input type="number" id="editTimeLimit" value="${s.edit_time_limit ?? 15}" min="1" max="60"
-              style="width:64px;padding:5px 10px;border-radius:8px;border:2px solid var(--border);font-family:inherit;font-weight:700">
-            דקות מביצוע ההזמנה
-          </span>
-        </label>
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:.88rem">
-          <input type="radio" name="editMode" value="status" ${s.edit_mode==='status'?'checked':''}
-            onchange="document.getElementById('editTimeLimitRow').style.display='none'">
-          עד שההזמנה עוברת למצב בהכנה (ללא הגבלת זמן)
-        </label>
+      <div style="margin-top:14px;font-size:.84rem;color:var(--text-muted)">
+        הלקוח יכול לשנות או לבטל את ההזמנה כל עוד היא לא עברה למצב "בהכנה". מרגע שההזמנה נכנסת להכנה, לא ניתן יותר לשנות אותה.
       </div>
       ${saveBtn('saveEditSettings')}
     `)}
@@ -2102,14 +2087,8 @@ async function saveOrderTypes() {
 }
 
 async function saveEditSettings() {
-  const allow  = document.querySelector('.setting-toggle[data-key="allow_order_edits"]')?.checked ?? true;
-  const mode   = document.querySelector('input[name="editMode"]:checked')?.value || 'time';
-  const limit  = parseInt(document.getElementById('editTimeLimit')?.value) || 15;
-  await saveSection({
-    allow_order_edits: allow,
-    edit_mode:          mode,
-    edit_time_limit:    limit,
-  });
+  const allow = document.querySelector('.setting-toggle[data-key="allow_order_edits"]')?.checked ?? true;
+  await saveSection({ allow_order_edits: allow });
 }
 
 async function saveHours() {

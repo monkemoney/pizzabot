@@ -183,36 +183,25 @@ async function handleMessage(phone, userMessage, tenantId = null) {
   if (history.length === 0) {
     const lastOrder = await getLastOrderByPhone(phone, tid);
     const editsAllowed = await settings.get('allow_order_edits', tid);
+    // Editable only while the order hasn't started preparing yet (status === 'new').
+    // The moment the kitchen moves it to 'preparing', the customer can no longer change/cancel it.
     if (lastOrder && lastOrder.status === 'new' && editsAllowed !== false) {
-      const editMode      = (await settings.get('edit_mode', tid)) || 'time';
-      const editTimeLimit = (await settings.get('edit_time_limit', tid)) ?? 15;
-      const minutesSince  = (Date.now() - new Date(lastOrder.created_at).getTime()) / 60000;
-      // 'status' mode: editable until kitchen starts (status leaves 'new'), no time cap.
-      // 'time' mode: editable only within editTimeLimit minutes (kitchen status is a secondary cap).
-      const withinWindow = editMode === 'status' || minutesSince <= editTimeLimit;
-
-      if (withinWindow) {
-        const lang = detectLang(userMessage, []);
-        const cancelKeywords = ['בטל', 'ביטול', 'לבטל', 'cancel', 'שנה', 'לשנות'];
-        const wantsCancel = cancelKeywords.some((k) => userMessage.toLowerCase().includes(k));
-        if (wantsCancel) {
-          await updateOrderStatus(lastOrder.id, 'cancelled');
-          const msg = lang === 'en'
-            ? `Order #${lastOrder.order_number} has been cancelled. Want to place a new order?`
-            : `הזמנה מספר ${lastOrder.order_number} בוטלה. רוצה להזמין מחדש?`;
-          await reply(phone, msg, tid);
-          return;
-        }
-        const msg = editMode === 'status'
-          ? (lang === 'en'
-              ? `Your order #${lastOrder.order_number} hasn't started preparing yet.\nTo cancel, send *בטל*.`
-              : `הזמנה מספר ${lastOrder.order_number} עדיין לא נכנסה להכנה.\nלביטול שלח *בטל*.`)
-          : (lang === 'en'
-              ? `Your order #${lastOrder.order_number} was placed ${Math.floor(minutesSince)} min ago and is being prepared.\nTo cancel, send *בטל* within ${Math.max(0, Math.floor(editTimeLimit - minutesSince))} more minutes.`
-              : `הזמנה מספר ${lastOrder.order_number} בוצעה לפני ${Math.floor(minutesSince)} דקות ונמצאת בטיפול.\nלביטול שלח *בטל* בתוך ${Math.max(0, Math.floor(editTimeLimit - minutesSince))} דקות נוספות.`);
+      const lang = detectLang(userMessage, []);
+      const cancelKeywords = ['בטל', 'ביטול', 'לבטל', 'cancel', 'שנה', 'לשנות'];
+      const wantsCancel = cancelKeywords.some((k) => userMessage.toLowerCase().includes(k));
+      if (wantsCancel) {
+        await updateOrderStatus(lastOrder.id, 'cancelled');
+        const msg = lang === 'en'
+          ? `Order #${lastOrder.order_number} has been cancelled. Want to place a new order?`
+          : `הזמנה מספר ${lastOrder.order_number} בוטלה. רוצה להזמין מחדש?`;
         await reply(phone, msg, tid);
         return;
       }
+      const msg = lang === 'en'
+        ? `Your order #${lastOrder.order_number} hasn't started preparing yet.\nTo cancel, send *בטל*.`
+        : `הזמנה מספר ${lastOrder.order_number} עדיין לא נכנסה להכנה.\nלביטול שלח *בטל*.`;
+      await reply(phone, msg, tid);
+      return;
     }
   }
 
