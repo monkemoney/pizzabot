@@ -84,7 +84,7 @@ Direct pg:    DOES NOT WORK — both local and Render (free tier) get ENETUNREAC
 - Username: `CardTest1994` / Password: `Terminaltest2026`
 - Terminal `1000` = test terminal · CompanyId `040617649` = unrelated
 
-**Green API:** Connected to WhatsApp +1 (470) 746-4602 · Instance `7105619659`
+**Green API:** Connected to WhatsApp +1 (323) 774-8500 · Instance `7105619659`
 
 ---
 

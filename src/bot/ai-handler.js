@@ -274,7 +274,7 @@ async function handleMessage(phone, userMessage, tenantId = null) {
     const privacyNotice = `\n\n_מדיניות הפרטיות שלנו: ${botUrl}/privacy.html_`;
     const allSettingsForName = await settings.loadAll(tid);
     const bizName = allSettingsForName.business_name || 'פיצה דליבריס';
-    const menuUrl = botUrl + '/menu.html';
+    const menuUrl = botUrl + '/menu.html?tenant=' + tid;
     // Fallback greeting if Claude returned empty text on first message
     const text = cleanText || `היי! 👋 ברוכים הבאים ל${bizName} 🍕\nמשלוח או איסוף? מזומן או אשראי?\nתפריט עם תמונות: ${menuUrl}`;
     await reply(phone, text + privacyNotice, tid);

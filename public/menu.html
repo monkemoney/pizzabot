@@ -430,7 +430,7 @@
 
 <!-- ── Sticky CTA ── -->
 <div class="sticky-cta">
-  <a href="https://wa.me/14707464602" target="_blank" class="cta-btn" id="ctaBtn">
+  <a href="https://wa.me/13237748500" target="_blank" class="cta-btn" id="ctaBtn">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.557 4.126 1.533 5.862L.057 23.428a.75.75 0 0 0 .916.916l5.603-1.476A11.943 11.943 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.886 0-3.655-.505-5.18-1.387l-.372-.22-3.326.876.877-3.284-.236-.385A9.956 9.956 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
     הזמינו עכשיו ב-WhatsApp
   </a>
@@ -443,7 +443,9 @@ let menuData = null;
 
 async function loadMenu() {
   try {
-    const res  = await fetch('/api/public-menu');
+    const tenant = new URLSearchParams(location.search).get('tenant');
+    const url    = tenant ? `/api/public-menu?tenant=${encodeURIComponent(tenant)}` : '/api/public-menu';
+    const res    = await fetch(url);
     const data = await res.json();
     menuData = data;
     render(data);
@@ -457,6 +459,9 @@ function render(data) {
   // Hero
   document.getElementById('businessName').textContent  = data.business_name;
   document.title = `התפריט של ${data.business_name}`;
+
+  const ctaBtn = document.getElementById('ctaBtn');
+  if (ctaBtn && data.whatsapp_number) ctaBtn.href = `https://wa.me/${data.whatsapp_number}`;
 
   const tagline = data.is_open ? 'מה תרצו להזמין היום? 😊' : '⛔ אנחנו כרגע סגורים – חזרו מאוחר יותר';
   document.getElementById('heroTagline').textContent = tagline;
@@ -530,6 +535,7 @@ function renderProduct(p, cat) {
     : '';
 
   const waMsg = encodeURIComponent(`היי! אני רוצה להזמין ${p.name_he} 🍕`);
+  const waNumber = (menuData && menuData.whatsapp_number) || '13237748500';
 
   return `
     <div class="product-card">
@@ -541,7 +547,7 @@ function renderProduct(p, cat) {
           ${p.description ? `<div class="card-desc">${escHtml(p.description)}</div>` : ''}
           <div class="card-footer">
             <span class="card-price">${p.price}₪</span>
-            <a href="https://wa.me/14707464602?text=${waMsg}" target="_blank" class="card-order-btn">
+            <a href="https://wa.me/${waNumber}?text=${waMsg}" target="_blank" class="card-order-btn">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.557 4.126 1.533 5.862L.057 23.428a.75.75 0 0 0 .916.916l5.603-1.476A11.943 11.943 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.886 0-3.655-.505-5.18-1.387l-.372-.22-3.326.876.877-3.284-.236-.385A9.956 9.956 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
               הזמן
             </a>

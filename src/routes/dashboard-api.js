@@ -753,6 +753,7 @@ router.get('/public-menu', async (req, res) => {
     res.json({
       menu,
       business_name:    allSettings.business_name    || 'פיצה דליבריס',
+      whatsapp_number:  allSettings.bot_whatsapp      || process.env.GREEN_API_WHATSAPP_NUMBER || '13237748500',
       business_address: allSettings.business_address || '',
       pickup_address:   allSettings.pickup_address   || '',
       delivery_price:   allSettings.delivery_price   ?? 30,
@@ -1118,6 +1119,7 @@ router.post('/vendor/onboarding/:id/approve', requireVendor, async (req, res) =>
   // ── 1. Seed settings for this tenant ──────────────────────────────────────
   const settingsToSeed = [
     ['business_name',      ob.business_name   || ob.clients?.name || ''],
+    ['bot_whatsapp',       ob.bot_whatsapp     ? ob.bot_whatsapp.replace(/\D/g, '') : ''],
     ['is_open',            true],
     ['delivery_enabled',   ob.delivery_enabled !== false],
     ['pickup_enabled',     ob.pickup_enabled   !== false],

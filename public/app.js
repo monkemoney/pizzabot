@@ -1939,6 +1939,7 @@ function renderSettingsForm(s) {
       ${sField('biz_address', 'כתובת העסק',         s.business_address || '', 'text', 'רוטשילד 19, תל אביב')}
       ${sField('biz_bot_url', 'כתובת שרת הבוט',     s.bot_url          || '', 'url',  'https://...')}
       ${sField('biz_pickup',  'כתובת לאיסוף עצמי', s.pickup_address   || '', 'text', 'רוטשילד 19, תל אביב')}
+      ${sField('biz_whatsapp','מספר וואטסאפ להזמנות (בתפריט הציבורי)', s.bot_whatsapp || '', 'tel', '972500000000')}
       ${saveBtn('saveBizInfo')}
     `)}
 
@@ -2068,6 +2069,7 @@ async function saveBizInfo() {
     business_address: document.getElementById('biz_address').value.trim(),
     bot_url:          document.getElementById('biz_bot_url').value.trim(),
     pickup_address:   document.getElementById('biz_pickup').value.trim(),
+    bot_whatsapp:     document.getElementById('biz_whatsapp').value.trim().replace(/\D/g, ''),
   });
 }
 

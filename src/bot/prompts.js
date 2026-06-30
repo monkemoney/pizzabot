@@ -53,7 +53,7 @@ async function buildSystemPrompt(customerProfile = null, tenantId = null) {
   const bitPhone        = allSettings.bit_phone ? String(allSettings.bit_phone).replace(/"/g,'') : null;
 
   const pickupAddress  = allSettings.pickup_address || 'רוטשילד 19, תל אביב';
-  const menuUrl        = (allSettings.bot_url || process.env.PUBLIC_URL || 'https://www.jasell.com') + '/menu.html';
+  const menuUrl        = (allSettings.bot_url || process.env.PUBLIC_URL || 'https://www.jasell.com') + '/menu.html?tenant=' + tid;
 
   // ── Delivery zones — read from delivery_zones (new) or fallback to delivery_cities (legacy) ──
   const zones = Array.isArray(allSettings.delivery_zones) && allSettings.delivery_zones.length
