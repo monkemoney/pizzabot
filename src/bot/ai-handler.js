@@ -233,13 +233,12 @@ async function handleMessage(phone, userMessage, tenantId = null) {
   // ── Mid-conversation availability check ──────────────────────────────────────
   // Scan customer messages for topping names, then verify they're still available.
   // Inject an explicit alert if any became unavailable mid-conversation.
-  if (history.length > 0) {
+  {
     try {
-      const customerText = history
-        .filter(m => m.role === 'user')
-        .map(m => (typeof m.content === 'string' ? m.content : ''))
-        .join(' ')
-        .toLowerCase();
+      const customerText = [
+        ...history.filter(m => m.role === 'user').map(m => (typeof m.content === 'string' ? m.content : '')),
+        userMessage,
+      ].join(' ').toLowerCase();
 
       // Fetch all topping names mentioned by customer that now have is_available=false
       const { createClient: mkSB } = require('@supabase/supabase-js');
