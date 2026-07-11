@@ -54,6 +54,41 @@ async function set(key, value, tenantId = DEFAULT_TENANT_ID) {
   _getCache(tenantId).time = 0;
 }
 
+// Overnight-aware window check: a window whose close < open (e.g. 20:00–01:00)
+// spills into the next day. Open when either today's window contains now,
+// or yesterday's window crossed midnight and its tail still covers now.
+function _inHoursWindow(hours, now) {
+  const days = ['sun','mon','tue','wed','thu','fri','sat'];
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+
+  const toMin = (t, fallback) => {
+    const [h, m] = (t || fallback).split(':').map(Number);
+    return h * 60 + m;
+  };
+
+  const dayWindow = (d) => {
+    const h = hours[d];
+    if (!h || h.is_open === false) return null;
+    return { open: toMin(h.open, '00:00'), close: toMin(h.close, '23:59') };
+  };
+
+  const today = dayWindow(days[now.getDay()]);
+  if (today) {
+    if (today.close >= today.open) {
+      if (nowMin >= today.open && nowMin <= today.close) return true;
+    } else if (nowMin >= today.open) {
+      return true; // overnight window, before midnight
+    }
+  }
+
+  const yesterday = dayWindow(days[(now.getDay() + 6) % 7]);
+  if (yesterday && yesterday.close < yesterday.open && nowMin <= yesterday.close) {
+    return true; // tail of yesterday's overnight window
+  }
+
+  return false;
+}
+
 async function isOpen(tenantId = DEFAULT_TENANT_ID) {
   const open = await get('is_open', tenantId);
   if (open === false || open === 'false') return false;
@@ -61,35 +96,20 @@ async function isOpen(tenantId = DEFAULT_TENANT_ID) {
   const hours = await get('business_hours', tenantId);
   if (!hours) return true;
 
-  const nowIL = new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' });
-  const now   = new Date(nowIL);
-
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
   const days = ['sun','mon','tue','wed','thu','fri','sat'];
   const day  = days[now.getDay()];
-  const todayHours = hours[day];
+  const result = _inHoursWindow(hours, now);
 
-  if (!todayHours || todayHours.is_open === false) return false;
+  console.log(`[settings] isOpen (tenant ${tenantId}) — IL time: ${now.toLocaleTimeString('he-IL')} day:${day} window:${hours[day]?.open || '—'}-${hours[day]?.close || '—'} → ${result}`);
 
-  const [openH, openM]   = (todayHours.open  || '00:00').split(':').map(Number);
-  const [closeH, closeM] = (todayHours.close || '23:59').split(':').map(Number);
-  const nowMinutes   = now.getHours() * 60 + now.getMinutes();
-  const openMinutes  = openH  * 60 + openM;
-  const closeMinutes = closeH * 60 + closeM;
-
-  console.log(`[settings] isOpen (tenant ${tenantId}) — IL time: ${now.toLocaleTimeString('he-IL')} day:${day} window:${todayHours.open}-${todayHours.close} → ${nowMinutes >= openMinutes && nowMinutes <= closeMinutes}`);
-
-  return nowMinutes >= openMinutes && nowMinutes <= closeMinutes;
+  return result;
 }
 
-function _checkHoursWindow(hours, day) {
+function _checkHoursWindow(hours, _day) {
   if (!hours) return true;
-  const todayHours = hours[day];
-  if (!todayHours || todayHours.is_open === false) return false;
-  const [openH, openM]   = (todayHours.open  || '00:00').split(':').map(Number);
-  const [closeH, closeM] = (todayHours.close || '23:59').split(':').map(Number);
-  const nowIL  = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
-  const nowMin = nowIL.getHours() * 60 + nowIL.getMinutes();
-  return nowMin >= openH * 60 + openM && nowMin <= closeH * 60 + closeM;
+  const nowIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  return _inHoursWindow(hours, nowIL);
 }
 
 async function isDeliveryOpen(tenantId = DEFAULT_TENANT_ID) {
