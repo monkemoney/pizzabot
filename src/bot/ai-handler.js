@@ -233,6 +233,7 @@ async function handleMessage(phone, userMessage, tenantId = null) {
   // ── Mid-conversation availability check ──────────────────────────────────────
   // Scan customer messages for topping names, then verify they're still available.
   // Inject an explicit alert if any became unavailable mid-conversation.
+  let stockNote = '';
   {
     try {
       const customerText = [
@@ -268,6 +269,9 @@ async function handleMessage(phone, userMessage, tenantId = null) {
           .map(([name, ok]) => `- ${name}: ${ok ? 'זמינה במלאי' : 'אזלה — לא זמינה'}`)
           .join('\n');
         systemPrompt += `\n\nסטטוס מלאי עדכני לתוספות שהוזכרו בשיחה — נתון זה גובר על כל אמירה קודמת בשיחה (כולל הודעות קודמות שלך או של נציג):\n${lines}\nאם תוספת שסומנה קודם כחסרה מופיעה כאן כזמינה — היא חזרה למלאי ואפשר להציע אותה. תוספת שאינה זמינה אסור לכלול ב-SAVE_ORDER/CREATE_PAYMENT, ויש להציע חלופה.`;
+        // Also attach to the current message — history full of stale "ran out"
+        // statements otherwise outweighs a note at the end of the system prompt
+        stockNote = `\n\n[עדכון מערכת — מלאי נבדק הרגע מול מסד הנתונים:\n${lines}\nזהו המצב הנכון כרגע, גם אם קודם בשיחה נאמר אחרת.]`;
         console.log(`[ai-handler] availability status ${phone}: ${[...mentioned.entries()].map(([n,ok]) => `${n}=${ok}`).join(', ')}`);
       }
     } catch (e) {
@@ -277,7 +281,7 @@ async function handleMessage(phone, userMessage, tenantId = null) {
 
   let assistantText;
   try {
-    assistantText = await callClaude(systemPrompt, history, userMessage);
+    assistantText = await callClaude(systemPrompt, history, userMessage + stockNote);
   } catch (err) {
     console.error('[ai-handler] Claude error:', err.message);
     require('../services/vendor-alerts').alerts.botError(phone, err).catch(() => {});
