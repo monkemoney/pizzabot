@@ -5,10 +5,11 @@ const { buildMenuText } = require('../services/menu-service');
 
 async function buildSystemPrompt(customerProfile = null, tenantId = null) {
   const tid = tenantId || settings.DEFAULT_TENANT_ID;
-  const [allSettings, menuText, deliveryNowOpen] = await Promise.all([
+  const [allSettings, menuText, deliveryNowOpen, isOpenNow] = await Promise.all([
     settings.loadAll(tid),
     settings.loadAll(tid).then((s) => buildMenuText(s, tid)),
     settings.isDeliveryOpen(tid),
+    settings.isOpen(tid),
   ]);
 
   const prepLeadTime = allSettings.prep_lead_time ?? 45;
@@ -29,11 +30,9 @@ async function buildSystemPrompt(customerProfile = null, tenantId = null) {
   const bizHoursToday = todayHoursStr(allSettings.business_hours);
   const dlvHoursToday = todayHoursStr(allSettings.delivery_hours);
 
-  const isOpenNow = allSettings.is_open !== false; // already verified by ai-handler before calling buildSystemPrompt
-
   const liveStatus = [
     `השעה עכשיו (ישראל): ${nowStr} | יום ${DAY_HE[todayKey]}`,
-    `בוט: ${isOpenNow ? 'פתוח' : 'סגור'}`,
+    `העסק כרגע: ${isOpenNow ? 'פתוח — מקבלים הזמנות עכשיו (גם אם השעה מחוץ לשעות המוצגות למטה, למשל פתיחה מיוחדת או שעות שחוצות חצות)' : 'סגור'}`,
     bizHoursToday ? `שעות פעילות היום: ${bizHoursToday}` : 'שעות פעילות: לא מוגדרות (פתוח תמיד)',
     dlvHoursToday ? `שעות משלוח היום: ${dlvHoursToday}` : null,
     `משלוח: ${deliveryNowOpen && allSettings.delivery_enabled !== false ? 'זמין' : 'לא זמין'} | איסוף: ${allSettings.pickup_enabled !== false ? 'זמין' : 'לא זמין'}`,
