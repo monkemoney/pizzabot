@@ -263,11 +263,10 @@ async function pruneOldSessions() {
 async function getInboxSessions(tenantId = DEFAULT_TENANT_ID) {
   const { data, error } = await supabase
     .from('sessions')
-    .select('phone, is_bot_active, unread_count, last_customer_message, last_message_at, customer_profile, conversation_history')
+    .select('phone, is_bot_active, unread_count, last_customer_message, last_message_at, customer_profile, conversation_history, updated_at')
     .eq('tenant_id', tenantId)
     .not('phone', 'like', 'admin:%')
-    .or('is_bot_active.eq.false,unread_count.gt.0')
-    .order('last_message_at', { ascending: false });
+    .order('updated_at', { ascending: false });
   if (error) { console.error('[supabase] getInboxSessions error:', error.message); return []; }
   return data || [];
 }
