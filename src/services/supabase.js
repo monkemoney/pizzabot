@@ -258,6 +258,31 @@ async function pruneOldSessions() {
   else if (count > 0) console.log(`[supabase] pruneOldSessions: removed ${count} sessions older than 90 days`);
 }
 
+// ─── Inbox / Human handoff ────────────────────────────────────────────────────
+
+async function getInboxSessions(tenantId = DEFAULT_TENANT_ID) {
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('phone, is_bot_active, unread_count, last_customer_message, last_message_at, customer_profile, conversation_history')
+    .eq('tenant_id', tenantId)
+    .not('phone', 'like', 'admin:%')
+    .or('is_bot_active.eq.false,unread_count.gt.0')
+    .order('last_message_at', { ascending: false });
+  if (error) { console.error('[supabase] getInboxSessions error:', error.message); return []; }
+  return data || [];
+}
+
+async function setBotActive(phone, isActive, tenantId = DEFAULT_TENANT_ID) {
+  await updateSession(phone, {
+    is_bot_active: isActive,
+    unread_count: 0,
+  }, tenantId);
+}
+
+async function markInboxRead(phone, tenantId = DEFAULT_TENANT_ID) {
+  await updateSession(phone, { unread_count: 0 }, tenantId);
+}
+
 // Auto-complete delivered orders older than 1 hour
 async function autoCompleteDeliveredOrders() {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -291,6 +316,9 @@ module.exports = {
   updateOrder,
   autoCompleteDeliveredOrders,
   getScheduledOrdersDue,
+  getInboxSessions,
+  setBotActive,
+  markInboxRead,
 };
 
 async function getScheduledOrdersDue(leadMinutes) {

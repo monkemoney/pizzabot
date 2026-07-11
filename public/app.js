@@ -75,7 +75,7 @@ async function api(method, path, body) {
 
 // ─── Tab navigation ───────────────────────────────────────────────────────────
 
-const TABS = ['orders', 'products', 'customers', 'stats', 'settings', 'kitchen'];
+const TABS = ['orders', 'products', 'customers', 'stats', 'settings', 'inbox', 'kitchen'];
 
 function showTab(name) {
   TABS.forEach((t) => {
@@ -101,6 +101,7 @@ function showTab(name) {
   if (name === 'settings')  { loadSettings(); loadAdminUsers(); }
   if (name === 'stats')     setPeriod(currentPeriod);
   if (name === 'kitchen')   { initKitchen(); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'instant' })); }
+  if (name === 'inbox')     loadInbox();
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -2408,6 +2409,205 @@ function initKitchen() {
   _kitchenInited = true;
   _kitchenConnectSSE();
 }
+
+// ─── Inbox ────────────────────────────────────────────────────────────────────
+
+let _inboxSessions = [];
+let _inboxPhone = null;
+let _inboxSSE = null;
+
+async function loadInbox() {
+  try {
+    _inboxSessions = await api('GET', '/inbox');
+    renderInboxList();
+    _updateInboxBadge();
+    if (!_inboxSSE) _inboxConnectSSE();
+  } catch (err) {
+    console.error('[inbox] load error:', err);
+  }
+}
+
+function _updateInboxBadge() {
+  const total = _inboxSessions.reduce((s, c) => s + (c.unread_count || 0), 0);
+  const label = document.getElementById('inbox-nav-label');
+  if (label) label.textContent = total > 0 ? `הודעות (${total})` : 'הודעות';
+}
+
+function _fmtPhone(phone) {
+  if (!phone) return '';
+  if (phone.startsWith('972')) return '0' + phone.slice(3);
+  return phone;
+}
+
+function renderInboxList() {
+  const el = document.getElementById('inbox-list');
+  if (!el) return;
+  if (!_inboxSessions.length) {
+    el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--color-text-secondary);font-size:13px">אין שיחות ממתינות</div>';
+    return;
+  }
+  el.innerHTML = _inboxSessions.map(s => {
+    const profile = s.customer_profile || {};
+    const name = profile.name || _fmtPhone(s.phone);
+    const active = s.phone === _inboxPhone;
+    const unread = s.unread_count > 0;
+    const botLabel = s.is_bot_active ? '' : '<span style="font-size:10px;background:#f59e0b;color:#fff;border-radius:3px;padding:1px 5px;margin-right:4px">נציג</span>';
+    return `<div onclick="inboxSelectSession('${s.phone}')" style="padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--color-border);background:${active ? 'var(--color-bg-secondary)' : 'transparent'};transition:background .15s">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+        <span style="font-weight:${unread ? '700' : '500'};font-size:14px;color:var(--color-text)">${botLabel}${name}</span>
+        ${unread ? `<span style="background:#ef4444;color:#fff;border-radius:10px;font-size:11px;padding:1px 7px;font-weight:700">${s.unread_count}</span>` : ''}
+      </div>
+      <div style="font-size:12px;color:var(--color-text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px">${s.last_customer_message || ''}</div>
+    </div>`;
+  }).join('');
+}
+
+async function inboxSelectSession(phone) {
+  _inboxPhone = phone;
+  renderInboxList();
+  // Mark read
+  await api('POST', `/inbox/${phone}/read`).catch(() => {});
+  const s = _inboxSessions.find(x => x.phone === phone);
+  if (s) { s.unread_count = 0; _updateInboxBadge(); renderInboxList(); }
+  renderInboxThread(phone);
+}
+
+function renderInboxThread(phone) {
+  const s = _inboxSessions.find(x => x.phone === phone);
+  if (!s) return;
+
+  const headerPhone = document.getElementById('inbox-thread-phone');
+  const headerActions = document.getElementById('inbox-thread-actions');
+  const thread = document.getElementById('inbox-thread');
+  const replyBar = document.getElementById('inbox-reply-bar');
+
+  const profile = s.customer_profile || {};
+  if (headerPhone) headerPhone.textContent = profile.name ? `${profile.name} (${_fmtPhone(phone)})` : _fmtPhone(phone);
+
+  if (headerActions) {
+    headerActions.style.display = 'flex';
+    if (s.is_bot_active) {
+      headerActions.innerHTML = `<button onclick="inboxHandoff('${phone}')" class="btn btn-sm" style="font-size:13px">העבר לנציג</button>`;
+    } else {
+      headerActions.innerHTML = `<button onclick="inboxReturn('${phone}')" class="btn btn-primary btn-sm" style="font-size:13px">החזר לבוט</button>`;
+    }
+  }
+
+  const history = Array.isArray(s.conversation_history) ? s.conversation_history : [];
+  if (thread) {
+    thread.innerHTML = history.map(m => {
+      const isAgent = typeof m.content === 'string' && m.content.startsWith('[נציג]:');
+      const isUser = m.role === 'user';
+      const text = isAgent ? m.content.replace('[נציג]: ', '') : m.content;
+      const bg = isUser ? 'var(--color-bg-secondary)' : (isAgent ? '#dbeafe' : '#f0fdf4');
+      const align = isUser ? 'flex-start' : 'flex-end';
+      const label = isAgent ? 'נציג' : (isUser ? _fmtPhone(phone) : 'בוט');
+      return `<div style="display:flex;justify-content:${align}">
+        <div style="max-width:75%;background:${bg};border-radius:10px;padding:8px 12px;font-size:13px;line-height:1.5">
+          <div style="font-size:10px;color:var(--color-text-secondary);margin-bottom:3px">${label}</div>
+          <div style="white-space:pre-wrap;color:var(--color-text)">${text}</div>
+        </div>
+      </div>`;
+    }).join('');
+    thread.scrollTop = thread.scrollHeight;
+  }
+
+  if (replyBar) {
+    replyBar.style.display = s.is_bot_active ? 'none' : 'flex';
+  }
+}
+
+async function inboxHandoff(phone) {
+  try {
+    await api('POST', `/inbox/${phone}/handoff`);
+    const s = _inboxSessions.find(x => x.phone === phone);
+    if (s) { s.is_bot_active = false; }
+    renderInboxList();
+    renderInboxThread(phone);
+    showToast('השיחה הועברה לנציג');
+  } catch (err) { alert(err.message); }
+}
+
+async function inboxReturn(phone) {
+  try {
+    await api('POST', `/inbox/${phone}/return`);
+    const s = _inboxSessions.find(x => x.phone === phone);
+    if (s) { s.is_bot_active = true; }
+    // Remove from list if no more unread
+    _inboxSessions = _inboxSessions.filter(x => x.phone !== phone || x.unread_count > 0);
+    if (_inboxPhone === phone && !_inboxSessions.find(x => x.phone === phone)) _inboxPhone = null;
+    renderInboxList();
+    if (_inboxPhone === phone) renderInboxThread(phone);
+    else {
+      const thread = document.getElementById('inbox-thread');
+      const hdr = document.getElementById('inbox-thread-phone');
+      const actions = document.getElementById('inbox-thread-actions');
+      const replyBar = document.getElementById('inbox-reply-bar');
+      if (thread) thread.innerHTML = '';
+      if (hdr) hdr.textContent = 'בחר שיחה';
+      if (actions) actions.style.display = 'none';
+      if (replyBar) replyBar.style.display = 'none';
+    }
+    _updateInboxBadge();
+    showToast('הבוט חזר לניהול השיחה');
+  } catch (err) { alert(err.message); }
+}
+
+async function inboxSendReply() {
+  const input = document.getElementById('inbox-reply-input');
+  const msg = input ? input.value.trim() : '';
+  if (!msg || !_inboxPhone) return;
+  try {
+    await api('POST', `/inbox/${_inboxPhone}/reply`, { message: msg });
+    if (input) input.value = '';
+    // Optimistically append to thread
+    const s = _inboxSessions.find(x => x.phone === _inboxPhone);
+    if (s) {
+      if (!Array.isArray(s.conversation_history)) s.conversation_history = [];
+      s.conversation_history.push({ role: 'assistant', content: `[נציג]: ${msg}` });
+      renderInboxThread(_inboxPhone);
+    }
+  } catch (err) { alert(err.message); }
+}
+
+function _inboxConnectSSE() {
+  if (_inboxSSE) { _inboxSSE.close(); _inboxSSE = null; }
+  const es = new EventSource(`/api/sse?token=${encodeURIComponent(token || '')}`);
+  _inboxSSE = es;
+  es.addEventListener('inbox_message', (e) => {
+    const { phone, message, unread_count } = JSON.parse(e.data);
+    let s = _inboxSessions.find(x => x.phone === phone);
+    if (!s) {
+      s = { phone, is_bot_active: false, unread_count, last_customer_message: message, conversation_history: [] };
+      _inboxSessions.unshift(s);
+    } else {
+      s.unread_count = unread_count;
+      s.last_customer_message = message;
+      if (!Array.isArray(s.conversation_history)) s.conversation_history = [];
+      s.conversation_history.push({ role: 'user', content: message });
+    }
+    _updateInboxBadge();
+    renderInboxList();
+    if (_inboxPhone === phone) renderInboxThread(phone);
+  });
+  es.addEventListener('inbox_update', (e) => {
+    const { phone, is_bot_active } = JSON.parse(e.data);
+    const s = _inboxSessions.find(x => x.phone === phone);
+    if (s) s.is_bot_active = is_bot_active;
+    renderInboxList();
+    if (_inboxPhone === phone) renderInboxThread(phone);
+  });
+}
+
+// Reply on Enter (Shift+Enter = newline)
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('inbox-reply-input');
+  if (input) {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); inboxSendReply(); }
+    });
+  }
+});
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 

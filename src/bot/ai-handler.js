@@ -8,6 +8,7 @@ const { getSession, updateSession, savePendingPayment, saveOrder,
         getOrderById, updateOrderStatus, updateOrder } = require('../services/supabase');
 const { createPaymentPage }       = require('../services/cardcom');
 const settings                    = require('../services/settings');
+const sse                         = require('../services/sse');
 const crypto                      = require('crypto');
 
 // <!--ACTION:TYPE:{json}--> or <!--ACTION:RESET/SHOW_TOPPINGS-->
@@ -148,6 +149,20 @@ async function handleMessage(phone, userMessage, tenantId = null) {
 
   if (session.pending_dispute) {
     return handleDisputeResponse(phone, userMessage, session, tid);
+  }
+
+  // Human agent takeover — save message + notify dashboard, skip Claude
+  if (session.is_bot_active === false) {
+    const newHistory = Array.isArray(session.conversation_history) ? session.conversation_history : [];
+    newHistory.push({ role: 'user', content: userMessage });
+    await updateSession(phone, {
+      conversation_history: newHistory.slice(-40),
+      unread_count: (session.unread_count || 0) + 1,
+      last_customer_message: userMessage,
+      last_message_at: new Date().toISOString(),
+    }, tid);
+    sse.broadcast(tid, 'inbox_message', { phone, message: userMessage, unread_count: (session.unread_count || 0) + 1 });
+    return;
   }
 
   const open = await settings.isOpen(tid);

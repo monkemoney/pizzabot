@@ -10,7 +10,7 @@ const { signDashboard, requireAuth, requireAdmin, requireVendor, requireKitchenO
 const sse = require('../services/sse');
 const { cancelDeal } = require('../services/cardcom');
 const { getOrders, getOrderById, updateOrderStatus, updateOrder, updateSession,
-        autoCompleteDeliveredOrders }      = require('../services/supabase');
+        autoCompleteDeliveredOrders, getInboxSessions, setBotActive, markInboxRead } = require('../services/supabase');
 const { notifyStatusChange }              = require('../services/status-notifier');
 const settings                            = require('../services/settings');
 const { invalidateCache }                 = require('../services/menu-service');
@@ -1257,6 +1257,63 @@ router.post('/vendor/onboarding/:id/approve', requireVendor, async (req, res) =>
 });
 
 // PATCH /vendor/settings — update vendor_phone and alert preferences
+// ─── Inbox / Human handoff ────────────────────────────────────────────────────
+
+router.get('/inbox', requireAdmin, async (req, res) => {
+  try {
+    const sessions = await getInboxSessions(tid(req));
+    res.json(sessions);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/inbox/:phone/handoff', requireAdmin, async (req, res) => {
+  try {
+    await setBotActive(req.params.phone, false, tid(req));
+    sse.broadcast(tid(req), 'inbox_update', { phone: req.params.phone, is_bot_active: false });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/inbox/:phone/return', requireAdmin, async (req, res) => {
+  try {
+    await setBotActive(req.params.phone, true, tid(req));
+    sse.broadcast(tid(req), 'inbox_update', { phone: req.params.phone, is_bot_active: true });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/inbox/:phone/reply', requireAdmin, async (req, res) => {
+  const { message } = req.body;
+  if (!message) return res.status(400).json({ error: 'message required' });
+  try {
+    await sendMessage(req.params.phone, message, tid(req));
+    // Append agent reply to conversation history so context is preserved
+    const { getSession } = require('../services/supabase');
+    const session = await getSession(req.params.phone, tid(req));
+    const history = Array.isArray(session.conversation_history) ? session.conversation_history : [];
+    history.push({ role: 'assistant', content: `[נציג]: ${message}` });
+    await updateSession(req.params.phone, { conversation_history: history.slice(-40) }, tid(req));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/inbox/:phone/read', requireAdmin, async (req, res) => {
+  try {
+    await markInboxRead(req.params.phone, tid(req));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.patch('/vendor/settings', requireVendor, async (req, res) => {
   const { vendor_phone, vendor_name, alert_on_error, alert_on_payment_fail, alert_on_restart } = req.body;
   const sb = supabase;
