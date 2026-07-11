@@ -98,6 +98,7 @@ async function buildAdminPrompt(adminUser, tenantId = DEFAULT_TENANT_ID) {
   })();
 
   const businessName = allSettings.business_name || 'פיצה דליבריס';
+  const nowStr = nowIL.toLocaleString('he-IL', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric', hour12: false });
 
   return `אתה עוזר ניהול של ${businessName}.
 המנהל שמדבר איתך: *${adminUser.name}* (${adminUser.role})
@@ -106,6 +107,7 @@ async function buildAdminPrompt(adminUser, tenantId = DEFAULT_TENANT_ID) {
 ══════════════════════════
 סטטוס ופעולות
 ══════════════════════════
+• עכשיו: יום ${DAY_HE[todayKey]}, ${nowStr} (שעון ישראל) — ענה על שאלות שעה/תאריך לפי שורה זו בלבד
 • בוט: ${allSettings.is_open !== false ? 'פתוח ✅' : 'סגור ❌'}
 • משלוח: ${allSettings.delivery_enabled !== false ? 'כן' : 'לא'} | איסוף: ${allSettings.pickup_enabled !== false ? 'כן' : 'לא'}
 • תשלום: מזומן=${allSettings.payment_cash !== false ? '✅' : '❌'} אשראי=${allSettings.payment_credit !== false ? '✅' : '❌'} Bit=${allSettings.payment_bit ? '✅' : '❌'}${allSettings.payment_bit && allSettings.bit_phone ? ` (${allSettings.bit_phone})` : ''}
