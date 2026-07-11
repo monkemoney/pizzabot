@@ -8,7 +8,9 @@ const supabase = createClient(
 );
 
 const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
-const CACHE_TTL = 60_000;
+// Short TTL: one coherent snapshot per message, but direct DB edits that bypass
+// invalidateCache are picked up within seconds. Admin changes stay instant via invalidation.
+const CACHE_TTL = 3_000;
 
 // Per-tenant cache: Map<tenantId, { data: null|{}, time: number }>
 const _caches = new Map();
