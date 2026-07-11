@@ -249,20 +249,26 @@ async function handleMessage(phone, userMessage, tenantId = null) {
         .from('products').select('id').eq('tenant_id', tid);
       const productIds = (tenantProds || []).map(p => p.id);
 
-      // Step 2: unavailable toppings for those products
-      const { data: unavailableToppings } = productIds.length
-        ? await sb.from('product_additions').select('name_he')
-            .eq('is_available', false).in('product_id', productIds)
+      // Step 2: all toppings for those products, both available and not —
+      // stale history ("X ran out") must not override a topping that came back in stock
+      const { data: allToppings } = productIds.length
+        ? await sb.from('product_additions').select('name_he, is_available')
+            .in('product_id', productIds)
         : { data: [] };
 
-      const nowUnavailable = (unavailableToppings || [])
-        .filter(a => customerText.includes((a.name_he || '').toLowerCase()))
-        .map(a => a.name_he);
+      const mentioned = new Map(); // name → is_available (unavailable wins if mixed across products)
+      for (const a of allToppings || []) {
+        const name = a.name_he || '';
+        if (!name || !customerText.includes(name.toLowerCase())) continue;
+        mentioned.set(name, mentioned.has(name) ? (mentioned.get(name) && a.is_available) : a.is_available);
+      }
 
-      if (nowUnavailable.length > 0) {
-        const names = [...new Set(nowUnavailable)].join(', ');
-        systemPrompt += `\n\nהתראת מלאי — חשוב לפני שממשיכים:\nהתוספות הבאות הוזכרו בשיחה אך **אינן זמינות כעת** (אזלו מהמלאי): ${names}.\nחובה להודיע ללקוח **עכשיו** לפני כל שלב נוסף, להציע חלופה, ולא לכלול אותן ב-SAVE_ORDER/CREATE_PAYMENT.`;
-        console.log(`[ai-handler] availability alert ${phone}: ${names}`);
+      if (mentioned.size > 0) {
+        const lines = [...mentioned.entries()]
+          .map(([name, ok]) => `- ${name}: ${ok ? 'זמינה במלאי' : 'אזלה — לא זמינה'}`)
+          .join('\n');
+        systemPrompt += `\n\nסטטוס מלאי עדכני לתוספות שהוזכרו בשיחה — נתון זה גובר על כל אמירה קודמת בשיחה (כולל הודעות קודמות שלך או של נציג):\n${lines}\nאם תוספת שסומנה קודם כחסרה מופיעה כאן כזמינה — היא חזרה למלאי ואפשר להציע אותה. תוספת שאינה זמינה אסור לכלול ב-SAVE_ORDER/CREATE_PAYMENT, ויש להציע חלופה.`;
+        console.log(`[ai-handler] availability status ${phone}: ${[...mentioned.entries()].map(([n,ok]) => `${n}=${ok}`).join(', ')}`);
       }
     } catch (e) {
       console.error('[ai-handler] availability check error:', e.message);
