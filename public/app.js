@@ -2469,13 +2469,22 @@ function renderInboxList() {
     const name = profile.name || _fmtPhone(s.phone);
     const active = s.phone === _inboxPhone;
     const unread = s.unread_count > 0;
-    const botLabel = s.is_bot_active ? '' : '<span style="font-size:10px;background:#f59e0b;color:#fff;border-radius:3px;padding:1px 5px;margin-right:4px">נציג</span>';
-    return `<div onclick="inboxSelectSession('${s.phone}')" style="padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--color-border);background:${active ? 'var(--color-bg-secondary)' : 'transparent'};transition:background .15s">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
-        <span style="font-weight:${unread ? '700' : '500'};font-size:14px;color:var(--color-text)">${botLabel}${name}</span>
-        ${unread ? `<span style="background:#ef4444;color:#fff;border-radius:10px;font-size:11px;padding:1px 7px;font-weight:700">${s.unread_count}</span>` : ''}
+    const initial = (profile.name || '#').trim().charAt(0);
+    const ts = s.last_message_at || s.updated_at;
+    const timeStr = ts ? new Date(ts).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem', hour12: false }) : '';
+    const agentDot = s.is_bot_active ? '' : `<span title="בטיפול נציג" style="width:8px;height:8px;border-radius:50%;background:var(--color-warning);display:inline-block;flex-shrink:0"></span>`;
+    return `<div onclick="inboxSelectSession('${s.phone}')" style="display:flex;gap:10px;align-items:center;padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--color-border);background:${active ? 'var(--color-brand-soft)' : 'transparent'};transition:background .15s">
+      <span style="width:38px;height:38px;border-radius:50%;background:${s.is_bot_active ? 'var(--color-brand-soft)' : '#fff4e0'};color:${s.is_bot_active ? 'var(--color-brand)' : 'var(--color-warning)'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex-shrink:0">${initial}</span>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:2px">
+          <span style="display:flex;align-items:center;gap:6px;font-weight:${unread ? '700' : '600'};font-size:14px;color:var(--color-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${agentDot}${name}</span>
+          <span style="font-size:11px;color:var(--color-text-secondary);flex-shrink:0">${timeStr}</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+          <span style="font-size:12px;color:var(--color-text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.last_customer_message || ''}</span>
+          ${unread ? `<span style="background:var(--color-brand);color:#fff;border-radius:10px;font-size:11px;padding:1px 7px;font-weight:700;flex-shrink:0">${s.unread_count}</span>` : ''}
+        </div>
       </div>
-      <div style="font-size:12px;color:var(--color-text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px">${s.last_customer_message || ''}</div>
     </div>`;
   }).join('');
 }
@@ -2522,17 +2531,22 @@ function renderInboxThread(phone) {
 
   const history = Array.isArray(s.conversation_history) ? s.conversation_history : [];
   if (thread) {
+    const profile = s.customer_profile || {};
+    const custName = profile.name || _fmtPhone(phone);
     thread.innerHTML = history.map(m => {
       const isAgent = typeof m.content === 'string' && m.content.startsWith('[נציג]:');
       const isUser = m.role === 'user';
       const text = isAgent ? m.content.replace('[נציג]: ', '') : m.content;
-      const bg = isUser ? 'var(--color-bg-secondary)' : (isAgent ? '#dbeafe' : '#f0fdf4');
+      // Customer bubbles: white, incoming side. Bot: soft brand. Agent: brand solid.
+      const bg    = isUser ? 'var(--color-surface)' : (isAgent ? 'var(--color-brand)' : 'var(--color-brand-soft)');
+      const fg    = isAgent ? '#fff' : 'var(--color-text)';
       const align = isUser ? 'flex-start' : 'flex-end';
-      const label = isAgent ? 'נציג' : (isUser ? _fmtPhone(phone) : 'בוט');
+      const label = isAgent ? 'נציג' : (isUser ? custName : 'בוט');
+      const labelColor = isAgent ? 'rgba(255,255,255,.75)' : 'var(--color-text-secondary)';
       return `<div style="display:flex;justify-content:${align}">
-        <div style="max-width:75%;background:${bg};border-radius:10px;padding:8px 12px;font-size:13px;line-height:1.5">
-          <div style="font-size:10px;color:var(--color-text-secondary);margin-bottom:3px">${label}</div>
-          <div style="white-space:pre-wrap;color:var(--color-text)">${text}</div>
+        <div style="max-width:75%;background:${bg};border:1px solid ${isUser ? 'var(--color-border)' : 'transparent'};border-radius:12px;padding:8px 12px;font-size:13px;line-height:1.55;box-shadow:var(--shadow-sm)">
+          <div style="font-size:10px;color:${labelColor};margin-bottom:3px;font-weight:600">${label}</div>
+          <div style="white-space:pre-wrap;color:${fg}">${text}</div>
         </div>
       </div>`;
     }).join('');
