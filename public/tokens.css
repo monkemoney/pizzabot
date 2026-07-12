@@ -58,10 +58,12 @@
   --space-12: 48px;
 
   /* ── Radius ──────────────────────────────────────────────── */
-  --radius-sm:   8px;
-  --radius-md:  12px;
-  --radius-lg:  18px;
-  --radius-xl:  24px;
+  /* Tiered scale (2026-07 makeover): tighter radii read professional.
+     full is reserved for tags/avatars/dots — never buttons or cards. */
+  --radius-sm:   6px;
+  --radius-md:  10px;
+  --radius-lg:  14px;
+  --radius-xl:  18px;
   --radius-full:999px;
 
   /* ── Shadows ─────────────────────────────────────────────── */
@@ -71,7 +73,8 @@
   --shadow-modal:0 20px 60px rgba(0,0,0,.18);
 
   /* ── Typography ──────────────────────────────────────────── */
-  --font-family: 'Poppins', sans-serif;
+  /* Poppins renders Latin; it has no Hebrew glyphs, so Hebrew falls to Heebo */
+  --font-family: 'Poppins', 'Heebo', sans-serif;
   --font-size-xs:  .68rem;
   --font-size-sm:  .78rem;
   --font-size-md:  .88rem;

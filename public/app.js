@@ -554,7 +554,7 @@ function mkChart(id, config) {
 }
 
 // Shared Chart.js defaults
-const C_FONT = "'Poppins', sans-serif";
+const C_FONT = "'Poppins', 'Heebo', sans-serif";
 const C_GRID = 'rgba(0,0,0,.06)';
 const C_VIOLET = '#5e17eb';
 const C_PINK   = '#ff66c4';

@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Jasell — ניהול</title>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/tokens.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Poppins', sans-serif; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Poppins', 'Heebo', sans-serif; }
 :root {
   --primary:      var(--color-brand);
   --primary-dark: var(--color-brand-dark);
@@ -24,7 +24,7 @@
   --sidebar-w:    256px;
 }
 body {
-  font-family: 'Poppins', sans-serif;
+  font-family: 'Poppins', 'Heebo', sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -105,7 +105,7 @@ nav { flex: 1; padding: 20px 14px; display: flex; flex-direction: column; gap: 6
 
 /* ── Buttons ── */
 .btn { display: inline-flex; align-items: center; gap: 7px;
-  padding: 10px 22px; border-radius: 50px; border: none;
+  padding: 10px 22px; border-radius: var(--radius-md); border: none;
   font-family: inherit; font-size: .84rem; font-weight: 700;
   cursor: pointer; transition: all .18s; letter-spacing: .01em; }
 .btn-primary { background: var(--primary); color: #fff; }
@@ -120,7 +120,7 @@ nav { flex: 1; padding: 20px 14px; display: flex; flex-direction: column; gap: 6
 .btn-ghost:hover { border-color: var(--primary); color: var(--primary); }
 .btn-sm { padding: 7px 16px; font-size: .78rem; }
 .btn-danger { background: transparent; color: #e0004d;
-  border: 1.5px solid #ffd0e6; font-size: .78rem; border-radius: 50px; padding: 5px 12px; font-family: inherit; font-weight: 700; cursor: pointer; }
+  border: 1.5px solid #ffd0e6; font-size: .78rem; border-radius: var(--radius-sm); padding: 5px 12px; font-family: inherit; font-weight: 700; cursor: pointer; }
 .btn-danger:hover { background: #fff0f6; }
 
 /* ── Badges / status ── */
@@ -150,8 +150,8 @@ tr:hover td { background: #faf8ff; }
 
 /* ── Form inputs ── */
 input, select, textarea {
-  font-family: inherit; border: 2px solid var(--border);
-  border-radius: 12px; padding: 10px 16px; font-size: .88rem;
+  font-family: inherit; border: 1.5px solid var(--border);
+  border-radius: var(--radius-md); padding: 10px 16px; font-size: .88rem;
   color: var(--text); outline: none; transition: border-color .18s;
   background: #fff;
 }
@@ -577,7 +577,7 @@ input[type=time] { direction: ltr; }
     <div class="card filters-bar" style="padding:14px 20px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <input type="text" id="orderSearch" placeholder="חיפוש שם, טלפון, כתובת..."
         oninput="filterOrders()"
-        style="flex:1;min-width:180px;border-radius:50px;padding:8px 18px;font-size:.84rem">
+        style="flex:1;min-width:180px;border-radius:var(--radius-md);padding:8px 18px;font-size:.84rem">
       <select id="statusFilter" class="filter-select" style="font-size:.84rem" onchange="filterOrders()">
         <option value="all">כל הסטטוסים</option>
         <option value="new">חדשות</option>
@@ -676,7 +676,7 @@ input[type=time] { direction: ltr; }
     <div class="card filters-bar" style="padding:16px 20px;margin-bottom:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <input type="text" id="customerSearch" placeholder="חיפוש לפי שם, טלפון או כתובת..."
         oninput="filterCustomers()"
-        style="flex:1;min-width:220px;border-radius:50px;padding:9px 18px;font-size:.85rem">
+        style="flex:1;min-width:220px;border-radius:var(--radius-md);padding:9px 18px;font-size:.85rem">
       <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;font-weight:600;cursor:pointer;white-space:nowrap">
         <input type="checkbox" id="returningOnly" onchange="filterCustomers()">
         לקוחות חוזרים בלבד
