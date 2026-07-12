@@ -2310,31 +2310,47 @@ let _kitchenOrders = {};
 let _kitchenSSE    = null;
 let _kitchenInited = false;
 
+// Elapsed time since the order entered preparing (falls back to created_at).
+// Color escalates so the kitchen sees aging orders from across the room.
+function _kitchenElapsed(o) {
+  const hist = Array.isArray(o.status_history) ? o.status_history : [];
+  const prep = hist.filter(h => h.status === 'preparing').pop();
+  const since = prep?.at || o.created_at;
+  const min = Math.max(0, Math.floor((Date.now() - new Date(since).getTime()) / 60000));
+  const color = min >= 20 ? '#dc2626' : min >= 10 ? '#d97706' : '#16a34a';
+  const bg    = min >= 20 ? '#fef2f2' : min >= 10 ? '#fffbeb' : '#f0fdf4';
+  return { min, color, bg };
+}
+
 function _kitchenCard(o) {
   const items = (o.items || []).map(it => {
     const qty  = it.quantity || it.qty || 1;
     const tops = (it.toppings || []).map(t => t.name || t.name_he).filter(Boolean).join(', ');
-    return `<div style="font-size:1.1rem;font-weight:600;padding:6px 0;border-bottom:1px solid #f0f0f0;display:flex;align-items:baseline;gap:8px">
-      <span style="font-size:1.3rem;font-weight:800;color:#111;min-width:28px">×${qty}</span>
-      <span>${it.name || it.name_he}${tops ? `<span style="font-size:.85rem;font-weight:400;color:#888;margin-right:6px"> — ${tops}</span>` : ''}</span>
+    return `<div style="font-size:1.5rem;font-weight:700;padding:10px 0;border-bottom:1px solid #f0f0f0;display:flex;align-items:baseline;gap:12px">
+      <span style="font-size:1.7rem;font-weight:800;color:#111;min-width:44px">×${qty}</span>
+      <span>${it.name || it.name_he}${tops ? `<div style="font-size:1.05rem;font-weight:500;color:#666;margin-top:2px">+ ${tops}</div>` : ''}</span>
     </div>`;
   }).join('');
 
   const notes = o.notes
-    ? `<div style="margin-top:10px;padding:8px 12px;background:#fffbeb;border-radius:8px;font-size:.9rem;color:#92400e">📝 ${o.notes}</div>` : '';
+    ? `<div style="margin-top:12px;padding:12px 16px;background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;font-size:1.15rem;font-weight:600;color:#92400e">${o.notes}</div>` : '';
 
-  const statusColor = o.status === 'new' ? '#f59e0b' : o.status === 'preparing' ? '#3b82f6' : '#22c55e';
+  const t = _kitchenElapsed(o);
+  const statusColor = o.status === 'ready' ? '#22c55e' : t.color;
 
   const btn = o.status === 'preparing'
-    ? `<button onclick="kitchenSetStatus('${o.id}','ready')" style="flex:1;padding:12px;border:none;border-radius:10px;background:#22c55e;color:#fff;font-size:.95rem;font-weight:700;cursor:pointer;letter-spacing:.3px">מוכן ✓</button>`
+    ? `<button onclick="kitchenSetStatus('${o.id}','ready')" style="width:100%;padding:20px;border:none;border-radius:12px;background:#16a34a;color:#fff;font-size:1.4rem;font-weight:800;cursor:pointer;font-family:inherit">מוכן</button>`
     : '';
 
-  return `<div id="kitchen-card-${o.id}" style="background:#fff;border-radius:14px;border-right:5px solid ${statusColor};box-shadow:0 2px 10px rgba(0,0,0,.09);padding:18px 20px;margin-bottom:16px">
-    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:14px;border-bottom:2px solid #f3f3f3;padding-bottom:12px">
-      <span style="font-size:1.6rem;font-weight:900;color:#111;line-height:1">#${o.order_number}</span>
-      ${o.customer_name ? `<span style="font-size:1rem;color:#666;font-weight:600">${o.customer_name}</span>` : ''}
+  return `<div id="kitchen-card-${o.id}" style="background:#fff;border-radius:14px;border-right:6px solid ${statusColor};box-shadow:0 2px 10px rgba(0,0,0,.09);padding:20px 24px;margin-bottom:18px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;border-bottom:2px solid #f3f3f3;padding-bottom:14px">
+      <div style="display:flex;align-items:baseline;gap:14px">
+        <span style="font-size:2.2rem;font-weight:900;color:#111;line-height:1">#${o.order_number}</span>
+        ${o.customer_name ? `<span style="font-size:1.15rem;color:#666;font-weight:600">${o.customer_name}</span>` : ''}
+      </div>
+      <span style="font-size:1.15rem;font-weight:800;color:${t.color};background:${t.bg};border-radius:8px;padding:6px 14px;white-space:nowrap">${t.min > 99 ? '+99' : t.min} דק'</span>
     </div>
-    <div style="margin-bottom:${btn ? '16px' : '0'}">${items}</div>
+    <div style="margin-bottom:${btn ? '18px' : '0'}">${items}</div>
     ${notes}
     ${btn ? `<div>${btn}</div>` : ''}
   </div>`;
@@ -2409,6 +2425,7 @@ function initKitchen() {
   if (_kitchenInited) return;
   _kitchenInited = true;
   _kitchenConnectSSE();
+  setInterval(renderKitchen, 60 * 1000); // refresh elapsed-time badges
 }
 
 // ─── Inbox ────────────────────────────────────────────────────────────────────
