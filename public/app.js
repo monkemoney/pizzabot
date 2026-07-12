@@ -1912,11 +1912,20 @@ function saveBtn(fn, label='שמור') {
   </div>`;
 }
 
+let _sCardSeq = 0;
 function sCard(title, content) {
-  return `<div class="card" style="padding:24px 26px;margin-bottom:18px">
+  return `<div class="card" id="scard-${_sCardSeq++}" style="padding:24px 26px;margin-bottom:18px;scroll-margin-top:64px">
     <div style="font-size:1rem;font-weight:800;color:var(--text);margin-bottom:18px">${title}</div>
     ${content}
   </div>`;
+}
+
+// Sticky chip nav for the long settings scroll — labels in card order
+function settingsNav(labels) {
+  const chip = (i, label) =>
+    `<button onclick="document.getElementById('scard-${i}')?.scrollIntoView({behavior:'smooth'})"
+      style="border:1px solid var(--border);background:var(--white);color:var(--text);border-radius:var(--radius-full);padding:6px 14px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">${label}</button>`;
+  return `<div style="position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 0 12px;display:flex;gap:8px;flex-wrap:wrap">${labels.map((l, i) => chip(i, l)).join('')}</div>`;
 }
 
 async function saveSection(updates, successMsg) {
@@ -1969,7 +1978,9 @@ function renderSettingsForm(s) {
     pin:     ico('<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>'),
   };
 
+  _sCardSeq = 0;
   document.getElementById('settingsForm').innerHTML = `
+    ${settingsNav(['פרטי העסק','תשלום','סוגי הזמנה','מתוזמנות','שינויי הזמנות','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים'])}
 
     ${sCard(`${ICONS.biz} פרטי העסק`, `
       ${sField('biz_name',    'שם העסק',           s.business_name    || '', 'text', 'פיצה דליבריס')}
@@ -2000,7 +2011,7 @@ function renderSettingsForm(s) {
       ${saveBtn('saveOrderTypes')}
     `)}
 
-    ${sCard(`🕐 הזמנות מתוזמנות`, `
+    ${sCard(`${ICONS.clock} הזמנות מתוזמנות`, `
       <div style="font-size:.84rem;color:var(--text-muted);margin-bottom:14px">כמה דקות לפני השעה המבוקשת להעביר את ההזמנה להכנה</div>
       <div style="display:flex;align-items:center;gap:12px">
         <input type="number" id="prepLeadTime" value="${s.prep_lead_time ?? 45}" min="15" max="120"
