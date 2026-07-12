@@ -254,6 +254,15 @@ input[type=time] { direction: ltr; }
 .stat-card.green  .stat-value { color: #16a34a; }
 .stat-card.violet .stat-value { color: var(--primary); }
 
+/* ── Orders KPI strip ── */
+.order-kpi-strip {
+  display: flex; align-items: stretch; flex-wrap: wrap;
+  background: var(--white); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm); margin-bottom: 18px; padding: 2px 6px;
+}
+.order-kpi-seg { display: flex; align-items: baseline; gap: 8px; padding: 12px 18px; white-space: nowrap; }
+.order-kpi-div { width: 1px; align-self: stretch; background: var(--border); margin: 10px 0; }
+
 /* ── Page header ── */
 .page-header { margin-bottom: 22px; display: flex; align-items: center; justify-content: space-between; }
 .page-title { font-size: 1.4rem; font-weight: 800; color: var(--text); }
@@ -401,8 +410,9 @@ input[type=time] { direction: ltr; }
 
   .main { margin-right: 0 !important; padding: 72px 14px 24px !important; }
 
-  /* Status summary: 3×2 */
-  #orderStatusCards { grid-template-columns: repeat(3, 1fr) !important; }
+  /* Status summary strip: tighter segments, dividers off when wrapping */
+  .order-kpi-seg { padding: 8px 12px; }
+  .order-kpi-div { display: none; }
 
   /* Customer stats: 2×2 */
   #customerStats { grid-template-columns: repeat(2, 1fr) !important; }
@@ -570,8 +580,8 @@ input[type=time] { direction: ltr; }
       </div>
     </div>
 
-    <!-- Status summary cards -->
-    <div id="orderStatusCards" style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:22px"></div>
+    <!-- Status summary strip -->
+    <div id="orderStatusCards" class="order-kpi-strip"></div>
 
     <!-- Filters -->
     <div class="card filters-bar" style="padding:14px 20px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">

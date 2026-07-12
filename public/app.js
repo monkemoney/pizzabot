@@ -184,20 +184,21 @@ function renderStatusSummaryCards(orders) {
     delivered:orders.filter(o => o.status === 'delivered').length,
     pending:  orders.filter(o => o.payment_status === 'pending').length,
   };
-  const card = (label, val, color='var(--primary)') => {
+  const seg = (label, val, color='var(--primary)') => {
     const empty = val === 0;
-    return `<div class="stat-card" style="padding:16px 18px;cursor:pointer;opacity:${empty?.45:1}">
-      <div style="font-size:1.6rem;font-weight:800;color:${empty?'var(--text-muted)':color}">${val}</div>
-      <div class="stat-label">${label}</div>
+    return `<div class="order-kpi-seg">
+      <span style="font-size:1.25rem;font-weight:800;color:${empty?'var(--text-muted)':color}">${val}</span>
+      <span style="font-size:.75rem;font-weight:600;color:var(--text-muted)">${label}</span>
     </div>`;
   };
-  el.innerHTML =
-    card('סה"כ הזמנות',      counts.total,     'var(--text)')     +
-    card('חדשות',             counts.new,        'var(--primary)')  +
-    card('בהכנה',             counts.preparing,  '#c07000')         +
-    card('בדרך ללקוח',       counts.out,        '#005faa')         +
-    card('נמסרו',             counts.delivered,  '#008043')         +
-    card('ממתינות לתשלום',   counts.pending,    'var(--accent)');
+  el.innerHTML = [
+    seg('סה"כ',              counts.total,     'var(--text)'),
+    seg('חדשות',             counts.new,        'var(--primary)'),
+    seg('בהכנה',             counts.preparing,  '#c07000'),
+    seg('בדרך ללקוח',       counts.out,        '#005faa'),
+    seg('נמסרו',             counts.delivered,  '#008043'),
+    seg('ממתינות לתשלום',   counts.pending,    'var(--accent)'),
+  ].join('<div class="order-kpi-div"></div>');
 }
 
 function filterOrders() {
