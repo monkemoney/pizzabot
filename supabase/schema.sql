@@ -192,8 +192,10 @@ CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_orders_number     ON orders(order_number);
 
 -- ── Customers view ────────────────────────────────────────
+-- NOTE: column set changed 2026-07-12 (added tenant_id) — requires DROP VIEW before CREATE
 CREATE OR REPLACE VIEW customers AS
 SELECT
+  tenant_id,
   phone,
   MAX(customer_name)  AS name,
   MAX(customer_phone) AS customer_phone,
@@ -203,7 +205,7 @@ SELECT
   MAX(created_at)     AS last_order_at
 FROM orders
 WHERE status NOT IN ('cancelled')
-GROUP BY phone;
+GROUP BY tenant_id, phone;
 
 -- ── Refund / dispute columns ──────────────────────────────────────────────────
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS cardcom_deal_number TEXT;

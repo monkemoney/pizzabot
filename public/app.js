@@ -2462,8 +2462,17 @@ function renderInboxList() {
   }).join('');
 }
 
+function inboxBackToList() {
+  const split = document.getElementById('inbox-split');
+  if (split) split.classList.remove('thread-open');
+  _inboxPhone = null;
+  renderInboxList();
+}
+
 async function inboxSelectSession(phone) {
   _inboxPhone = phone;
+  const split = document.getElementById('inbox-split');
+  if (split) split.classList.add('thread-open');
   renderInboxList();
   // Mark read
   await api('POST', `/inbox/${phone}/read`).catch(() => {});
@@ -2535,7 +2544,11 @@ async function inboxReturn(phone) {
     if (s) { s.is_bot_active = true; }
     // Remove from list if no more unread
     _inboxSessions = _inboxSessions.filter(x => x.phone !== phone || x.unread_count > 0);
-    if (_inboxPhone === phone && !_inboxSessions.find(x => x.phone === phone)) _inboxPhone = null;
+    if (_inboxPhone === phone && !_inboxSessions.find(x => x.phone === phone)) {
+      _inboxPhone = null;
+      const split = document.getElementById('inbox-split');
+      if (split) split.classList.remove('thread-open');
+    }
     renderInboxList();
     if (_inboxPhone === phone) renderInboxThread(phone);
     else {
