@@ -48,6 +48,11 @@ const SVG = {
   printer:   S('<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>'),
   pin:       S('<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>', 13),
   award:     S('<circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/>'),
+  pizza:     S('<path d="M15 11h.01"/><path d="M11 15h.01"/><path d="M16 16h.01"/><path d="m2 16 20 6-6-20A20 20 0 0 0 2 16"/><path d="M5.71 17.11a17.04 17.04 0 0 1 11.4-11.4"/>', 20),
+  cup:       S('<path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/>', 20),
+  utensils:  S('<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>', 20),
+  salad:     S('<path d="M7 21h10"/><path d="M12 21a9 9 0 0 0 9-9H3a9 9 0 0 0 9 9Z"/><path d="M11.38 12a2.4 2.4 0 0 1-.4-4.77 2.4 2.4 0 0 1 3.2-2.77 2.4 2.4 0 0 1 3.47-.63 2.4 2.4 0 0 1 3.37 3.37 2.4 2.4 0 0 1-1.1 3.7 2.51 2.51 0 0 1 .03 1.1"/><path d="m13 12 4-4"/>', 20),
+  cheese:    S('<path d="M12 2a10 10 0 0 1 10 10H2A10 10 0 0 1 12 2Z"/><path d="M2 12v4a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-4"/>', 20),
   edit:      S('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'),
   camera:    S('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>', 24),
   phone:     S('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.56 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>', 13),
@@ -171,6 +176,17 @@ async function loadOrders() {
   } catch (err) {
     container.innerHTML = `<div style="padding:20px;color:red">${err.message}</div>`;
   }
+}
+
+// Dashboard chrome uses Lucide icons, not the DB emoji (which still feeds
+// the WhatsApp bot and public menu). Icon picked by category name keywords.
+function _catIcon(cat) {
+  const n = (cat.name_he || '') + (cat.name_en || '');
+  if (/תוספ|topping|גבינ/i.test(n)) return SVG.cheese;
+  if (/פיצ|pizza/i.test(n)) return SVG.pizza;
+  if (/שתי|משקה|drink|cola/i.test(n)) return SVG.cup;
+  if (/סלט|salad|ירק/i.test(n)) return SVG.salad;
+  return SVG.utensils;
 }
 
 function renderStatusSummaryCards(orders) {
@@ -551,6 +567,25 @@ function mkChart(id, config) {
   if (_charts[id]) { _charts[id].destroy(); delete _charts[id]; }
   const canvas = document.getElementById(id);
   if (!canvas) return;
+
+  // Empty state instead of bare axes when there is nothing to plot
+  const hasData = (config.data?.datasets || []).some(ds =>
+    (ds.data || []).some(v => (typeof v === 'object' ? (v?.y ?? v?.x) : v)));
+  let empty = canvas.parentElement.querySelector('.chart-empty');
+  if (!hasData) {
+    canvas.style.display = 'none';
+    if (!empty) {
+      empty = document.createElement('div');
+      empty.className = 'chart-empty';
+      empty.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:140px;color:var(--text-muted);font-size:.82rem;font-weight:600';
+      empty.innerHTML = `${S('<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 16h8"/><path d="M7 11h12"/><path d="M7 6h3"/>', 26)}<span>אין עדיין נתונים לתקופה זו</span>`;
+      canvas.parentElement.appendChild(empty);
+    }
+    empty.style.display = 'flex';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  canvas.style.display = '';
   _charts[id] = new Chart(canvas, config);
 }
 
@@ -1348,7 +1383,7 @@ function renderProductsTable() {
       <div class="cat-header" onclick="toggleCategoryExpand('${cat.id}')">
         <div style="display:flex;align-items:center;gap:12px">
           <span style="font-size:.9rem;color:var(--text-muted);transition:transform .2s;display:inline-block;transform:rotate(${isCatExpanded?'0deg':'-90deg'})"">▾</span>
-          <span style="font-size:1.5rem;line-height:1">${cat.emoji || '🍽️'}</span>
+          <span style="width:36px;height:36px;border-radius:var(--radius-sm);background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${_catIcon(cat)}</span>
           <div>
             <span style="font-weight:700;font-size:.95rem;color:var(--text)">${cat.name_he}</span>
             <span style="font-size:.75rem;color:var(--text-muted);margin-right:8px">${products.length} פריטים</span>
