@@ -291,9 +291,8 @@ CREATE TABLE IF NOT EXISTS onboarding_sessions (
   -- Vendor checklist (key/label/done array)
   checklist JSONB DEFAULT '[
     {"key":"client_info","label":"פרטי עסק מהלקוח","done":false},
-    {"key":"cardcom","label":"Cardcom terminal","done":false},
-    {"key":"green_api","label":"Green API instance","done":false},
-    {"key":"render","label":"פריסת Render service","done":false},
+    {"key":"whatsapp","label":"חיבור WhatsApp","done":false},
+    {"key":"cardcom","label":"Cardcom (אם נבחר אשראי)","done":false},
     {"key":"menu","label":"הגדרת תפריט","done":false},
     {"key":"test","label":"בדיקת בוט","done":false}
   ]',

@@ -1101,6 +1101,22 @@ router.patch('/vendor/onboarding/:id', requireVendor, async (req, res) => {
                   'meta_phone_number_id','meta_access_token','meta_waba_id'];
   const updates = { updated_at: new Date().toISOString(), updated_by: 'vendor' };
   for (const f of fields) if (req.body[f] !== undefined) updates[f] = req.body[f];
+
+  // Auto-tick checklist items the saved credentials prove
+  const { data: cur } = await supabase.from('onboarding_sessions')
+    .select('checklist,meta_phone_number_id,meta_access_token,green_api_instance,green_api_token,cardcom_terminal,cardcom_username')
+    .eq('id', req.params.id).single();
+  if (cur) {
+    const merged = { ...cur, ...updates };
+    const waDone = !!((merged.meta_phone_number_id && merged.meta_access_token) ||
+                      (merged.green_api_instance && merged.green_api_token));
+    const ccDone = !!(merged.cardcom_terminal && merged.cardcom_username);
+    updates.checklist = (cur.checklist || []).map(i =>
+      (i.key === 'whatsapp' || i.key === 'green_api') ? { ...i, done: waDone } :
+      i.key === 'cardcom' ? { ...i, done: ccDone } : i
+    );
+  }
+
   const { error } = await supabase.from('onboarding_sessions').update(updates).eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });

@@ -366,6 +366,10 @@ async function loadOnboarding() {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             לינק
           </button>
+          <button onclick="waShareLink('${s.token}', '${(s.clients?.contact_phone || '').replace(/\D/g,'')}', '${(s.clients?.name || s.business_name || '').replace(/'/g,'')}')" class="btn btn-ghost btn-sm" title="שלח לינק בוואטסאפ">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            וואטסאפ
+          </button>
           <button onclick="openSessionModal('${s.id}')" class="btn btn-primary btn-sm">פרטים</button>
         </div>
       </div>`;
@@ -413,6 +417,18 @@ async function submitNewOnboarding(e) {
 function copyOnboardingLink() {
   const val = document.getElementById('obLinkInput').value;
   navigator.clipboard.writeText(val).then(() => showToast('לינק הועתק'));
+}
+
+// Open WhatsApp with a ready-made onboarding message. Phone may be empty —
+// wa.me then opens with just the text and the vendor picks the contact.
+function waShareLink(token, phone, name) {
+  const link = `${location.origin}/onboarding/${token}`;
+  const ilPhone = phone && phone.startsWith('0') ? '972' + phone.slice(1) : phone;
+  const msg = `היי${name ? ' ' + name : ''}! כדי להקים את הבוט של העסק שלך ב-Jasell, מלאו את הפרטים כאן (לוקח כ-5 דקות):\n${link}`;
+  const url = ilPhone
+    ? `https://wa.me/${ilPhone}?text=${encodeURIComponent(msg)}`
+    : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  window.open(url, '_blank');
 }
 
 function copyLink(token) {
