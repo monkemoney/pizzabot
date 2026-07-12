@@ -65,7 +65,9 @@ if (process.env.GREEN_API_BUSINESS_INSTANCE_ID) {
 
 // ─── WhatsApp webhook handler (shared for default + per-tenant routes) ───────
 
-// Meta Cloud API webhook (default tenant only, for now)
+// Meta Cloud API webhook — app-level endpoint shared by all Meta tenants.
+// Routed to the right tenant by the phone_number_id in the payload:
+// env PHONE_NUMBER_ID → default tenant; otherwise settings lookup.
 function handleMetaWebhook(req, res) {
   res.sendStatus(200); // ack immediately
 
@@ -73,18 +75,25 @@ function handleMetaWebhook(req, res) {
   if (!parsed) return;
   const { phone, textMessage, phoneNumberId } = parsed;
 
-  if (phoneNumberId && metaWA.PHONE_NUMBER_ID && phoneNumberId !== metaWA.PHONE_NUMBER_ID) {
-    console.warn(`[webhook:meta] phone_number_id mismatch — got ${phoneNumberId}, expected ${metaWA.PHONE_NUMBER_ID}. Dropping.`);
-    return;
-  }
+  const resolveAndHandle = async () => {
+    let tenantId = null;
+    if (!phoneNumberId || phoneNumberId === metaWA.PHONE_NUMBER_ID) {
+      tenantId = DEFAULT_TENANT_ID;
+    } else {
+      const { resolveTenantByMetaPhoneId } = require('./services/supabase');
+      tenantId = await resolveTenantByMetaPhoneId(phoneNumberId);
+    }
+    if (!tenantId) {
+      console.warn(`[webhook:meta] no tenant for phone_number_id ${phoneNumberId}. Dropping.`);
+      return;
+    }
 
-  const verifyAndHandle = async () => {
-    const adminUser = await getAdminUser(phone, DEFAULT_TENANT_ID);
-    if (adminUser) return handleAdminMessage(phone, textMessage, adminUser, DEFAULT_TENANT_ID);
-    return handleMessage(phone, textMessage, DEFAULT_TENANT_ID);
+    const adminUser = await getAdminUser(phone, tenantId);
+    if (adminUser) return handleAdminMessage(phone, textMessage, adminUser, tenantId);
+    return handleMessage(phone, textMessage, tenantId);
   };
 
-  verifyAndHandle().catch((err) =>
+  resolveAndHandle().catch((err) =>
     console.error(`[webhook:meta] handler error for ${phone}:`, err.message)
   );
 }

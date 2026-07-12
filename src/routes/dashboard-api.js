@@ -1097,7 +1097,8 @@ router.get('/vendor/onboarding', requireVendor, async (_req, res) => {
 
 // PATCH /vendor/onboarding/:id — vendor fills technical credentials
 router.patch('/vendor/onboarding/:id', requireVendor, async (req, res) => {
-  const fields = ['cardcom_terminal','cardcom_username','green_api_instance','green_api_token'];
+  const fields = ['cardcom_terminal','cardcom_username','green_api_instance','green_api_token',
+                  'meta_phone_number_id','meta_access_token','meta_waba_id'];
   const updates = { updated_at: new Date().toISOString(), updated_by: 'vendor' };
   for (const f of fields) if (req.body[f] !== undefined) updates[f] = req.body[f];
   const { error } = await supabase.from('onboarding_sessions').update(updates).eq('id', req.params.id);
@@ -1150,6 +1151,9 @@ router.post('/vendor/onboarding/:id/approve', requireVendor, async (req, res) =>
     ['bot_url',            PUBLIC_URL],
     ['green_api_instance', ob.green_api_instance || ''],
     ['green_api_token',    ob.green_api_token    || ''],
+    ['meta_phone_number_id', ob.meta_phone_number_id || ''],
+    ['meta_access_token',    ob.meta_access_token    || ''],
+    ['meta_waba_id',         ob.meta_waba_id         || ''],
     ['cardcom_terminal',   ob.cardcom_terminal   || ''],
     ['cardcom_username',   ob.cardcom_username   || ''],
   ];
@@ -1218,8 +1222,17 @@ router.post('/vendor/onboarding/:id/approve', requireVendor, async (req, res) =>
     { onConflict: 'username' }
   );
 
-  // ── 5. Set Green API webhook ───────────────────────────────────────────────
+  // ── 5. Wire the WhatsApp channel ───────────────────────────────────────────
+  // Meta Cloud API: subscribe our app to the tenant's WABA so its messages
+  // start flowing to the shared /webhook endpoint (routed by phone_number_id).
   const webhookUrl = `${PUBLIC_URL}/webhook/${tenantId}`;
+  if (ob.meta_waba_id && ob.meta_access_token) {
+    const { subscribeWaba } = require('../services/meta-whatsapp');
+    await subscribeWaba(ob.meta_waba_id, ob.meta_access_token).catch((err) =>
+      console.error('[provision] subscribeWaba error:', err.response ? JSON.stringify(err.response.data) : err.message)
+    );
+  }
+  // Green API (legacy/fallback): point the instance at the per-tenant webhook.
   if (ob.green_api_instance && ob.green_api_token) {
     const { setWebhook } = require('../services/greenapi');
     await setWebhook(ob.green_api_instance, ob.green_api_token, webhookUrl).catch((err) =>

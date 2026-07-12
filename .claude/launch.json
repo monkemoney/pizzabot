@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pizza-bot",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["PORT=4323", "node", "-r", "dotenv/config", "src/index.js", "dotenv_config_path=.env.production"],
+      "port": 4323
+    }
+  ]
+}

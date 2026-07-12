@@ -456,7 +456,7 @@ function renderSessionModal() {
   const body = document.getElementById('sessionModalBody');
   const isApproved = s.status === 'approved';
   const step1Done  = s.status !== 'pending_client'; // client submitted their form
-  const step2Done  = !!(s.green_api_instance && s.green_api_token);
+  const step2Done  = _hasChannelCreds(s);
 
   // ── Stepper ───────────────────────────────────────────────────────────────
   const stepperHtml = `
@@ -551,8 +551,13 @@ function _renderStep2(s, step1Done, step2Done) {
   return `
     <div style="font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:14px">הגדרות טכניות</div>
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px" id="techFields">
-      ${techInput('green_api_instance', 'Green API Instance ID *', s.green_api_instance || '', 'ltr')}
-      ${techInput('green_api_token',    'Green API Token *',       s.green_api_token    || '', 'ltr')}
+      <div style="font-size:.72rem;color:var(--text-muted);padding:2px 0">WhatsApp רשמי (Meta Cloud API) — מומלץ. צור WABA + מספר במטא והדבק כאן</div>
+      ${techInput('meta_phone_number_id', 'Meta Phone Number ID', s.meta_phone_number_id || '', 'ltr')}
+      ${techInput('meta_access_token',    'Meta Access Token',    s.meta_access_token    || '', 'ltr')}
+      ${techInput('meta_waba_id',         'Meta WABA ID',         s.meta_waba_id         || '', 'ltr')}
+      <div style="font-size:.72rem;color:var(--text-muted);padding:6px 0 2px;border-top:1px solid var(--border);margin-top:4px">או Green API (לא רשמי — fallback בלבד)</div>
+      ${techInput('green_api_instance', 'Green API Instance ID', s.green_api_instance || '', 'ltr')}
+      ${techInput('green_api_token',    'Green API Token',       s.green_api_token    || '', 'ltr')}
       <div style="font-size:.72rem;color:var(--text-muted);padding:6px 0 2px;border-top:1px solid var(--border);margin-top:4px">Cardcom — מתקבל מנציג Cardcom לאחר הרשמת הלקוח</div>
       ${techInput('cardcom_terminal',   'Cardcom Terminal Number',  s.cardcom_terminal   || '', 'ltr')}
       ${techInput('cardcom_username',   'Cardcom Secret (ApiName)', s.cardcom_username   || '', 'ltr')}
@@ -578,10 +583,10 @@ function _renderStep2(s, step1Done, step2Done) {
       <button id="approveBtn" onclick="approveOnboarding('${s.id}')"
         class="btn btn-primary btn-sm" style="flex:1;background:#16a34a;border-color:#16a34a;${!canApprove?'opacity:.45;pointer-events:none;cursor:default':''}"
         ${!canApprove ? 'disabled' : ''}>
-        ${!step1Done ? 'ממתין ללקוח — לא ניתן לאשר' : !step2Done ? 'מלא Green API Instance + Token תחילה' : 'אשר לקוח'}
+        ${!step1Done ? 'ממתין ללקוח — לא ניתן לאשר' : !step2Done ? 'מלא פרטי Meta או Green API תחילה' : 'אשר לקוח'}
       </button>
     </div>
-    ${!canApprove && step1Done ? '<div style="font-size:.72rem;color:var(--text-muted);margin-top:8px;text-align:center">* שמור Green API Instance ID + Token כדי להפעיל את כפתור האישור</div>' : ''}`;
+    ${!canApprove && step1Done ? '<div style="font-size:.72rem;color:var(--text-muted);margin-top:8px;text-align:center">* שמור פרטי Meta (Phone Number ID + Token) או Green API כדי להפעיל את כפתור האישור</div>' : ''}`;
 }
 
 function techInput(id, label, val, dir='rtl') {
@@ -596,24 +601,38 @@ function _watchTechFields(id) {
   // inputs already fire _updateApproveBtn via oninput
 }
 
+// A tenant is connectable when it has either official Meta Cloud API creds
+// (recommended) or legacy Green API creds (fallback).
+function _hasChannelCreds(s) {
+  return !!((s.meta_phone_number_id && s.meta_access_token) ||
+            (s.green_api_instance && s.green_api_token));
+}
+
 function _updateApproveBtn() {
   const btn = document.getElementById('approveBtn');
   if (!btn) return;
   const s = _currentSession;
-  const inst  = document.getElementById('tech_green_api_instance')?.value.trim();
-  const token = document.getElementById('tech_green_api_token')?.value.trim();
+  const live = {
+    meta_phone_number_id: document.getElementById('tech_meta_phone_number_id')?.value.trim(),
+    meta_access_token:    document.getElementById('tech_meta_access_token')?.value.trim(),
+    green_api_instance:   document.getElementById('tech_green_api_instance')?.value.trim(),
+    green_api_token:      document.getElementById('tech_green_api_token')?.value.trim(),
+  };
   const step1Done = s?.status !== 'pending_client';
-  const canApprove = step1Done && !!(inst && token);
+  const canApprove = step1Done && _hasChannelCreds(live);
   btn.disabled = !canApprove;
   btn.style.opacity = canApprove ? '1' : '.45';
   btn.style.pointerEvents = canApprove ? '' : 'none';
   btn.textContent = !step1Done ? 'ממתין ללקוח — לא ניתן לאשר'
-    : !canApprove ? 'מלא Green API Instance + Token תחילה'
+    : !canApprove ? 'מלא פרטי Meta או Green API תחילה'
     : 'אשר לקוח';
 }
 
 async function saveTechFields(id) {
   const fields = {
+    meta_phone_number_id: document.getElementById('tech_meta_phone_number_id')?.value.trim() || '',
+    meta_access_token:    document.getElementById('tech_meta_access_token')?.value.trim()    || '',
+    meta_waba_id:         document.getElementById('tech_meta_waba_id')?.value.trim()         || '',
     green_api_instance: document.getElementById('tech_green_api_instance')?.value.trim() || '',
     green_api_token:    document.getElementById('tech_green_api_token')?.value.trim()    || '',
     cardcom_terminal:   document.getElementById('tech_cardcom_terminal')?.value.trim()   || '',
@@ -667,7 +686,7 @@ function _showCredentialsModal(result) {
         ${_credRow('שם משתמש', result.username)}
         ${_credRow('סיסמא', result.password)}
         ${_credRow('כתובת דשבורד', location.origin)}
-        ${_credRow('Webhook URL', result.webhookUrl, 'כבר הוגדר ב-Green API אוטומטית')}
+        ${_credRow('Webhook URL', result.webhookUrl, 'חיבור ה-WhatsApp הוגדר אוטומטית')}
         ${_credRow('Tenant ID', result.tenantId, 'לשימוש עתידי בלבד')}
       </div>
       <button onclick="document.getElementById('credentialsModal').remove();loadOnboarding()"

@@ -9,10 +9,20 @@ const INSTANCE_ID = process.env.GREEN_API_INSTANCE_ID;
 const TOKEN       = process.env.GREEN_API_TOKEN;
 const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
 
-// Default tenant now sends via the official Meta WhatsApp Cloud API.
-// Other tenants stay on Green API until migrated individually.
-function _isMetaTenant(tenantId) {
-  return !tenantId || tenantId === DEFAULT_TENANT_ID;
+// A tenant sends via the official Meta Cloud API when it has Meta credentials:
+// the default tenant from env vars, other tenants from their settings rows
+// (meta_phone_number_id + meta_access_token, seeded during onboarding).
+// Tenants without Meta creds stay on Green API.
+async function _metaCreds(tenantId) {
+  if (!tenantId || tenantId === DEFAULT_TENANT_ID) {
+    return metaWA.ENV_CREDS.phoneNumberId && metaWA.ENV_CREDS.accessToken ? metaWA.ENV_CREDS : null;
+  }
+  const settings = require('./settings');
+  const [phoneNumberId, accessToken] = await Promise.all([
+    settings.get('meta_phone_number_id', tenantId).catch(() => null),
+    settings.get('meta_access_token', tenantId).catch(() => null),
+  ]);
+  return phoneNumberId && accessToken ? { phoneNumberId, accessToken } : null;
 }
 
 function apiUrl(method, instanceId = INSTANCE_ID, token = TOKEN) {
@@ -50,7 +60,8 @@ async function _tenantCreds(tenantId) {
 }
 
 async function sendMessage(phone, message, tenantId = null) {
-  if (_isMetaTenant(tenantId)) return metaWA.sendMessage(phone, message);
+  const meta = await _metaCreds(tenantId);
+  if (meta) return metaWA.sendMessage(phone, message, meta);
 
   const chatId = toChatId(phone);
   const { instanceId, token } = await _tenantCreds(tenantId);
@@ -239,8 +250,9 @@ async function sendToppingsPoll(phone, lang = 'he', productName = null, tenantId
     return;
   }
 
-  if (_isMetaTenant(tenantId)) {
-    return metaWA.sendToppingsList(phone, lang, toppingRows);
+  const meta = await _metaCreds(tenantId);
+  if (meta) {
+    return metaWA.sendToppingsList(phone, lang, toppingRows, meta);
   }
 
   const toppingOptions = toppingRows.map((a) => `${a.name_he} — +${a.price}₪`);

@@ -12,6 +12,7 @@
 // ── Service mocks (must be before require) ────────────────────────────────────
 const mockHandleAdminMessage = jest.fn(async () => {});
 const mockHandleMessage      = jest.fn(async () => {});
+const mockResolveMetaTenant  = jest.fn(async () => null);
 const mockGetAdminUser       = jest.fn(async () => null); // no admin user by default
 
 jest.mock('../src/bot/ai-handler',    () => ({ handleMessage:      mockHandleMessage }));
@@ -19,6 +20,7 @@ jest.mock('../src/bot/admin-handler', () => ({ handleAdminMessage: mockHandleAdm
 
 jest.mock('../src/services/supabase', () => ({
   getAdminUser:               mockGetAdminUser,
+  resolveTenantByMetaPhoneId: mockResolveMetaTenant,
   getSession:                 jest.fn(async () => ({ conversation_history: [], pending_order: {} })),
   updateSession:              jest.fn(async () => {}),
   getAllPendingPayments:       jest.fn(async () => []),
@@ -162,5 +164,66 @@ describe('ignored webhook types', () => {
 
     expect(mockHandleMessage).not.toHaveBeenCalled();
     expect(mockHandleAdminMessage).not.toHaveBeenCalled();
+  });
+});
+
+
+// ── Meta Cloud API multi-tenant routing ───────────────────────────────────────
+function metaBody(phone, text, phoneNumberId) {
+  return {
+    object: 'whatsapp_business_account',
+    entry: [{
+      changes: [{
+        field: 'messages',
+        value: {
+          metadata: { phone_number_id: phoneNumberId },
+          messages: [{ from: phone, type: 'text', text: { body: text } }],
+        },
+      }],
+    }],
+  };
+}
+
+describe('POST /webhook — Meta multi-tenant routing', () => {
+  test('unknown phone_number_id resolves tenant via settings lookup', async () => {
+    mockResolveMetaTenant.mockResolvedValue('tenant-pilot-1');
+
+    await request(app)
+      .post('/webhook')
+      .send(metaBody('972502222222', 'הי', 'PNID-PILOT'))
+      .expect(200);
+    await new Promise(r => setImmediate(r));
+
+    expect(mockResolveMetaTenant).toHaveBeenCalledWith('PNID-PILOT');
+    expect(mockHandleMessage).toHaveBeenCalledWith('972502222222', 'הי', 'tenant-pilot-1');
+  });
+
+  test('unresolvable phone_number_id is dropped without handling', async () => {
+    mockResolveMetaTenant.mockResolvedValue(null);
+
+    await request(app)
+      .post('/webhook')
+      .send(metaBody('972503333333', 'הי', 'PNID-UNKNOWN'))
+      .expect(200);
+    await new Promise(r => setImmediate(r));
+
+    expect(mockHandleMessage).not.toHaveBeenCalled();
+    expect(mockHandleAdminMessage).not.toHaveBeenCalled();
+  });
+
+  test('admin sender on a Meta tenant goes to handleAdminMessage', async () => {
+    mockResolveMetaTenant.mockResolvedValue('tenant-pilot-1');
+    mockGetAdminUser.mockResolvedValue({ phone: '972504444444', name: 'מנהל', role: 'admin' });
+
+    await request(app)
+      .post('/webhook')
+      .send(metaBody('972504444444', 'נגמרה בולגרית', 'PNID-PILOT'))
+      .expect(200);
+    await new Promise(r => setImmediate(r));
+
+    expect(mockHandleAdminMessage).toHaveBeenCalledWith(
+      '972504444444', 'נגמרה בולגרית',
+      expect.objectContaining({ role: 'admin' }), 'tenant-pilot-1'
+    );
   });
 });

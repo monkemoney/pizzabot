@@ -258,6 +258,30 @@ async function pruneOldSessions() {
   else if (count > 0) console.log(`[supabase] pruneOldSessions: removed ${count} sessions older than 90 days`);
 }
 
+// ─── Meta Cloud API tenant resolution ─────────────────────────────────────────
+
+// phone_number_id → tenant_id, cached 60s. The Meta webhook is app-level
+// (one endpoint for every tenant), so each incoming message is routed to its
+// tenant by the phone_number_id in the payload metadata.
+const _metaTenantCache = new Map(); // phoneNumberId → { tenantId, time }
+
+async function resolveTenantByMetaPhoneId(phoneNumberId) {
+  if (!phoneNumberId) return null;
+  const cached = _metaTenantCache.get(phoneNumberId);
+  if (cached && Date.now() - cached.time < 60_000) return cached.tenantId;
+
+  const { data, error } = await supabase
+    .from('settings')
+    .select('tenant_id')
+    .eq('key', 'meta_phone_number_id')
+    .eq('value', JSON.stringify(phoneNumberId))
+    .limit(1);
+
+  const tenantId = !error && data?.length ? data[0].tenant_id : null;
+  _metaTenantCache.set(phoneNumberId, { tenantId, time: Date.now() });
+  return tenantId;
+}
+
 // ─── Inbox / Human handoff ────────────────────────────────────────────────────
 
 async function getInboxSessions(tenantId = DEFAULT_TENANT_ID) {
@@ -318,6 +342,7 @@ module.exports = {
   getInboxSessions,
   setBotActive,
   markInboxRead,
+  resolveTenantByMetaPhoneId,
 };
 
 async function getScheduledOrdersDue(leadMinutes) {

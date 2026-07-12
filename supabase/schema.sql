@@ -284,6 +284,10 @@ CREATE TABLE IF NOT EXISTS onboarding_sessions (
   cardcom_username   TEXT,
   green_api_instance TEXT,
   green_api_token    TEXT,
+  -- Meta Cloud API (official) — preferred channel; Green API is fallback
+  meta_phone_number_id TEXT,
+  meta_access_token    TEXT,
+  meta_waba_id         TEXT,
   -- Vendor checklist (key/label/done array)
   checklist JSONB DEFAULT '[
     {"key":"client_info","label":"פרטי עסק מהלקוח","done":false},
