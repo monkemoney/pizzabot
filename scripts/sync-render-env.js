@@ -16,7 +16,16 @@ const fs      = require('fs');
 const path    = require('path');
 const https   = require('https');
 
-const RENDER_API_KEY = process.env.RENDER_API_KEY || 'rnd_aymW3XEYR53CgqhIR5PgqDvP7Q97';
+// Key comes from env or from .env.production itself (never hardcoded here)
+function _localRenderKey() {
+  try {
+    const txt = require('fs').readFileSync(require('path').join(__dirname, '..', '.env.production'), 'utf8');
+    const m = txt.match(/^RENDER_API_KEY=(.+)$/m);
+    return m ? m[1] : null;
+  } catch { return null; }
+}
+const RENDER_API_KEY = process.env.RENDER_API_KEY || _localRenderKey();
+if (!RENDER_API_KEY) { console.error('❌  RENDER_API_KEY not found (env var or .env.production)'); process.exit(1); }
 const SERVICE_ID     = process.env.SERVICE_ID     || 'srv-d831jc8js32c73ef8mng';
 const ENV_FILE       = path.join(__dirname, '..', '.env.production');
 
@@ -33,7 +42,9 @@ const envVars = fs.readFileSync(ENV_FILE, 'utf8')
     const idx = l.indexOf('=');
     return { key: l.slice(0, idx).trim(), value: l.slice(idx + 1).trim() };
   })
-  .filter((e) => e.key);
+  .filter((e) => e.key)
+  // Local-only helpers must not be pushed to Render
+  .filter((e) => e.key !== 'RENDER_API_KEY');
 
 console.log(`📦  Syncing ${envVars.length} env vars to Render service ${SERVICE_ID}…`);
 
