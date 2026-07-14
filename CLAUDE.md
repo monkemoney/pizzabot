@@ -247,7 +247,10 @@ All clients share one Render deployment under `jasell.com`. Isolated by `tenant_
 **Per-tenant services:**
 - `settings.js` — `Map<tenantId, {data, time}>` cache; all queries filtered by `.eq('tenant_id', tenantId)`
 - `menu-service.js` — same Map cache pattern
-- `greenapi.js` — `_tenantCreds(tenantId)` reads `green_api_instance` + `green_api_token` from settings at runtime
+- `greenapi.js` — credential-driven channel dispatch: `_metaCreds(tenantId)` (env for default tenant, settings `meta_phone_number_id`+`meta_access_token` for others) → Meta Cloud API; otherwise `_tenantCreds(tenantId)` (green_api_instance/token) → Green API
+- `meta-whatsapp.js` — all senders take a creds object; `subscribeWaba()` registers the app on a tenant's WABA. The shared Meta webhook routes by payload `phone_number_id` (env id → default tenant, else `resolveTenantByMetaPhoneId()` settings lookup with 60s cache)
+
+**WhatsApp channel strategy:** official Meta Cloud API is the standard (pilot = manual WABA creds pasted by vendor; post-Tech-Provider-approval = client self-serve Embedded Signup). Green API is legacy/fallback only.
 
 **Provisioning on approve (`POST /vendor/onboarding/:id/approve`):**
 1. Generate UUID tenant_id from `clients` row
@@ -366,14 +369,17 @@ PATCH  /api/vendor/onboarding/:id/checklist  → toggle one checklist item
 POST   /api/vendor/onboarding/:id/approve    → full provisioning (see Multi-Tenant section)
 
 # Public (no auth)
-GET    /api/onboarding/:token                → client fetches their session
-PATCH  /api/onboarding/:token                → client submits their info → status: pending_vendor
+GET    /api/onboarding/:token                → client fetches their session; approved → live-page payload (links, username, menu slug)
+PATCH  /api/onboarding/:token                → client submits their info → status: pending_vendor; with draft:true → autosave only (no status change, no alert)
+POST   /api/onboarding/:token/whatsapp-signup → Meta Embedded Signup: exchanges code → business token, subscribes WABA, stores meta_* creds on session (501 until META_APP_ID/META_APP_SECRET configured)
 ```
 
 **Onboarding 2-step wizard (admin.js):**
-- Step 1 (client info): read-only display of what the client submitted + status badge. "הבא →" navigates to step 2.
-- Step 2 (tech fields): vendor fills Green API Instance ID*, Green API Token*, Cardcom Terminal Number, Cardcom Secret (ApiName). Tenant ID shown read-only/copyable.
-- Approve button: disabled until `step1Done` (client submitted) AND `step2Done` (instance + token saved).
+- Step 1 (client info): read-only display of what the client submitted (incl. menu_notes free-text menu) + status badge. "הבא →" navigates to step 2.
+- Step 2 (tech fields): Meta Cloud API first (Phone Number ID, Access Token, WABA ID — the official/preferred channel), Green API as fallback, Cardcom fields. Tenant ID shown read-only/copyable.
+- Approve button: disabled until `step1Done` (client submitted) AND `step2Done` (Meta creds OR Green API creds saved — `_hasChannelCreds`).
+- Saving tech fields auto-ticks the checklist (whatsapp/cardcom items).
+- **Client-side form is a 4-step wizard** (onboarding.html): business details → delivery+payment → hours+zones → menu+admins. Draft autosave on step transitions, "apply Sunday to all days", sticky mobile nav.
 - After approve: credentials modal shows username, password, dashboard URL, webhook URL, tenant ID — all copyable.
 
 **Cardcom onboarding flow:**
