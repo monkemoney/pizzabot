@@ -1002,12 +1002,34 @@ router.get('/vendor/usage', requireVendor, async (_req, res) => {
 router.get('/onboarding/:token', async (req, res) => {
   const { data } = await supabase
     .from('onboarding_sessions')
-    .select('id,status,business_name,bot_whatsapp,business_address,business_hours,delivery_zones,payment_cash,payment_credit,payment_bit,payment_paybox,delivery_enabled,pickup_enabled,pickup_address,admin_phones,menu_notes,expires_at')
+    .select('id,status,business_name,bot_whatsapp,business_address,business_hours,delivery_zones,payment_cash,payment_credit,payment_bit,payment_paybox,delivery_enabled,pickup_enabled,pickup_address,admin_phones,menu_notes,expires_at,approved_username,clients(tenant_id)')
     .eq('token', req.params.token)
     .single();
   if (!data) return res.status(404).json({ error: 'לינק לא נמצא' });
-  if (data.status === 'approved') return res.json({ status: 'approved' });
+
+  // Approved → "your business is live" payload: real links, no secrets
+  // (the password was delivered via WhatsApp at approval time).
+  if (data.status === 'approved') {
+    const PUBLIC_URL = process.env.PUBLIC_URL || 'https://www.jasell.com';
+    const tenantId = data.clients?.tenant_id;
+    let slug = null;
+    if (tenantId) {
+      const { data: slugRow } = await supabase.from('settings')
+        .select('value').eq('tenant_id', tenantId).eq('key', 'public_slug').single();
+      slug = slugRow?.value || null;
+    }
+    return res.json({
+      status: 'approved',
+      business_name: data.business_name,
+      username: data.approved_username || null,
+      dashboard_url: PUBLIC_URL,
+      menu_url: `${PUBLIC_URL}/menu.html?biz=${encodeURIComponent(slug || tenantId || '')}`,
+    });
+  }
+
   if (new Date(data.expires_at) < new Date()) return res.status(410).json({ error: 'הלינק פג תוקף' });
+  delete data.clients;
+  delete data.approved_username;
   res.json(data);
 });
 
@@ -1070,6 +1092,62 @@ router.patch('/onboarding/:token', onboardingLimiter, async (req, res) => {
   }
 
   res.json({ success: true });
+});
+
+// POST /onboarding/:token/whatsapp-signup — Meta Embedded Signup callback (public).
+// The popup's sessionInfoListener gives the client page waba_id + phone_number_id,
+// and FB.login returns a short-lived code; we exchange it server-side for a
+// business token, subscribe our app to the WABA, and store the creds on the
+// session so approve() seeds them into tenant settings.
+// Requires META_APP_ID + META_APP_SECRET (available once Meta approves us as
+// Tech Provider) — returns 501 until they're configured.
+router.post('/onboarding/:token/whatsapp-signup', onboardingLimiter, async (req, res) => {
+  const APP_ID     = process.env.META_APP_ID;
+  const APP_SECRET = process.env.META_APP_SECRET;
+  if (!APP_ID || !APP_SECRET) {
+    return res.status(501).json({ error: 'חיבור WhatsApp אוטומטי עדיין לא זמין — צוות Jasell יחבר עבורך' });
+  }
+
+  const { code, waba_id, phone_number_id } = req.body;
+  if (!code || !waba_id || !phone_number_id) {
+    return res.status(400).json({ error: 'code, waba_id, phone_number_id נדרשים' });
+  }
+
+  const { data: session } = await supabase
+    .from('onboarding_sessions')
+    .select('id,status')
+    .eq('token', req.params.token)
+    .single();
+  if (!session) return res.status(404).json({ error: 'לינק לא נמצא' });
+  if (session.status === 'approved') return res.status(409).json({ error: 'האונבורדינג הסתיים' });
+
+  try {
+    const axios = require('axios');
+    const API_VERSION = process.env.META_WA_API_VERSION || 'v21.0';
+    const { data: tokenData } = await axios.get(
+      `https://graph.facebook.com/${API_VERSION}/oauth/access_token`,
+      { params: { client_id: APP_ID, client_secret: APP_SECRET, code } }
+    );
+    const accessToken = tokenData.access_token;
+    if (!accessToken) throw new Error('no access_token in exchange response');
+
+    const { subscribeWaba } = require('../services/meta-whatsapp');
+    await subscribeWaba(waba_id, accessToken);
+
+    await supabase.from('onboarding_sessions').update({
+      meta_phone_number_id: phone_number_id,
+      meta_access_token:    accessToken,
+      meta_waba_id:         waba_id,
+      updated_at:           new Date().toISOString(),
+      updated_by:           'client',
+    }).eq('id', session.id);
+
+    res.json({ success: true });
+  } catch (err) {
+    const detail = err.response ? JSON.stringify(err.response.data) : err.message;
+    console.error('[onboarding] whatsapp-signup error:', detail);
+    res.status(502).json({ error: 'חיבור ה-WhatsApp נכשל — נסה שוב או פנה ל-Jasell' });
+  }
 });
 
 // POST /vendor/onboarding — create client + session, return shareable link

@@ -172,10 +172,38 @@ textarea#menuNotes:focus { outline: none; border-color: var(--color-brand); }
     <div class="state-sub">הלינק תקף ל-30 יום. פנה ל-Jasell לקבלת לינק חדש.</div>
   </div>
 
-  <!-- Already approved -->
-  <div id="stateApproved" class="state-center">
-    <div class="state-title" style="color:var(--color-success)">העסק שלך כבר פעיל!</div>
-    <div class="state-sub" style="margin-top:8px">המערכת הוגדרה בהצלחה.</div>
+  <!-- Already approved — "your business is live" -->
+  <div id="stateApproved">
+    <div class="card" style="text-align:center;padding:36px 24px 28px">
+      <div style="width:56px;height:56px;background:var(--color-success-bg);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      </div>
+      <div class="state-title" id="liveTitle">העסק שלך באוויר!</div>
+      <div class="state-sub" style="margin-top:6px">הבוט פעיל ומוכן לקבל הזמנות. פרטי הכניסה נשלחו אליך ב-WhatsApp.</div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">הקישורים שלך</div>
+      <a id="liveDashLink" href="/" target="_blank" rel="noopener"
+         style="display:flex;align-items:center;justify-content:space-between;padding:14px 4px;border-bottom:1px solid var(--color-border);text-decoration:none;color:var(--color-text)">
+        <span style="font-weight:600;font-size:.9rem">דשבורד ניהול</span>
+        <span id="liveDashUser" style="font-size:.76rem;color:var(--color-text-secondary)"></span>
+      </a>
+      <a id="liveMenuLink" href="#" target="_blank" rel="noopener"
+         style="display:flex;align-items:center;justify-content:space-between;padding:14px 4px;text-decoration:none;color:var(--color-text)">
+        <span style="font-weight:600;font-size:.9rem">התפריט הציבורי שלך</span>
+        <span style="font-size:.76rem;color:var(--color-brand);font-weight:700">פתח ←</span>
+      </a>
+    </div>
+
+    <div class="card">
+      <div class="section-title">3 צעדים ראשונים</div>
+      <div style="display:flex;flex-direction:column;gap:14px;font-size:.86rem">
+        <div style="display:flex;gap:12px"><span style="width:24px;height:24px;border-radius:50%;background:var(--color-brand-soft);color:var(--color-brand);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.78rem;flex-shrink:0">1</span><span>היכנסו לדשבורד ועברו על התפריט — ודאו שהמנות והמחירים נכונים</span></div>
+        <div style="display:flex;gap:12px"><span style="width:24px;height:24px;border-radius:50%;background:var(--color-brand-soft);color:var(--color-brand);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.78rem;flex-shrink:0">2</span><span>שלחו הודעת ניסיון למספר הוואטסאפ של הבוט והזמינו משהו — כך תראו בדיוק מה הלקוחות חווים</span></div>
+        <div style="display:flex;gap:12px"><span style="width:24px;height:24px;border-radius:50%;background:var(--color-brand-soft);color:var(--color-brand);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.78rem;flex-shrink:0">3</span><span>שתפו את קישור התפריט בסטורי / בביו של העסק — משם הלקוחות מזמינים</span></div>
+      </div>
+    </div>
   </div>
 
   <!-- Success -->
@@ -349,7 +377,14 @@ async function init() {
     if (res.status === 404) return show('stateError');
     if (res.status === 410) return show('stateExpired');
     const data = await res.json();
-    if (data.status === 'approved') return show('stateApproved');
+    if (data.status === 'approved') {
+      if (data.business_name) document.getElementById('liveTitle').textContent = `${data.business_name} באוויר!`;
+      if (data.menu_url)      document.getElementById('liveMenuLink').href = data.menu_url;
+      if (data.dashboard_url) document.getElementById('liveDashLink').href = data.dashboard_url;
+      if (data.username)      document.getElementById('liveDashUser').textContent = `שם משתמש: ${data.username}`;
+      document.getElementById('headerTitle').textContent = 'ברוכים הבאים ל-Jasell';
+      return show('stateApproved');
+    }
     sessionId = data.id;
     prefill(data);
     buildHoursGrid(data.business_hours);
