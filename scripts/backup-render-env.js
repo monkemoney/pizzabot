@@ -19,7 +19,7 @@ const ENV_FILE       = path.join(__dirname, '..', '.env.production');
 
 const options = {
   hostname: 'api.render.com',
-  path:     `/v1/services/${SERVICE_ID}/env-vars`,
+  path:     `/v1/services/${SERVICE_ID}/env-vars?limit=100`,
   method:   'GET',
   headers:  { 'Authorization': `Bearer ${RENDER_API_KEY}` },
 };
