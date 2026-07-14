@@ -548,6 +548,11 @@ function _renderStep1(s, step1Done) {
       ${row('תשלום', [s.payment_cash&&'מזומן', s.payment_credit&&'אשראי', s.payment_bit&&'Bit', s.payment_paybox&&'Paybox'].filter(Boolean).join(', ') || '—')}
       ${row('מנהלי WhatsApp', adminsSummary)}
     </div>
+    ${s.menu_notes ? `
+    <div style="margin-bottom:24px">
+      <div style="font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">התפריט שהלקוח שלח</div>
+      <div style="background:var(--color-bg,#eeede9);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:.82rem;white-space:pre-wrap;max-height:220px;overflow-y:auto">${s.menu_notes.replace(/</g,'&lt;')}</div>
+    </div>` : ''}
     <button onclick="_obStep=2;renderSessionModal()" class="btn btn-primary" style="width:100%">
       הבא: הגדרות טכניות →
     </button>`;

@@ -288,6 +288,8 @@ CREATE TABLE IF NOT EXISTS onboarding_sessions (
   meta_phone_number_id TEXT,
   meta_access_token    TEXT,
   meta_waba_id         TEXT,
+  -- Free-text menu the client pastes during onboarding (vendor sets it up)
+  menu_notes           TEXT,
   -- Vendor checklist (key/label/done array)
   checklist JSONB DEFAULT '[
     {"key":"client_info","label":"פרטי עסק מהלקוח","done":false},

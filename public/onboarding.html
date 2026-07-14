@@ -105,6 +105,31 @@ input:focus, select:focus { outline: none; border-color: var(--color-brand); }
 .submit-btn:hover:not(:disabled) { background: var(--color-brand-dark); }
 .submit-btn:disabled { opacity: .6; cursor: default; }
 
+/* Wizard */
+.progress-wrap { margin-bottom: 24px; }
+.progress-steps { display: flex; gap: 6px; margin-bottom: 8px; }
+.progress-seg { flex: 1; height: 4px; border-radius: 4px; background: var(--color-border); transition: background var(--transition-base); }
+.progress-seg.active { background: var(--color-brand); }
+.progress-label { font-size: .8rem; font-weight: 700; color: var(--color-brand); text-align: center; }
+.wstep { display: none; }
+.wstep.active { display: block; }
+.wiz-nav { display: flex; gap: 10px; margin-top: 4px; }
+.wiz-back { flex: 0 0 auto; background: none; border: 1.5px solid var(--color-border); color: var(--color-text);
+            border-radius: var(--radius-md); padding: 14px 22px; font-size: .95rem; font-weight: 600;
+            cursor: pointer; font-family: inherit; }
+.wiz-next { flex: 1; }
+@media (max-width: 640px) {
+  .wiz-nav { position: sticky; bottom: 0; background: var(--color-bg); padding: 12px 0 8px; z-index: 5; }
+}
+textarea#menuNotes {
+  width: 100%; min-height: 120px; border: 1.5px solid var(--color-border); border-radius: var(--radius-sm);
+  padding: 10px 13px; font-size: .88rem; font-family: inherit; color: var(--color-text); resize: vertical;
+}
+textarea#menuNotes:focus { outline: none; border-color: var(--color-brand); }
+.apply-all { border: none; background: var(--color-brand-soft); color: var(--color-brand);
+             border-radius: var(--radius-sm); padding: 7px 14px; cursor: pointer;
+             font-family: inherit; font-size: .78rem; font-weight: 700; margin-bottom: 10px; }
+
 /* States */
 #stateLoading, #stateSuccess, #stateError, #stateExpired,
 #stateApproved, #stateForm { display: none; }
@@ -123,12 +148,7 @@ input:focus, select:focus { outline: none; border-color: var(--color-brand); }
 
   <div class="header">
     <div class="brand">Jas<span>ell</span></div>
-    <div style="display:inline-flex;align-items:center;gap:8px;background:var(--color-brand-soft,#ede8fd);border-radius:50px;padding:4px 14px;margin-bottom:10px;font-size:.75rem;font-weight:700;color:var(--color-brand)">
-      <span>שלב 1 מתוך 2</span>
-      <span style="opacity:.5">·</span>
-      <span>פרטי העסק</span>
-    </div>
-    <h1>הגדרת העסק שלך</h1>
+    <h1 id="headerTitle">הגדרת העסק שלך</h1>
     <p>מלא את הפרטים כדי שנוכל להכין את המערכת עבורך</p>
   </div>
 
@@ -171,9 +191,15 @@ input:focus, select:focus { outline: none; border-color: var(--color-brand); }
 
   <!-- Form -->
   <div id="stateForm">
+    <div class="progress-wrap">
+      <div class="progress-steps" id="progressSteps"></div>
+      <div class="progress-label" id="progressLabel"></div>
+    </div>
+
     <form id="onboardingForm" onsubmit="submitForm(event)" novalidate>
 
-      <!-- Business details -->
+    <!-- Step 1: business details -->
+    <div class="wstep" data-step="1">
       <div class="card">
         <div class="section-title">פרטי העסק</div>
         <div class="form-group">
@@ -196,7 +222,10 @@ input:focus, select:focus { outline: none; border-color: var(--color-brand); }
           </div>
         </div>
       </div>
+    </div>
 
+    <!-- Step 2: delivery + payment -->
+    <div class="wstep" data-step="2">
       <!-- Order types -->
       <div class="card">
         <div class="section-title">סוגי הזמנה</div>
@@ -239,10 +268,14 @@ input:focus, select:focus { outline: none; border-color: var(--color-brand); }
           <label for="payPaybox">Paybox</label>
         </div>
       </div>
+    </div>
 
+    <!-- Step 3: hours + zones -->
+    <div class="wstep" data-step="3">
       <!-- Business hours -->
       <div class="card">
         <div class="section-title">שעות פעילות</div>
+        <button type="button" class="apply-all" onclick="applyAllDays()">החל את שעות יום ראשון על כל הימים</button>
         <div id="hoursGrid"></div>
       </div>
 
@@ -253,6 +286,16 @@ input:focus, select:focus { outline: none; border-color: var(--color-brand); }
         <div id="zonesContainer"></div>
         <button type="button" class="add-btn" onclick="addZone()">+ הוסף אזור משלוח</button>
       </div>
+    </div>
+
+    <!-- Step 4: menu + admins + submit -->
+    <div class="wstep" data-step="4">
+      <!-- Menu -->
+      <div class="card">
+        <div class="section-title">התפריט שלך</div>
+        <div style="font-size:.82rem;color:var(--color-text-secondary);margin-bottom:12px">ספרו לנו מה אתם מוכרים — מנות, מחירים, תוספות. אפשר להעתיק תפריט קיים או לכתוב בקצרה. צוות Jasell יקים את התפריט במערכת עבורכם.</div>
+        <textarea id="menuNotes" placeholder="לדוגמה:&#10;פיצה משפחתית — 60₪ (תוספות: זיתים, בצל, פטריות — 5₪ כל אחת)&#10;פיצה אישית — 35₪&#10;שתייה: קולה / ספרייט — 12₪"></textarea>
+      </div>
 
       <!-- Admin WhatsApp managers -->
       <div class="card">
@@ -261,8 +304,13 @@ input:focus, select:focus { outline: none; border-color: var(--color-brand); }
         <div id="adminsContainer"></div>
         <button type="button" class="add-btn" onclick="addAdmin()">+ הוסף מנהל</button>
       </div>
+    </div>
 
-      <button type="submit" class="submit-btn" id="submitBtn">שלח פרטים</button>
+    <div class="wiz-nav">
+      <button type="button" class="wiz-back" id="backBtn" onclick="gotoStep(_step - 1)">חזרה</button>
+      <button type="button" class="submit-btn wiz-next" id="nextBtn" onclick="nextStep()">המשך</button>
+      <button type="submit" class="submit-btn wiz-next" id="submitBtn" style="display:none">שלח פרטים</button>
+    </div>
 
     </form>
   </div>
@@ -307,7 +355,9 @@ async function init() {
     buildHoursGrid(data.business_hours);
     buildZones(data.delivery_zones || []);
     buildAdmins(data.admin_phones || []);
+    if (data.menu_notes) document.getElementById('menuNotes').value = data.menu_notes;
     show('stateForm');
+    gotoStep(1);
   } catch {
     show('stateError');
   }
@@ -357,6 +407,79 @@ function toggleDay(key) {
   const isOpen = document.getElementById(`open-${key}`).checked;
   document.getElementById(`times-${key}`).style.display  = isOpen ? '' : 'none';
   document.getElementById(`closed-${key}`).style.display = isOpen ? 'none' : '';
+}
+
+function applyAllDays() {
+  const from = document.getElementById('from-sun').value;
+  const to   = document.getElementById('to-sun').value;
+  const open = document.getElementById('open-sun').checked;
+  DAYS.forEach(d => {
+    if (d.key === 'sun') return;
+    document.getElementById(`open-${d.key}`).checked = open;
+    document.getElementById(`from-${d.key}`).value   = from;
+    document.getElementById(`to-${d.key}`).value     = to;
+    toggleDay(d.key);
+  });
+}
+
+// ── Wizard ─────────────────────────────────────────────────────────────────────
+const STEPS = [
+  { n: 1, label: 'פרטי העסק' },
+  { n: 2, label: 'אספקה ותשלום' },
+  { n: 3, label: 'שעות ואזורי משלוח' },
+  { n: 4, label: 'תפריט ומנהלים' },
+];
+let _step = 1;
+
+function gotoStep(n) {
+  if (n < 1 || n > STEPS.length) return;
+  _step = n;
+  document.querySelectorAll('.wstep').forEach(el =>
+    el.classList.toggle('active', Number(el.dataset.step) === n));
+  document.getElementById('progressSteps').innerHTML = STEPS.map(s =>
+    `<div class="progress-seg ${s.n <= n ? 'active' : ''}"></div>`).join('');
+  document.getElementById('progressLabel').textContent = `שלב ${n} מתוך ${STEPS.length} — ${STEPS[n-1].label}`;
+  document.getElementById('backBtn').style.display   = n === 1 ? 'none' : '';
+  document.getElementById('nextBtn').style.display   = n === STEPS.length ? 'none' : '';
+  document.getElementById('submitBtn').style.display = n === STEPS.length ? '' : 'none';
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
+function nextStep() {
+  if (_step === 1) {
+    const name = document.getElementById('businessName').value.trim();
+    const wa   = document.getElementById('botWhatsapp').value.trim();
+    if (!name || !wa) { alert('שם עסק ומספר WhatsApp הם שדות חובה'); return; }
+  }
+  saveDraft(); // fire-and-forget — progress survives a closed tab
+  gotoStep(_step + 1);
+}
+
+function collectForm() {
+  return {
+    business_name:    document.getElementById('businessName').value.trim(),
+    bot_whatsapp:     document.getElementById('botWhatsapp').value.trim(),
+    business_address: document.getElementById('businessAddress').value.trim(),
+    pickup_address:   document.getElementById('pickupAddress').value.trim(),
+    delivery_enabled: document.getElementById('deliveryEnabled').checked,
+    pickup_enabled:   document.getElementById('pickupEnabled').checked,
+    payment_cash:     document.getElementById('payCash').checked,
+    payment_credit:   document.getElementById('payCredit').checked,
+    payment_bit:      document.getElementById('payBit').checked,
+    payment_paybox:   document.getElementById('payPaybox').checked,
+    business_hours:   getHours(),
+    delivery_zones:   getZones(),
+    admin_phones:     getAdmins(),
+    menu_notes:       document.getElementById('menuNotes').value.trim(),
+  };
+}
+
+function saveDraft() {
+  fetch(`/api/onboarding/${token}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...collectForm(), draft: true }),
+  }).catch(() => {});
 }
 
 function getHours() {
@@ -468,21 +591,7 @@ async function submitForm(e) {
     const res = await fetch(`/api/onboarding/${token}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        business_name:    name,
-        bot_whatsapp:     wa,
-        business_address: document.getElementById('businessAddress').value.trim(),
-        pickup_address:   document.getElementById('pickupAddress').value.trim(),
-        delivery_enabled: document.getElementById('deliveryEnabled').checked,
-        pickup_enabled:   document.getElementById('pickupEnabled').checked,
-        payment_cash:     document.getElementById('payCash').checked,
-        payment_credit:   document.getElementById('payCredit').checked,
-        payment_bit:      document.getElementById('payBit').checked,
-        payment_paybox:   document.getElementById('payPaybox').checked,
-        business_hours:   getHours(),
-        delivery_zones:   getZones(),
-        admin_phones:     getAdmins(),
-      }),
+      body: JSON.stringify(collectForm()),
     });
     if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'שגיאה'); }
     show('stateSuccess');

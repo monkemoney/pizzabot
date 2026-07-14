@@ -1002,7 +1002,7 @@ router.get('/vendor/usage', requireVendor, async (_req, res) => {
 router.get('/onboarding/:token', async (req, res) => {
   const { data } = await supabase
     .from('onboarding_sessions')
-    .select('id,status,business_name,bot_whatsapp,business_address,business_hours,delivery_zones,payment_cash,payment_credit,payment_bit,payment_paybox,delivery_enabled,pickup_enabled,pickup_address,admin_phones,expires_at')
+    .select('id,status,business_name,bot_whatsapp,business_address,business_hours,delivery_zones,payment_cash,payment_credit,payment_bit,payment_paybox,delivery_enabled,pickup_enabled,pickup_address,admin_phones,menu_notes,expires_at')
     .eq('token', req.params.token)
     .single();
   if (!data) return res.status(404).json({ error: 'לינק לא נמצא' });
@@ -1026,14 +1026,10 @@ router.patch('/onboarding/:token', onboardingLimiter, async (req, res) => {
     business_name, bot_whatsapp, business_hours, delivery_zones,
     payment_cash, payment_credit, payment_bit, payment_paybox,
     pickup_address, business_address, delivery_enabled, pickup_enabled,
-    admin_phones,
+    admin_phones, menu_notes, draft,
   } = req.body;
 
-  const checklist = (session.checklist || []).map(i =>
-    i.key === 'client_info' ? { ...i, done: true } : i
-  );
-
-  await supabase.from('onboarding_sessions').update({
+  const updates = {
     business_name,
     bot_whatsapp:     bot_whatsapp ? bot_whatsapp.replace(/\D/g, '') : null,
     business_address: business_address || null,
@@ -1049,17 +1045,29 @@ router.patch('/onboarding/:token', onboardingLimiter, async (req, res) => {
     pickup_enabled:   pickup_enabled   !== undefined ? pickup_enabled   : true,
     pickup_address,
     admin_phones:     admin_phones || [],
-    status:           'pending_vendor',
-    checklist,
-  }).eq('id', session.id);
+    menu_notes:       menu_notes || null,
+  };
 
-  // Notify vendor via WhatsApp (fire-and-forget)
-  const { alerts } = require('../services/vendor-alerts');
-  alerts.onboardingComplete(
-    business_name || '—',
-    bot_whatsapp  || '—',
-    session.id
-  ).catch(() => {});
+  // Draft autosave (wizard step transitions): persist fields only — the
+  // session stays pending_client and the vendor is not alerted yet.
+  if (!draft) {
+    updates.status = 'pending_vendor';
+    updates.checklist = (session.checklist || []).map(i =>
+      i.key === 'client_info' ? { ...i, done: true } : i
+    );
+  }
+
+  await supabase.from('onboarding_sessions').update(updates).eq('id', session.id);
+
+  if (!draft) {
+    // Notify vendor via WhatsApp (fire-and-forget)
+    const { alerts } = require('../services/vendor-alerts');
+    alerts.onboardingComplete(
+      business_name || '—',
+      bot_whatsapp  || '—',
+      session.id
+    ).catch(() => {});
+  }
 
   res.json({ success: true });
 });
