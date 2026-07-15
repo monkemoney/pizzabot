@@ -54,8 +54,10 @@ RENDER_API_KEY                                        # local-only helper (not o
 
 Notes:
 - `TENANT_ID` defaults to `aaaaaaaa-0000-0000-0000-000000000001` (the default/demo tenant). All tenants share this one deployment — per-client Render services are a dead pattern; never suggest one.
+- **`SUPABASE_SERVICE_KEY` is a new-style `sb_secret_...` key** (2026-07-15). The project's **legacy JWT API keys (anon/service_role) are DISABLED** — any old `eyJ...` key is rejected with "Legacy API keys are disabled". New secret keys are drop-in for supabase-js; the Management API token (`sbp_...`, in Claude memory) is a separate credential and unaffected.
 - **Cardcom test account (`CardTest1994` / terminal 1000) is DEAD** — the API returns `603 שם משתמש או סיסמה שגויים` (verified 2026-07-13). `createPaymentPage` fails with 401 until fresh credentials are obtained from Cardcom. Real clients supply their own terminal via onboarding.
 - Direct Postgres access does not work from anywhere (see DB access lesson below) — the `SUPABASE_DB_PASSWORD` is effectively unusable.
+- **Rotation status (2026-07-15):** everything that was ever exposed in git history is dead — Supabase legacy keys disabled, Render API key rotated+revoked, JWT_SECRET / dashboard passwords / ADMIN_SECRET / META_WA_VERIFY_TOKEN / VAPID keypair all regenerated. Only the legacy Green API token remains on its original value (low priority). Consequences to remember: push subscribers must re-opt-in (new VAPID); Meta's webhook "Verify and save" needs the new verify token if ever re-run.
 
 ---
 
@@ -75,7 +77,7 @@ curl -s -X POST "https://api.supabase.com/v1/projects/umoftdmutxhrbknowbyh/datab
 # Returns [] on DDL success, rows array on SELECT. Fallback: Supabase SQL editor (desktop browser only).
 
 # Env var backup/restore (ALWAYS before infra changes)
-node scripts/backup-render-env.js   # pulls from Render → .env.production (overwrites! re-append RENDER_API_KEY after)
+node scripts/backup-render-env.js   # pulls from Render → .env.production (merges — local-only keys like RENDER_API_KEY survive)
 node scripts/sync-render-env.js     # pushes .env.production → Render
 
 # Fetch Render runtime logs
@@ -314,7 +316,7 @@ Order status flow: `new → preparing → ready → out_for_delivery → deliver
 
 ## Operational Rules
 
-1. **Backup before infra change:** `node scripts/backup-render-env.js` (then re-append RENDER_API_KEY)
+1. **Backup before infra change:** `node scripts/backup-render-env.js`
 2. **Schema changes only via Supabase Management API** (or SQL editor from desktop). Never direct `pg` — see DB access lesson. **After adding columns to schema.sql, verify they exist in the real DB** (`information_schema.columns`) — schema.sql is documentation, drift means silent feature failure (9 columns once existed only on paper).
 3. **Before every commit:** `node --check public/app.js && node --check public/admin.js` (a missing backtick silently blanks the whole SPA) + `npm test -- --forceExit` (99 tests)
 4. **Every desktop UI change must include mobile** — media queries + `window.innerWidth <= 768` branches
@@ -345,7 +347,7 @@ Bot isolation is stateless by design: handlers hold zero module-level mutable st
 
 **Direct DB access is impossible — use the Management API, period.** Three dead ends, do not retry: (1) `db.umoftdmutxhrbknowbyh.supabase.co` is IPv6-only — times out locally AND on Render (no outbound IPv6); (2) the Supavisor pooler returns "Tenant or user not found" for this project; (3) the `pg` npm package was removed 2026-05-26 — do not re-add. The SQL editor works as fallback but only from a desktop browser (mobile gives protocol error 08P01; running statements one at a time also helps).
 
-**Render:** Starter plan ($7/mo, always-on — do not downgrade to Free, it cold-starts 30-60s). The env-vars API paginates at 20 by default — `backup-render-env.js` uses `?limit=100` (a truncated backup once silently dropped 5 vars). ANTHROPIC_API_KEY was once lost in a service recreation — hence the backup-first rule. UptimeRobot monitors `/health` (done).
+**Render:** Starter plan ($7/mo, always-on — do not downgrade to Free, it cold-starts 30-60s). The env-vars API paginates at 20 by default — `backup-render-env.js` uses `?limit=100` (a truncated backup once silently dropped 5 vars). ANTHROPIC_API_KEY was once lost in a service recreation — hence the backup-first rule. Both env scripts read `RENDER_API_KEY` from env/.env.production (never hardcoded — a hardcoded fallback in these scripts was the last committed secret found in the 2026-07 sweep); backup merges over the local file so local-only keys survive, sync excludes `RENDER_API_KEY` from the push. UptimeRobot monitors `/health` (done).
 
 **Shared working directory:** multiple Claude sessions can work in this folder simultaneously (no separate worktrees). An uncommitted edit can get swept into another session's `git add -A` commit. If `git diff` shows nothing for a change you just made, `git log -S"<unique string>"` finds which commit took it.
 
@@ -392,5 +394,7 @@ Anatomy of a working setup — all learned the hard way:
 - The greenapi mock must export `formatPhone` (index.js imports it at module load).
 
 ### Security notes
+
+**Secrets hygiene pivot (2026-07-15).** CLAUDE.md originally carried live secrets for agent autonomy. Lesson: autonomy doesn't require committed secrets — local gitignored files + Claude memory give identical capability with zero repo exposure. Everything once committed was rotated/disabled (git history is unerasable); the Supabase rotation used the new-API-keys path (create `sb_secret` → swap → disable legacy) for a zero-downtime kill of the leaked service_role. Access principle going forward: by role's needs, not trust — support/onboarding roles work through the dashboards and need no raw keys.
 
 `timingSafeEqual` throws on length mismatch — always try/catch around it (attacker-controlled input has arbitrary length). Rate limiting (login 10/15min, public onboarding 20/hr) uses in-memory store — resets per deploy, acceptable at this scale, no Redis until multi-instance.
