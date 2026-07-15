@@ -280,9 +280,17 @@ Portal pages: סקירה (KPIs + clients + Claude API cost/month per tenant from
 
 vendor-alerts.js: WhatsApp to `vendor_phone` setting; 5-min in-memory throttle per type; respects `vendor_alert_error/payment/restart` settings read at send time. Alert types: server_error, bot_error, payment_failed, new_order, restart, low_balance, onboarding_complete. Always uses DEFAULT_TENANT_ID (platform-level) — the one allowed exception to the tenantId rules. Vendor has no interactive bot — web only.
 
-### Design System
+### Design System (v2 — 2026-07 "clean light SaaS", user-approved from a v0 reference)
 
-`public/tokens.css` is the single source of truth (colors, spacing, radius 6/10/14/18 tiers, shadows, type). Page `:root` blocks are alias layers (`--primary: var(--color-brand)`) — change values ONLY in tokens.css. Font stack `'Poppins','Heebo'` — Poppins renders Latin, Hebrew falls to Heebo. Lucide inline SVGs for all UI chrome (emoji only inside WhatsApp message strings and public-menu content). Aesthetic direction: "Confident SaaS" — see `.design/jasell-dashboard/`.
+`public/tokens.css` is the single source of truth; page `:root` blocks are alias layers — change values ONLY in tokens.css. **The canon:**
+- **White chrome, purple as accent only** — white sidebars/headers with 1px #e5e7eb borders; brand #5e17eb appears solely on primary buttons, active-nav soft fill, and the gradient logo chip (brand→#2563eb). NEVER reintroduce the old purple-filled sidebar / beige background.
+- Canvas #f9fafb; cards = white + 1px border + neutral shadow-sm (no purple glows); radii 6/8/10/12.
+- **Color is information**: status badges are soft tints with a leading dot (`.badge::before`); semantic green/red for stock/payment; KPI values neutral-dark.
+- Font stack `'Poppins','Heebo'` (Latin/Hebrew); Lucide inline SVGs for all UI chrome (emoji only inside WhatsApp strings + public menu). Kitchen keeps its dark header intentionally (KDS contrast).
+- **Bilingual**: `public/i18n.js` — HE=RTL / EN=LTR toggle, dir set before first paint, layout mirrors via CSS logical properties (inset-inline-start etc. — never physical left/right in chrome). Chrome-level dictionary; business content stays tenant-language.
+- **Mobile orders**: each summary row is a horizontal swipe container (`.order-summary-scroll`, natural 730px width); column order is criticality-first on mobile (# / status / paid / method / price, then customer/address), scan-first on desktop. Tap still expands.
+- Dark mode is NOT calibrated to v2 — treat `[data-theme=dark]` as legacy until reworked.
+- Full direction docs: `.design/jasell-dashboard/`.
 
 ---
 

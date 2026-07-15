@@ -72,3 +72,19 @@ Replace all UI emojis with **Lucide Icons** (inline SVG, `currentColor`, `stroke
 - `menu.html` (customer-facing, different audience)
 - WhatsApp message content
 - Backend changes
+
+
+---
+
+## UPDATE 2026-07-16 — Design Language v2 (supersedes token values above)
+
+The direction was refined from a v0.dev reference the owner selected. The core shift: **the chrome flipped** — purple moved from background to accent.
+
+- **Chrome:** white sidebars/headers with 1px `#e5e7eb` borders on a `#f9fafb` canvas. The old purple-filled sidebar and beige background are retired — do not reintroduce.
+- **Brand:** `#5e17eb` appears only on primary buttons, active-nav soft fill (`#f3eefe`), and the gradient logo chip (brand→`#2563eb`).
+- **Cards:** white + 1px border + neutral `shadow-sm`; radii tiers 6/8/10/12.
+- **Color is information:** status badges = soft tints + leading dot; semantic green/red for stock/payment; KPI values neutral-dark.
+- **Bilingual:** HE-RTL / EN-LTR toggle (`i18n.js`), layout mirrors via CSS logical properties.
+- **Mobile orders:** horizontal swipe rows, criticality-first column order (#/status/paid/method/price).
+- **Kitchen:** keeps dark header + KDS type scale — functional contrast, exempt from the light chrome.
+- Dark mode not yet calibrated to v2.
