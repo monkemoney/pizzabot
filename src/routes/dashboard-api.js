@@ -580,8 +580,33 @@ router.post('/products', requireAdmin, async (req, res) => {
     .insert({ name_he, name_en: name_en || name_he, price, category_id, sort_order: sort_order || 0, image_url, description: description || null, tenant_id: tid(req) })
     .select().single();
   if (error) return res.status(400).json({ error: error.message });
+
+  // Toppings are global — a new dish inherits every existing topping,
+  // unless it lives in the topping-addon pseudo-category.
+  let newAdditions = [];
+  const { data: cat } = category_id
+    ? await supabase.from('categories').select('is_topping_addon').eq('id', category_id).single()
+    : { data: null };
+  if (!cat?.is_topping_addon) {
+    const dishIds = await _dishProductIds(req);
+    const { data: tops } = dishIds.length
+      ? await supabase.from('product_additions')
+          .select('name_he,name_en,price,is_available').in('product_id', dishIds)
+      : { data: [] };
+    const seen = new Map();
+    for (const t of tops || []) if (!seen.has(t.name_he)) seen.set(t.name_he, t);
+    const rows = [...seen.values()].map(t => ({
+      product_id: data.id, name_he: t.name_he, name_en: t.name_en || t.name_he,
+      price: t.price, is_available: t.is_available, sort_order: 0,
+    }));
+    if (rows.length) {
+      const { data: inserted } = await supabase.from('product_additions').insert(rows).select();
+      newAdditions = inserted || [];
+    }
+  }
+
   invalidateCache(tid(req));
-  res.status(201).json({ ...data, additions: [] });
+  res.status(201).json({ ...data, additions: newAdditions });
 });
 
 router.patch('/products/:id', requireAdmin, async (req, res) => {
@@ -663,19 +688,26 @@ router.patch('/additions/by-name', requireAdmin, async (req, res) => {
   res.json({ updated: (data || []).length });
 });
 
-// POST { name_he, price, category_id } — adds the topping to every product in the category
+// Dish products = everything except the topping-addon pseudo-category
+async function _dishProductIds(req) {
+  const { data: cats } = await supabase.from('categories')
+    .select('id,is_topping_addon').eq('tenant_id', tid(req));
+  const addonCatIds = new Set((cats || []).filter(c => c.is_topping_addon).map(c => c.id));
+  const { data: prods } = await supabase.from('products')
+    .select('id,category_id').eq('tenant_id', tid(req));
+  return (prods || []).filter(p => !addonCatIds.has(p.category_id)).map(p => p.id);
+}
+
+// POST { name_he, price } — a topping is global: added to EVERY dish
 router.post('/additions/by-name', requireAdmin, async (req, res) => {
-  const { name_he, price, category_id } = req.body;
-  if (!name_he || price === undefined || !category_id) {
-    return res.status(400).json({ error: 'name_he, price, category_id נדרשים' });
+  const { name_he, price } = req.body;
+  if (!name_he || price === undefined) {
+    return res.status(400).json({ error: 'name_he, price נדרשים' });
   }
-  const { data: prods, error: pErr } = await supabase.from('products')
-    .select('id').eq('tenant_id', tid(req)).eq('category_id', category_id);
-  if (pErr) return res.status(400).json({ error: pErr.message });
-  if (!prods?.length) return res.status(400).json({ error: 'אין מוצרים בקטגוריה' });
+  const ids = await _dishProductIds(req);
+  if (!ids.length) return res.status(400).json({ error: 'אין מנות' });
 
   // skip products that already have this topping
-  const ids = prods.map(p => p.id);
   const { data: existing } = await supabase.from('product_additions')
     .select('product_id').eq('name_he', name_he).in('product_id', ids);
   const has = new Set((existing || []).map(e => e.product_id));

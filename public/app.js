@@ -1407,10 +1407,10 @@ function renderProductsTable() {
       ? products.map((p) => renderProductRow(p, cat)).join('')
       : `<div style="padding:32px;text-align:center;color:var(--text-muted);font-size:.88rem">אין מוצרים — לחץ "+ מוצר"</div>`;
 
-    return `<div style="margin-bottom:12px;border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border);box-shadow:var(--shadow-sm);background:var(--white)">${catHeader}${renderCategoryToppings(cat)}${productRows}</div>`;
+    return `<div style="margin-bottom:12px;border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border);box-shadow:var(--shadow-sm);background:var(--white)">${catHeader}${productRows}</div>`;
   }).join('');
 
-  container.innerHTML = `<div>${categoryBlocks}</div>`;
+  container.innerHTML = `${renderGlobalToppings()}<div>${categoryBlocks}</div>`;
 }
 
 function renderProductRow(p, cat) {
@@ -1438,23 +1438,25 @@ function renderProductRow(p, cat) {
 // ── Category-level toppings (a topping applies to everything — never per dish) ──
 const expandedToppingEditors = new Set();
 
-function _aggToppings(cat) {
-  // unique by name across the category's products; unavailable wins for display
+function _aggToppings() {
+  // unique by name across ALL dishes; unavailable wins for display
   const map = new Map();
-  for (const p of (cat.products || [])) {
-    for (const a of (p.additions || [])) {
-      const cur = map.get(a.name_he);
-      if (!cur) map.set(a.name_he, { name_he: a.name_he, price: a.price, is_available: !!a.is_available, count: 1 });
-      else { cur.count++; cur.is_available = cur.is_available && !!a.is_available; }
+  for (const cat of categoriesWithProducts) {
+    for (const p of (cat.products || [])) {
+      for (const a of (p.additions || [])) {
+        const cur = map.get(a.name_he);
+        if (!cur) map.set(a.name_he, { name_he: a.name_he, price: a.price, is_available: !!a.is_available, count: 1 });
+        else { cur.count++; cur.is_available = cur.is_available && !!a.is_available; }
+      }
     }
   }
   return [...map.values()];
 }
 
-function renderCategoryToppings(cat) {
-  const tops = _aggToppings(cat);
-  const editorOpen = expandedToppingEditors.has(cat.id);
-  if (!tops.length && !cat.has_toppings) return '';
+function renderGlobalToppings() {
+  const tops = _aggToppings();
+  const editorOpen = expandedToppingEditors.has('global');
+  if (!tops.length) return '';
 
   const chips = tops.map((a) => `
     <button onclick="toggleToppingByName('${a.name_he.replace(/'/g, "\\'")}',${!a.is_available})"
@@ -1479,18 +1481,18 @@ function renderCategoryToppings(cat) {
           <button onclick="deleteToppingByName('${a.name_he.replace(/'/g, "\\'")}')" class="btn-danger" style="font-size:.72rem;padding:3px 7px">מחק</button>
         </div>`).join('')}
       <div style="display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--border);align-items:center">
-        <input id="newTopName-${cat.id}" type="text" placeholder="שם תוספת" style="flex:1;padding:6px 10px;font-size:.8rem">
-        <input id="newTopPrice-${cat.id}" type="number" placeholder="מחיר" min="0" dir="ltr" style="width:90px;padding:6px 10px;font-size:.8rem">
-        <button onclick="addToppingToCategory('${cat.id}')" class="btn btn-outline btn-sm">+ הוסף</button>
+        <input id="newTopName-global" type="text" placeholder="שם תוספת" style="flex:1;padding:6px 10px;font-size:.8rem">
+        <input id="newTopPrice-global" type="number" placeholder="מחיר" min="0" dir="ltr" style="width:90px;padding:6px 10px;font-size:.8rem">
+        <button onclick="addToppingGlobal()" class="btn btn-outline btn-sm">+ הוסף</button>
       </div>
     </div>` : '';
 
   return `
-    <div style="padding:10px 20px 12px;border-bottom:1px solid var(--border);background:var(--color-bg)">
+    <div style="margin-bottom:12px;border-radius:var(--radius-lg);border:1px solid var(--border);box-shadow:var(--shadow-sm);background:var(--white);padding:14px 20px">
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-        <span style="font-size:.7rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-inline-end:4px">תוספות (חלות על כל הקטגוריה)</span>
+        <span style="font-size:.7rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-inline-end:4px">תוספות — זמינות לכל המנות</span>
         ${chips}
-        <button onclick="toggleToppingEditor('${cat.id}')"
+        <button onclick="toggleToppingEditor('global')"
           style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:var(--radius-sm);border:1px dashed var(--color-border-strong);background:none;cursor:pointer;font-family:inherit;font-size:.76rem;color:var(--text-muted)">
           ${editorOpen ? '▴ סגור' : `${SVG.edit} ניהול`}
         </button>
@@ -1538,16 +1540,16 @@ async function deleteToppingByName(name) {
   } catch (err) { alert(err.message); }
 }
 
-async function addToppingToCategory(catId) {
-  const name  = document.getElementById(`newTopName-${catId}`)?.value.trim();
-  const price = document.getElementById(`newTopPrice-${catId}`)?.value;
+async function addToppingGlobal() {
+  const name  = document.getElementById('newTopName-global')?.value.trim();
+  const price = document.getElementById('newTopPrice-global')?.value;
   if (!name || price === '') { alert('שם ומחיר נדרשים'); return; }
   try {
-    await api('POST', '/additions/by-name', { name_he: name, price: parseFloat(price) || 0, category_id: catId });
+    await api('POST', '/additions/by-name', { name_he: name, price: parseFloat(price) || 0 });
     await loadProducts();
-    expandedToppingEditors.add(catId);
+    expandedToppingEditors.add('global');
     renderProductsTable();
-    showToast(`${name} נוספה לכל המוצרים בקטגוריה`);
+    showToast(`${name} נוספה לכל המנות`);
   } catch (err) { alert(err.message); }
 }
 
