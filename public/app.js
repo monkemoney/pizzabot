@@ -339,7 +339,7 @@ function renderOrderCard(o) {
   const statusOpts = Object.entries(STATUS_LABELS).map(([val, label]) =>
     `<option value="${val}" ${val === o.status ? 'selected' : ''}>${label}</option>`).join('');
   return `
-  <div class="order-card-mobile" style="background:var(--white);border-radius:16px;padding:14px 16px;box-shadow:0 2px 12px rgba(94,23,235,.06)">
+  <div class="order-card-mobile" style="background:var(--white);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;box-shadow:var(--shadow-sm)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
       <div style="display:flex;align-items:center;gap:8px">
         <span style="font-weight:800;color:var(--primary)">#${o.order_number||'—'}</span>
@@ -440,7 +440,7 @@ function renderOrderRow(o) {
 
   // ── Expanded panel ──
   const expandedHtml = `
-    <div style="border-top:2px solid var(--primary-soft);background:#faf8ff;padding:18px 20px;display:grid;grid-template-columns:1fr 1fr;gap:20px" onclick="event.stopPropagation()">
+    <div style="border-top:1px solid var(--border);background:var(--color-bg);padding:18px 20px;display:grid;grid-template-columns:1fr 1fr;gap:20px" onclick="event.stopPropagation()">
 
       <!-- Left: customer + delivery -->
       <div>
@@ -497,7 +497,7 @@ function renderOrderRow(o) {
 
   const summaryRow = `
     <div onclick="toggleOrderExpand('${o.id}')"
-      style="display:grid;grid-template-columns:44px 1fr 1fr auto auto auto auto 60px;align-items:center;gap:12px;padding:14px 18px;cursor:pointer;transition:background .15s;${isExpanded?'background:var(--primary-soft);':''}border-bottom:${isExpanded?'none':'1px solid var(--border)'}"
+      style="display:grid;grid-template-columns:44px 1fr 1fr auto auto auto auto 60px;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;transition:background .15s;${isExpanded?'background:var(--color-sidebar-active);':''}border-bottom:${isExpanded?'none':'1px solid var(--border)'}"
       onmouseover="if(!${isExpanded})this.style.background='var(--bg)'" onmouseout="if(!${isExpanded})this.style.background=''">
       <div style="font-weight:800;color:var(--primary);font-size:.9rem">#${o.order_number||'—'}</div>
       <div>
@@ -519,7 +519,7 @@ function renderOrderRow(o) {
       <div style="display:flex;align-items:center;justify-content:flex-end">${chevron}</div>
     </div>`;
 
-  return `<div style="border-radius:${isExpanded?'16px':'0'};overflow:hidden;margin-bottom:${isExpanded?'8px':'0'};${isExpanded?'box-shadow:0 4px 20px rgba(94,23,235,.12);':''}transition:all .2s">
+  return `<div style="border-radius:${isExpanded?'var(--radius-lg)':'0'};overflow:hidden;margin-bottom:${isExpanded?'8px':'0'};${isExpanded?'box-shadow:var(--shadow-md);border:1px solid var(--border);':''}transition:all .2s">
     ${summaryRow}
     ${isExpanded ? expandedHtml : ''}
   </div>`;
@@ -544,7 +544,7 @@ function renderOrdersTable(orders) {
     return;
   }
 
-  container.innerHTML = `<div style="border-radius:16px;overflow:hidden;border:1.5px solid var(--border)">
+  container.innerHTML = `<div style="border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border);background:var(--white)">
     ${orders.map(renderOrderRow).join('')}
   </div>`;
 }
@@ -594,7 +594,7 @@ function mkChart(id, config) {
 
 // Shared Chart.js defaults
 const C_FONT = "'Poppins', 'Heebo', sans-serif";
-const C_GRID = 'rgba(0,0,0,.06)';
+const C_GRID = '#f3f4f6';
 const C_VIOLET = '#5e17eb';
 const C_PINK   = '#ff66c4';
 const C_GREEN  = '#22c55e';
@@ -644,18 +644,19 @@ async function loadStats(period = 'today', date) {
     const periodLabel = {today:'היום',week:'השבוע',month:'החודש',year:'השנה',all:'הכל'}[period] || period;
 
     // ── KPI cards ──
-    const kpi = (label, value, color) => `
-      <div class="stat-card" style="padding:20px 22px">
-        <div style="font-size:1.8rem;font-weight:800;color:${color};line-height:1">${value}</div>
+    // v0 language: values stay neutral-dark; color is semantic only (cancellations)
+    const kpi = (label, value, valueColor = 'var(--text)') => `
+      <div class="stat-card" style="padding:18px 20px">
+        <div style="font-size:1.6rem;font-weight:700;color:${valueColor};line-height:1.1">${value}</div>
         <div class="stat-label" style="margin-top:6px">${label}</div>
       </div>`;
     cardsEl.innerHTML =
-      kpi(`הזמנות — ${periodLabel}`,  s.order_count,                                           C_VIOLET) +
-      kpi('הכנסות',                   `₪${(s.revenue||0).toFixed(0)}`,                         C_GREEN)  +
-      kpi('ממוצע להזמנה',             s.order_count ? `₪${((s.revenue||0)/s.order_count).toFixed(0)}` : '—', C_BLUE) +
-      kpi('זמן מסירה ממוצע',          s.avg_delivery_minutes != null ? s.avg_delivery_minutes+'′' : '—', C_PURPLE) +
-      kpi('ביטולים',                  s.cancelled_count || 0,                                   C_RED)    +
-      kpi('יחס המרה',                 s.conversion_rate != null ? s.conversion_rate+'%' : '—', C_PINK);
+      kpi(`הזמנות — ${periodLabel}`,  s.order_count) +
+      kpi('הכנסות',                   `₪${(s.revenue||0).toFixed(0)}`) +
+      kpi('ממוצע להזמנה',             s.order_count ? `₪${((s.revenue||0)/s.order_count).toFixed(0)}` : '—') +
+      kpi('זמן מסירה ממוצע',          s.avg_delivery_minutes != null ? s.avg_delivery_minutes+'′' : '—') +
+      kpi('ביטולים',                  s.cancelled_count || 0, (s.cancelled_count||0) > 0 ? C_RED : 'var(--text)') +
+      kpi('יחס המרה',                 s.conversion_rate != null ? s.conversion_rate+'%' : '—');
 
     // ── 1. Orders per day — line chart ──
     const byDay = s.orders_by_day || {};
@@ -667,7 +668,7 @@ async function loadStats(period = 'today', date) {
         datasets: [{
           label: 'הזמנות',
           data:  days.map(d => byDay[d].count),
-          backgroundColor: 'rgba(94,23,235,.75)',
+          backgroundColor: 'rgba(94,23,235,.55)',
           borderRadius: 6,
           borderSkipped: false,
         }],
