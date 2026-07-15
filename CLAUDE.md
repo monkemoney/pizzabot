@@ -90,7 +90,7 @@ logs=data if isinstance(data,list) else data.get('logs',data.get('data',[]))
 
 # Before every push (MANDATORY)
 node --check public/app.js && node --check public/admin.js
-npm test -- --forceExit     # 99 tests across 9 suites; --forceExit avoids hanging on setInterval timers
+npm test -- --forceExit     # 146 tests across 12 suites; --forceExit avoids hanging on setInterval timers
 
 # Deploy (auto on push)
 git push origin main
@@ -142,8 +142,9 @@ pizza-bot/
 │   └── sw.js                     # Service Worker — push notifications only (no fetch caching)
 ├── supabase/schema.sql           # Full DB schema (documentation — NOT auto-applied, see Schema drift)
 ├── scripts/                      # backup/sync Render env, render-guard
-├── tests/                        # 9 suites / 99 tests — auth, session isolation, admin bot, webhook
-│                                 #   routing (incl. Meta multi-tenant), onboarding, payments, audit, settings
+├── tests/                        # 12 suites / 146 tests — auth, sessions, admin bot, webhook routing
+│                                 #   (incl. Meta), onboarding+draft, payments, audit, settings+overnight,
+│                                 #   meta-whatsapp parsing, slug, inbox/handoff
 ├── .design/jasell-dashboard/     # Design brief + review (Confident SaaS direction)
 ├── .env.production               # ALL SECRETS — gitignored
 └── CLAUDE.md
@@ -318,7 +319,7 @@ Order status flow: `new → preparing → ready → out_for_delivery → deliver
 
 1. **Backup before infra change:** `node scripts/backup-render-env.js`
 2. **Schema changes only via Supabase Management API** (or SQL editor from desktop). Never direct `pg` — see DB access lesson. **After adding columns to schema.sql, verify they exist in the real DB** (`information_schema.columns`) — schema.sql is documentation, drift means silent feature failure (9 columns once existed only on paper).
-3. **Before every commit:** `node --check public/app.js && node --check public/admin.js` (a missing backtick silently blanks the whole SPA) + `npm test -- --forceExit` (99 tests)
+3. **Before every commit:** `node --check public/app.js && node --check public/admin.js` (a missing backtick silently blanks the whole SPA) + `npm test -- --forceExit` (146 tests)
 4. **Every desktop UI change must include mobile** — media queries + `window.innerWidth <= 768` branches
 5. **delivery_zones** is authoritative (5 fields: city, area, fee, min_order, eta_minutes); `saveZones()` syncs legacy `delivery_cities`; bot reads zones first
 6. **Vendor portal ≠ business dashboard** — separate SPAs, changes to one never affect the other

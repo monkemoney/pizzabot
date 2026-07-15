@@ -304,3 +304,60 @@ describe('PATCH /api/vendor/onboarding/:id', () => {
       .expect(403);
   });
 });
+
+// ── Draft autosave (wizard step transitions) ──────────────────────────────────
+describe('PATCH /api/onboarding/:token — draft mode', () => {
+  test('draft:true saves fields but keeps status pending_client and checklist unticked', async () => {
+    const s = makeSession('tok-draft-1');
+
+    await request(app)
+      .patch(`/api/onboarding/tok-draft-1`)
+      .send({ business_name: 'טיוטה בע"מ', bot_whatsapp: '0501111111', draft: true })
+      .expect(200);
+
+    const row = tables.onboarding_sessions[s.id];
+    expect(row.business_name).toBe('טיוטה בע"מ');
+    expect(row.status).toBe('pending_client');               // NOT flipped
+    expect(row.checklist?.[0]?.done ?? false).toBe(false);   // client_info NOT ticked
+
+    const upd = updateLog.filter(u => u.table === 'onboarding_sessions').at(-1);
+    expect(upd.data.status).toBeUndefined();
+  });
+
+  test('final submit (no draft flag) flips status and ticks client_info', async () => {
+    const s = makeSession('tok-final-1');
+
+    await request(app)
+      .patch(`/api/onboarding/tok-final-1`)
+      .send({ business_name: 'סופי בע"מ', bot_whatsapp: '0502222222' })
+      .expect(200);
+
+    const row = tables.onboarding_sessions[s.id];
+    expect(row.status).toBe('pending_vendor');
+    expect(row.checklist.find(i => i.key === 'client_info').done).toBe(true);
+  });
+
+  test('menu_notes free text is persisted', async () => {
+    const s = makeSession('tok-menu-1');
+    await request(app)
+      .patch(`/api/onboarding/tok-menu-1`)
+      .send({ business_name: 'עם תפריט', bot_whatsapp: '0503333333', menu_notes: 'פיצה — 50₪', draft: true })
+      .expect(200);
+    expect(tables.onboarding_sessions[s.id].menu_notes).toBe('פיצה — 50₪');
+  });
+});
+
+// ── Embedded Signup endpoint (pre Tech-Provider approval) ─────────────────────
+describe('POST /api/onboarding/:token/whatsapp-signup', () => {
+  test('returns 501 while META_APP_ID/SECRET are not configured', async () => {
+    delete process.env.META_APP_ID;
+    delete process.env.META_APP_SECRET;
+    makeSession('tok-signup-1');
+
+    const res = await request(app)
+      .post('/api/onboarding/tok-signup-1/whatsapp-signup')
+      .send({ code: 'c', waba_id: 'w', phone_number_id: 'p' })
+      .expect(501);
+    expect(res.body.error).toMatch(/עדיין לא זמין/);
+  });
+});

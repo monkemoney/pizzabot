@@ -82,3 +82,55 @@ describe('isOpen — business hours (Israel timezone)', () => {
     }
   });
 });
+
+// ── Overnight windows (_inHoursWindow — pure, deterministic) ──────────────────
+// Added 2026-07: close < open means the window spills past midnight.
+describe('_inHoursWindow — overnight windows', () => {
+  const { _inHoursWindow } = settings;
+  // now = a specific local time (day: 0=Sun..6=Sat)
+  const at = (day, hh, mm) => {
+    const d = new Date(2026, 6, 12 + day, hh, mm); // 2026-07-12 is a Sunday
+    return d;
+  };
+  const base = { is_open: true, open: '10:00', close: '22:00' };
+  const week = (over = {}) => ({
+    sun: base, mon: base, tue: base, wed: base, thu: base, fri: base, sat: base, ...over,
+  });
+
+  test('normal window — inside is open, outside is closed', () => {
+    expect(_inHoursWindow(week(), at(0, 12, 0))).toBe(true);   // Sun noon
+    expect(_inHoursWindow(week(), at(0, 23, 0))).toBe(false);  // Sun 23:00
+    expect(_inHoursWindow(week(), at(0, 9, 59))).toBe(false);  // before opening
+  });
+
+  test('overnight window — open before midnight', () => {
+    const hours = week({ sat: { is_open: true, open: '20:00', close: '01:00' } });
+    expect(_inHoursWindow(hours, at(6, 23, 30))).toBe(true);   // Sat 23:30
+  });
+
+  test('overnight window — spill past midnight uses yesterday tail', () => {
+    const hours = week({
+      sat: { is_open: true, open: '20:00', close: '01:00' },
+      sun: { is_open: false, open: '10:00', close: '22:00' },  // Sunday itself closed
+    });
+    expect(_inHoursWindow(hours, at(7, 0, 30))).toBe(true);    // Sun 00:30 — Saturday's tail
+    expect(_inHoursWindow(hours, at(7, 1, 30))).toBe(false);   // Sun 01:30 — tail over
+  });
+
+  test('overnight tail does not leak when yesterday window is normal', () => {
+    // Saturday closes 23:30 (normal) — Sunday 00:30 must be closed
+    const hours = week({
+      sat: { is_open: true, open: '20:00', close: '23:30' },
+      sun: { is_open: false },
+    });
+    expect(_inHoursWindow(hours, at(7, 0, 30))).toBe(false);
+  });
+
+  test('closed day blocks its own window but not yesterday tail', () => {
+    const hours = week({
+      sat: { is_open: false, open: '20:00', close: '01:00' },  // sat closed entirely
+    });
+    expect(_inHoursWindow(hours, at(6, 23, 0))).toBe(false);   // Sat night closed
+    expect(_inHoursWindow(hours, at(7, 0, 30))).toBe(false);   // no tail from a closed day
+  });
+});

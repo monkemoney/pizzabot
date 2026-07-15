@@ -130,4 +130,4 @@ function _clearCache(tenantId = DEFAULT_TENANT_ID) {
   _getCache(tenantId).data = {};
 }
 
-module.exports = { get, set, loadAll, isOpen, isDeliveryOpen, _clearCache, DEFAULT_TENANT_ID };
+module.exports = { get, set, loadAll, isOpen, isDeliveryOpen, _clearCache, _inHoursWindow, DEFAULT_TENANT_ID };
