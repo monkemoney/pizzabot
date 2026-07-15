@@ -189,6 +189,9 @@ function _catIcon(cat) {
   return SVG.utensils;
 }
 
+// i18n helper — falls back to the Hebrew literal when i18n.js isn't loaded
+const T = (key, he) => (typeof t === 'function' ? t(key) : he);
+
 function renderStatusSummaryCards(orders) {
   const el = document.getElementById('orderStatusCards');
   if (!el) return;
@@ -208,12 +211,12 @@ function renderStatusSummaryCards(orders) {
     </div>`;
   };
   el.innerHTML = [
-    seg('סה"כ',              counts.total,     'var(--text)'),
-    seg('חדשות',             counts.new,        'var(--primary)'),
-    seg('בהכנה',             counts.preparing,  '#c07000'),
-    seg('בדרך ללקוח',       counts.out,        '#005faa'),
-    seg('נמסרו',             counts.delivered,  '#008043'),
-    seg('ממתינות לתשלום',   counts.pending,    'var(--accent)'),
+    seg(T('kpi_total','סה"כ'),              counts.total,     'var(--text)'),
+    seg(T('kpi_new','חדשות'),               counts.new,        'var(--primary)'),
+    seg(T('kpi_preparing','בהכנה'),         counts.preparing,  '#c07000'),
+    seg(T('kpi_out','בדרך ללקוח'),          counts.out,        '#005faa'),
+    seg(T('kpi_delivered','נמסרו'),         counts.delivered,  '#008043'),
+    seg(T('kpi_pending_pay','ממתינות לתשלום'), counts.pending, 'var(--accent)'),
   ].join('<div class="order-kpi-div"></div>');
 }
 
@@ -2507,7 +2510,7 @@ function renderInboxList() {
   const el = document.getElementById('inbox-list');
   if (!el) return;
   if (!_inboxSessions.length) {
-    el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--color-text-secondary);font-size:13px">אין שיחות ממתינות</div>';
+    el.innerHTML = `<div style="padding:24px;text-align:center;color:var(--color-text-secondary);font-size:13px">${T('inbox_empty','אין שיחות ממתינות')}</div>`;
     return;
   }
   el.innerHTML = _inboxSessions.map(s => {
@@ -2569,9 +2572,9 @@ function renderInboxThread(phone) {
   if (headerActions) {
     headerActions.style.display = 'flex';
     if (s.is_bot_active) {
-      headerActions.innerHTML = `<button onclick="inboxHandoff('${phone}')" class="btn btn-sm" style="font-size:13px">העבר לנציג</button>`;
+      headerActions.innerHTML = `<button onclick="inboxHandoff('${phone}')" class="btn btn-sm" style="font-size:13px">${T('inbox_handoff','העבר לנציג')}</button>`;
     } else {
-      headerActions.innerHTML = `<button onclick="inboxReturn('${phone}')" class="btn btn-primary btn-sm" style="font-size:13px">החזר לבוט</button>`;
+      headerActions.innerHTML = `<button onclick="inboxReturn('${phone}')" class="btn btn-primary btn-sm" style="font-size:13px">${T('inbox_return','החזר לבוט')}</button>`;
     }
   }
 
@@ -2635,7 +2638,7 @@ async function inboxReturn(phone) {
       const actions = document.getElementById('inbox-thread-actions');
       const replyBar = document.getElementById('inbox-reply-bar');
       if (thread) thread.innerHTML = '';
-      if (hdr) hdr.textContent = 'בחר שיחה';
+      if (hdr) hdr.textContent = T('inbox_pick','בחר שיחה');
       if (actions) actions.style.display = 'none';
       if (replyBar) replyBar.style.display = 'none';
     }

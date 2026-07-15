@@ -6,6 +6,7 @@
 <title>Jasell — ניהול</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/tokens.css">
+<script src="/i18n.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Poppins', 'Heebo', sans-serif; }
@@ -32,68 +33,68 @@ body {
 
 /* ── Sidebar ── */
 #sidebar {
-  position: fixed; inset-y: 0; right: 0;
+  position: fixed; top: 0; bottom: 0; inset-inline-start: 0;
   width: var(--sidebar-w);
-  background: var(--primary);
+  background: var(--color-sidebar-bg);
+  border-inline-end: 1px solid var(--color-sidebar-border);
   display: flex; flex-direction: column;
   z-index: 30;
 }
 .sidebar-logo {
-  padding: 28px 22px 22px;
-  border-bottom: 1px solid rgba(255,255,255,.1);
+  padding: 20px 18px;
+  border-bottom: 1px solid var(--color-sidebar-border);
+  display: flex; align-items: center; gap: 10px;
 }
-.sidebar-logo img { height: 44px; }
-.sidebar-logo .logo-fallback {
-  font-size: 1.7rem; font-weight: 800;
-  color: #fff; letter-spacing: -1px; display: none;
+.logo-chip {
+  width: 34px; height: 34px; border-radius: var(--radius-md); flex-shrink: 0;
+  background: linear-gradient(135deg, var(--color-brand), #2563eb);
+  display: flex; align-items: center; justify-content: center; color: #fff;
 }
-.sidebar-logo .logo-sub {
-  font-size: .7rem; color: rgba(255,255,255,.5);
-  margin-top: 4px; font-weight: 500;
-}
+.logo-word { font-size: 1.15rem; font-weight: 800; color: var(--text); letter-spacing: -.5px; }
+.sidebar-logo .logo-sub { font-size: .68rem; color: var(--text-muted); font-weight: 500; }
 .sidebar-user {
-  padding: 16px 22px;
-  border-bottom: 1px solid rgba(255,255,255,.1);
-  font-size: .75rem; color: rgba(255,255,255,.6);
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--color-sidebar-border);
+  font-size: .74rem; color: var(--text-muted);
 }
-.sidebar-user span { display: block; font-weight: 700; color: #fff; font-size: .88rem; margin-bottom: 2px; }
-nav { flex: 1; padding: 20px 14px; display: flex; flex-direction: column; gap: 6px; }
+.sidebar-user span { display: block; font-weight: 700; color: var(--text); font-size: .86rem; margin-bottom: 2px; }
+nav { flex: 1; padding: 16px 12px; display: flex; flex-direction: column; gap: 2px; }
 .nav-btn {
   display: flex; align-items: center; gap: 12px;
-  padding: 13px 16px;
-  border-radius: 14px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
   border: none; background: transparent;
-  color: rgba(255,255,255,.75);
-  font-family: inherit; font-size: .88rem; font-weight: 600;
-  cursor: pointer; transition: all .18s;
-  width: 100%; text-align: right;
-  letter-spacing: .01em;
+  color: var(--color-sidebar-text);
+  font-family: inherit; font-size: .86rem; font-weight: 600;
+  cursor: pointer; transition: all .15s;
+  width: 100%; text-align: start;
 }
-.nav-btn:hover { background: rgba(255,255,255,.13); color: #fff; }
-.nav-btn.active { background: #fff; color: var(--primary); box-shadow: 0 2px 12px rgba(0,0,0,.1); }
+.nav-btn:hover { background: var(--color-bg); color: var(--text); }
+.nav-btn.active { background: var(--color-sidebar-active); color: var(--primary); }
 .nav-btn .icon { font-size: 1.15rem; }
 .sidebar-footer {
-  padding: 14px;
-  border-top: 1px solid rgba(255,255,255,.1);
+  padding: 12px;
+  border-top: 1px solid var(--color-sidebar-border);
 }
 .logout-btn {
   display: flex; align-items: center; gap: 10px;
-  padding: 11px 16px; border-radius: 14px;
+  padding: 10px 12px; border-radius: var(--radius-md);
   border: none; background: transparent;
-  color: rgba(255,255,255,.5);
+  color: var(--text-muted);
   font-family: inherit; font-size: .84rem; font-weight: 600;
-  cursor: pointer; transition: all .18s; width: 100%; text-align: right;
+  cursor: pointer; transition: all .15s; width: 100%; text-align: start;
 }
-.logout-btn:hover { background: rgba(255,255,255,.1); color: #fff; }
+.logout-btn:hover { background: var(--color-danger-bg); color: var(--color-danger); }
 
 /* ── Main content ── */
-.main { margin-right: var(--sidebar-w); min-height: 100vh; padding: 32px 36px; }
+.main { margin-inline-start: var(--sidebar-w); min-height: 100vh; padding: 28px 32px; }
 
 /* ── Cards ── */
 .card {
   background: var(--white);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 4px 24px rgba(94,23,235,.07);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 .card-header {
@@ -227,12 +228,12 @@ input[type=time] { direction: ltr; }
 /* ── Notification bell ── */
 .notif-btn {
   position: relative; display: flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; border-radius: 50%;
-  border: none; background: rgba(255,255,255,.12);
-  cursor: pointer; color: #fff; font-size: 1.1rem;
-  transition: background .15s; flex-shrink: 0;
+  width: 32px; height: 32px; border-radius: var(--radius-md);
+  border: 1px solid var(--border); background: var(--white);
+  cursor: pointer; color: var(--text-muted); font-size: 1.1rem;
+  transition: all .15s; flex-shrink: 0;
 }
-.notif-btn:hover { background: rgba(255,255,255,.22); }
+.notif-btn:hover { background: var(--color-bg); color: var(--text); }
 .notif-badge {
   position: absolute; top: -2px; left: -2px;
   background: var(--accent); color: #fff;
@@ -377,7 +378,7 @@ input[type=time] { direction: ltr; }
 }
 .burger-btn span {
   display: block; width: 20px; height: 2px;
-  background: #fff; border-radius: 2px;
+  background: var(--text); border-radius: 2px;
   transition: transform .25s, opacity .2s, width .25s;
   transform-origin: center;
 }
@@ -392,23 +393,22 @@ input[type=time] { direction: ltr; }
 #sidebar { transition: transform .28s cubic-bezier(.4,0,.2,1); }
 
 @media (max-width: 768px) {
-  #sidebar {
-    transform: translateX(100%);
-    z-index: 40;
-  }
-  .sidebar-open #sidebar  { transform: translateX(0); }
+  #sidebar { z-index: 40; top: 56px; }
+  #sidebar .sidebar-logo { display: none; } /* header already shows the logo */
+  [dir="rtl"] #sidebar { transform: translateX(100%); }
+  [dir="ltr"] #sidebar { transform: translateX(-100%); }
+  .sidebar-open #sidebar  { transform: translateX(0) !important; }
   .sidebar-open .sidebar-overlay { display: block; }
 
   .mobile-header {
     display: flex; position: fixed; top: 0; right: 0; left: 0; height: 56px;
-    background: var(--primary); z-index: 30;
+    background: var(--white); border-bottom: 1px solid var(--border);
     align-items: center; justify-content: space-between;
     padding: 0 16px;
-    box-shadow: 0 2px 16px rgba(0,0,0,.2);
     z-index: 41;
   }
 
-  .main { margin-right: 0 !important; padding: 72px 14px 24px !important; }
+  .main { margin-inline-start: 0 !important; padding: 72px 14px 24px !important; }
 
   /* Status summary strip: tighter segments, dividers off when wrapping */
   .order-kpi-seg { padding: 8px 12px; }
@@ -475,8 +475,10 @@ input[type=time] { direction: ltr; }
     <button class="burger-btn" onclick="toggleMobileMenu()" aria-label="תפריט">
       <span></span><span></span><span></span>
     </button>
-    <img src="/jas-3.png" alt="Jasell" style="height:30px" onerror="this.style.display='none'">
-    <span style="color:#fff;font-weight:800;font-size:1.05rem;letter-spacing:-.5px">Jasell</span>
+    <div class="logo-chip" style="width:30px;height:30px">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 11h.01"/><path d="M11 15h.01"/><path d="M16 16h.01"/><path d="m2 16 20 6-6-20A20 20 0 0 0 2 16"/></svg>
+    </div>
+    <span style="color:var(--text);font-weight:800;font-size:1.05rem;letter-spacing:-.5px">Jasell</span>
   </div>
   <div style="display:flex;gap:6px;align-items:center">
     <button class="notif-btn" onclick="togglePushSubscription()" id="pushBtnMobile" title="התראות push">
@@ -486,6 +488,7 @@ input[type=time] { direction: ltr; }
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       <span class="notif-badge" id="notifBadgeMobile"></span>
     </button>
+    <button class="notif-btn" onclick="toggleLang()" title="English / עברית" style="font-size:.68rem;font-weight:800" data-i18n="lang_toggle">EN</button>
     <button class="notif-btn" onclick="toggleTheme()" title="מצב לילה/יום">
       <svg id="iconSunMobile" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
       <svg id="iconMoonMobile" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -496,16 +499,19 @@ input[type=time] { direction: ltr; }
 <!-- ── Sidebar ── -->
 <aside id="sidebar">
   <div class="sidebar-logo">
-    <img src="/jas-3.png" alt="Jasell"
-      onerror="this.style.display='none';document.querySelector('.logo-fallback').style.display='block'">
-    <div class="logo-fallback">Jasell</div>
-    <div class="logo-sub">ממשק ניהול</div>
+    <div class="logo-chip">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 11h.01"/><path d="M11 15h.01"/><path d="M16 16h.01"/><path d="m2 16 20 6-6-20A20 20 0 0 0 2 16"/></svg>
+    </div>
+    <div>
+      <div class="logo-word">Jasell</div>
+      <div class="logo-sub" data-i18n="logo_sub">ממשק ניהול</div>
+    </div>
   </div>
   <div class="sidebar-user">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div>
         <span id="userDisplayName">—</span>
-        <span id="userRole" style="color:rgba(255,255,255,.5);font-size:.72rem;display:block"></span>
+        <span id="userRole" style="color:var(--text-muted);font-size:.72rem;display:block"></span>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <!-- Push notifications toggle -->
@@ -517,6 +523,8 @@ input[type=time] { direction: ltr; }
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
           <span class="notif-badge" id="notifBadge"></span>
         </button>
+        <!-- Language toggle -->
+        <button class="notif-btn" onclick="toggleLang()" title="English / עברית" style="font-size:.7rem;font-weight:800" data-i18n="lang_toggle">EN</button>
         <!-- Day / Night toggle -->
         <button class="notif-btn" onclick="toggleTheme()" id="themeBtn" title="מצב לילה/יום">
           <svg id="iconSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -528,37 +536,37 @@ input[type=time] { direction: ltr; }
   <nav>
     <button onclick="showTab('orders')"    id="tab-orders"    class="nav-btn active">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-      הזמנות
+      <span data-i18n="nav_orders">הזמנות</span>
     </button>
     <button onclick="showTab('products')"  id="tab-products"  class="nav-btn admin-only" style="display:none">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-      מוצרים
+      <span data-i18n="nav_products">מוצרים</span>
     </button>
     <button onclick="showTab('customers')" id="tab-customers" class="nav-btn admin-only" style="display:none">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      לקוחות
+      <span data-i18n="nav_customers">לקוחות</span>
     </button>
     <button onclick="showTab('stats')"      id="tab-stats"      class="nav-btn admin-only" style="display:none">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
-      סטטיסטיקות
+      <span data-i18n="nav_stats">סטטיסטיקות</span>
     </button>
     <button onclick="showTab('settings')"  id="tab-settings"  class="nav-btn admin-only" style="display:none">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      הגדרות
+      <span data-i18n="nav_settings">הגדרות</span>
     </button>
     <button onclick="showTab('inbox')" id="tab-inbox" class="nav-btn admin-only" style="display:none">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-      <span id="inbox-nav-label">הודעות</span>
+      <span id="inbox-nav-label" data-i18n="nav_inbox">הודעות</span>
     </button>
     <button onclick="showTab('kitchen')" id="tab-kitchen" class="nav-btn" style="display:none">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>
-      חלון מטבח
+      <span data-i18n="nav_kitchen">חלון מטבח</span>
     </button>
   </nav>
   <div class="sidebar-footer">
     <button onclick="logout()" class="logout-btn">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-      יציאה
+      <span data-i18n="nav_logout">יציאה</span>
     </button>
   </div>
 </aside>
@@ -568,10 +576,10 @@ input[type=time] { direction: ltr; }
 
   <!-- ORDERS -->
   <div id="page-orders" style="display:none">
-    <div class="page-header"><div class="page-title">הזמנות</div>
+    <div class="page-header"><div class="page-title" data-i18n="title_orders">הזמנות</div>
       <div style="display:flex;gap:8px">
         <button onclick="loadOrders()" class="btn btn-ghost btn-sm" style="display:inline-flex;align-items:center;gap:5px">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.38-7.2"/></svg> רענן</button>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.38-7.2"/></svg><span data-i18n="btn_refresh">רענן</span></button>
         <button onclick="exportOrdersCSV()" class="btn btn-ghost btn-sm admin-only"
           style="color:#16a34a;border-color:#bbf7d0;display:none;align-items:center;gap:5px"
           title="ייצוא הזמנות מסוננות לאקסל">
@@ -585,7 +593,7 @@ input[type=time] { direction: ltr; }
 
     <!-- Filters -->
     <div class="card filters-bar" style="padding:14px 20px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <input type="text" id="orderSearch" placeholder="חיפוש שם, טלפון, כתובת..."
+      <input type="text" id="orderSearch" placeholder="חיפוש שם, טלפון, כתובת..." data-i18n-placeholder="search_orders"
         oninput="filterOrders()"
         style="flex:1;min-width:180px;border-radius:var(--radius-md);padding:8px 18px;font-size:.84rem">
       <select id="statusFilter" class="filter-select" style="font-size:.84rem" onchange="filterOrders()">
@@ -622,7 +630,7 @@ input[type=time] { direction: ltr; }
   <!-- PRODUCTS -->
   <div id="page-products" style="display:none">
     <div class="page-header">
-      <div class="page-title">מוצרים</div>
+      <div class="page-title" data-i18n="title_products">מוצרים</div>
       <div style="display:flex;gap:10px">
         <button onclick="openCategoryModal()" class="btn btn-outline btn-sm">+ קטגוריה</button>
         <button onclick="openProductModal()" class="btn btn-primary btn-sm">+ מוצר</button>
@@ -634,7 +642,7 @@ input[type=time] { direction: ltr; }
   <!-- INBOX -->
   <div id="page-inbox" style="display:none">
     <div class="page-header">
-      <h2 class="page-title">הודעות</h2>
+      <h2 class="page-title" data-i18n="title_inbox">הודעות</h2>
       <span id="inbox-status-label" style="font-size:13px;color:var(--color-text-secondary)"></span>
     </div>
     <style>
@@ -675,7 +683,7 @@ input[type=time] { direction: ltr; }
   <!-- CUSTOMERS -->
   <div id="page-customers" style="display:none">
     <div class="page-header">
-      <div class="page-title">לקוחות</div>
+      <div class="page-title" data-i18n="title_customers">לקוחות</div>
       <button onclick="openBroadcastModal()" class="btn btn-accent btn-sm" style="display:inline-flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> שלח הודעה</button>
     </div>
 
@@ -698,7 +706,7 @@ input[type=time] { direction: ltr; }
 
   <!-- SETTINGS -->
   <div id="page-settings" style="display:none">
-    <div class="page-header"><div class="page-title">הגדרות</div></div>
+    <div class="page-header"><div class="page-title" data-i18n="title_settings">הגדרות</div></div>
     <div id="settingsForm" style="display:flex;flex-direction:column;gap:18px"></div>
 
     <!-- Admin users section -->
@@ -725,7 +733,7 @@ input[type=time] { direction: ltr; }
         <span id="kitchen-conn" style="font-size:.8rem;color:var(--text-muted)">מתחבר…</span>
         <span id="kitchen-count" style="font-size:.8rem;color:var(--text-muted)"></span>
         <button onclick="loadKitchenOrders()" class="btn btn-ghost btn-sm" style="display:inline-flex;align-items:center;gap:5px">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.38-7.2"/></svg> רענן</button>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.38-7.2"/></svg><span data-i18n="btn_refresh">רענן</span></button>
       </div>
     </div>
     <div id="kitchen-feed" style="max-width:480px;width:100%"></div>
@@ -734,8 +742,8 @@ input[type=time] { direction: ltr; }
   <!-- STATS -->
   <div id="page-stats" style="display:none">
     <div class="page-header">
-      <div class="page-title">סטטיסטיקות</div>
-      <button onclick="loadStats(currentPeriod)" class="btn btn-ghost btn-sm" style="display:inline-flex;align-items:center;gap:5px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> רענן</button>
+      <div class="page-title" data-i18n="title_stats">סטטיסטיקות</div>
+      <button onclick="loadStats(currentPeriod)" class="btn btn-ghost btn-sm" style="display:inline-flex;align-items:center;gap:5px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span data-i18n="btn_refresh">רענן</span></button>
     </div>
 
     <!-- Period picker -->
@@ -1195,27 +1203,27 @@ input[type=time] { direction: ltr; }
 <nav class="mobile-bottom-nav">
   <button class="mobile-nav-btn active" id="mobile-tab-orders" onclick="showTab('orders')">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-    הזמנות
+    <span data-i18n="nav_orders">הזמנות</span>
   </button>
   <button class="mobile-nav-btn admin-only" id="mobile-tab-products" style="display:none" onclick="showTab('products')">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-    מוצרים
+    <span data-i18n="nav_products">מוצרים</span>
   </button>
   <button class="mobile-nav-btn admin-only" id="mobile-tab-customers" style="display:none" onclick="showTab('customers')">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-    לקוחות
+    <span data-i18n="nav_customers">לקוחות</span>
   </button>
   <button class="mobile-nav-btn admin-only" id="mobile-tab-inbox" style="display:none" onclick="showTab('inbox')">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-    הודעות
+    <span data-i18n="nav_inbox">הודעות</span>
   </button>
   <button class="mobile-nav-btn admin-only" id="mobile-tab-settings" style="display:none" onclick="showTab('settings')">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-    הגדרות
+    <span data-i18n="nav_settings">הגדרות</span>
   </button>
   <button class="mobile-nav-btn" id="mobile-tab-kitchen" style="display:none" onclick="showTab('kitchen')">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>
-    מטבח
+    <span data-i18n="nav_kitchen_short">מטבח</span>
   </button>
 </nav>
 

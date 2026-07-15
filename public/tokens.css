@@ -14,17 +14,17 @@
   --color-accent:        #ff66c4;
   --color-accent-soft:   #fff0f9;
 
-  /* ── Neutrals ───────────────────────────────────────────── */
-  --color-bg:            #eeede9;
+  /* ── Neutrals (2026-07 v2: clean light SaaS — white chrome, gray canvas) ── */
+  --color-bg:            #f9fafb;
   --color-surface:       #ffffff;
-  --color-surface-raised:#f8f6ff;
-  --color-border:        #e8e3f2;
-  --color-border-strong: #d0c8ea;
+  --color-surface-raised:#f9fafb;
+  --color-border:        #e5e7eb;
+  --color-border-strong: #d1d5db;
 
   /* ── Text ───────────────────────────────────────────────── */
-  --color-text:          #1a1028;
-  --color-text-secondary:#7a6f8a;
-  --color-text-disabled: #b8afd0;
+  --color-text:          #111827;
+  --color-text-secondary:#4b5563;
+  --color-text-disabled: #9ca3af;
   --color-text-on-brand: #ffffff;
 
   /* ── Status ─────────────────────────────────────────────── */
@@ -38,12 +38,12 @@
   --color-info:          #0369a1;
   --color-info-bg:       #e0f2fe;
 
-  /* ── Sidebar ─────────────────────────────────────────────── */
-  --color-sidebar-bg:    #1a0a3d;
-  --color-sidebar-bg-2:  #2d1260;
-  --color-sidebar-text:  rgba(255,255,255,.65);
-  --color-sidebar-active:rgba(255,255,255,.15);
-  --color-sidebar-border:rgba(255,255,255,.08);
+  /* ── Sidebar (white chrome; brand appears only on the active item) ── */
+  --color-sidebar-bg:    #ffffff;
+  --color-sidebar-bg-2:  #f9fafb;
+  --color-sidebar-text:  #4b5563;
+  --color-sidebar-active:#f3eefe;
+  --color-sidebar-border:#e5e7eb;
 
   /* ── Spacing ─────────────────────────────────────────────── */
   --space-1:   4px;
@@ -61,15 +61,15 @@
   /* Tiered scale (2026-07 makeover): tighter radii read professional.
      full is reserved for tags/avatars/dots — never buttons or cards. */
   --radius-sm:   6px;
-  --radius-md:  10px;
-  --radius-lg:  14px;
-  --radius-xl:  18px;
+  --radius-md:   8px;
+  --radius-lg:  10px;
+  --radius-xl:  12px;
   --radius-full:999px;
 
-  /* ── Shadows ─────────────────────────────────────────────── */
-  --shadow-sm:  0 1px 4px rgba(94,23,235,.06);
-  --shadow-md:  0 4px 24px rgba(94,23,235,.08);
-  --shadow-lg:  0 12px 40px rgba(94,23,235,.12);
+  /* ── Shadows (neutral, subtle; cards rely on 1px borders instead) ── */
+  --shadow-sm:  0 1px 2px rgba(0,0,0,.05);
+  --shadow-md:  0 4px 6px -1px rgba(0,0,0,.08);
+  --shadow-lg:  0 10px 15px -3px rgba(0,0,0,.10);
   --shadow-modal:0 20px 60px rgba(0,0,0,.18);
 
   /* ── Typography ──────────────────────────────────────────── */
