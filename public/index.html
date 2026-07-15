@@ -5,13 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Jasell — כניסה</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/tokens.css">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Poppins', 'Heebo', sans-serif; }
   :root {
-    --primary: #5e17eb;
-    --accent:  #ff66c4;
-    --bg:      #eeede9;
-    --white:   #ffffff;
+    --primary: var(--color-brand);
+    --accent:  var(--color-accent);
+    --bg:      var(--color-bg);
+    --white:   var(--color-surface);
   }
   body {
     font-family: 'Poppins', 'Heebo', sans-serif;
@@ -23,9 +24,10 @@
   }
   .card {
     background: var(--white);
-    border-radius: 24px;
-    box-shadow: 0 8px 40px rgba(94,23,235,.10);
-    padding: 48px 40px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-md);
+    padding: 44px 40px;
     width: 100%;
     max-width: 420px;
   }
@@ -55,8 +57,8 @@
   input {
     width: 100%;
     padding: 12px 16px;
-    border: 2px solid #e8e4f5;
-    border-radius: 12px;
+    border: 1.5px solid var(--color-border);
+    border-radius: var(--radius-md);
     font-family: inherit;
     font-size: .95rem;
     color: #1a1028;
@@ -73,7 +75,7 @@
     background: var(--primary);
     color: #fff;
     border: none;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     font-family: inherit;
     font-size: 1rem;
     font-weight: 700;
@@ -99,8 +101,10 @@
 <body>
 <div class="card">
   <div class="logo">
-    <img src="/jas-3.png" alt="Jasell" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-    <div class="logo-text" style="display:none">Jasell</div>
+    <div style="width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,var(--primary),#2563eb);display:flex;align-items:center;justify-content:center;color:#fff;margin:0 auto 12px">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 11h.01"/><path d="M11 15h.01"/><path d="M16 16h.01"/><path d="m2 16 20 6-6-20A20 20 0 0 0 2 16"/></svg>
+    </div>
+    <div class="logo-text" style="display:block">Jasell</div>
     <div class="logo-sub">ממשק ניהול</div>
   </div>
 
