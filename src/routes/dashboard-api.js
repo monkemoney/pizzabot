@@ -671,6 +671,12 @@ async function _tenantProductIds(req) {
   return (data || []).map(p => p.id);
 }
 
+async function _addonCategoryIds(req) {
+  const { data } = await supabase.from('categories')
+    .select('id').eq('tenant_id', tid(req)).eq('is_topping_addon', true);
+  return (data || []).map(c => c.id);
+}
+
 // PATCH { name_he, is_available? , price? } — applies to every row with that name
 router.patch('/additions/by-name', requireAdmin, async (req, res) => {
   const { name_he, is_available, price } = req.body;
@@ -684,6 +690,14 @@ router.patch('/additions/by-name', requireAdmin, async (req, res) => {
   const { data, error } = await supabase.from('product_additions')
     .update(updates).eq('name_he', name_he).in('product_id', ids).select('id');
   if (error) return res.status(400).json({ error: error.message });
+
+  // keep the addon-category topping-products (legacy poll source) in sync
+  const addonCats = await _addonCategoryIds(req);
+  if (addonCats.length) {
+    await supabase.from('products').update(updates)
+      .eq('name_he', name_he).eq('tenant_id', tid(req)).in('category_id', addonCats);
+  }
+
   invalidateCache(tid(req));
   res.json({ updated: (data || []).length });
 });
@@ -718,6 +732,19 @@ router.post('/additions/by-name', requireAdmin, async (req, res) => {
     const { error } = await supabase.from('product_additions').insert(rows);
     if (error) return res.status(400).json({ error: error.message });
   }
+
+  // mirror as a topping-product in the addon category (legacy poll source)
+  const addonCats = await _addonCategoryIds(req);
+  if (addonCats.length) {
+    const { data: exists } = await supabase.from('products')
+      .select('id').eq('tenant_id', tid(req)).eq('name_he', name_he).in('category_id', addonCats).limit(1);
+    if (!exists?.length) {
+      await supabase.from('products').insert({
+        name_he, name_en: name_he, price, category_id: addonCats[0], tenant_id: tid(req), sort_order: 0,
+      });
+    }
+  }
+
   invalidateCache(tid(req));
   res.status(201).json({ added: rows.length });
 });
@@ -731,6 +758,11 @@ router.delete('/additions/by-name', requireAdmin, async (req, res) => {
     const { error } = await supabase.from('product_additions')
       .delete().eq('name_he', name_he).in('product_id', ids);
     if (error) return res.status(400).json({ error: error.message });
+  }
+  const addonCats = await _addonCategoryIds(req);
+  if (addonCats.length) {
+    await supabase.from('products').delete()
+      .eq('name_he', name_he).eq('tenant_id', tid(req)).in('category_id', addonCats);
   }
   invalidateCache(tid(req));
   res.json({ success: true });

@@ -1383,6 +1383,25 @@ function renderProductsTable() {
     const isCatExpanded = expandedCategories.has(cat.id);
     const products = cat.products || [];
 
+    // The addon category IS the toppings — its content is the global toppings manager
+    if (cat.is_topping_addon) {
+      return `<div style="margin-bottom:12px;border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border);box-shadow:var(--shadow-sm);background:var(--white)">
+        <div class="cat-header" style="cursor:default">
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="width:36px;height:36px;border-radius:var(--radius-sm);background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${_catIcon(cat)}</span>
+            <div>
+              <span style="font-weight:700;font-size:.95rem;color:var(--text)">${cat.name_he}</span>
+              <span style="font-size:.75rem;color:var(--text-muted);margin-inline-start:8px">${_aggToppings().length} תוספות</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
+            <button onclick="openCategoryModal(${encodeProduct(cat)})" class="btn btn-ghost btn-sm">עריכה</button>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border)">${renderGlobalToppings()}</div>
+      </div>`;
+    }
+
     const catHeader = `
       <div class="cat-header" onclick="toggleCategoryExpand('${cat.id}')">
         <div style="display:flex;align-items:center;gap:12px">
@@ -1410,7 +1429,7 @@ function renderProductsTable() {
     return `<div style="margin-bottom:12px;border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border);box-shadow:var(--shadow-sm);background:var(--white)">${catHeader}${productRows}</div>`;
   }).join('');
 
-  container.innerHTML = `${renderGlobalToppings()}<div>${categoryBlocks}</div>`;
+  container.innerHTML = `<div>${categoryBlocks}</div>`;
 }
 
 function renderProductRow(p, cat) {
@@ -1488,9 +1507,9 @@ function renderGlobalToppings() {
     </div>` : '';
 
   return `
-    <div style="margin-bottom:12px;border-radius:var(--radius-lg);border:1px solid var(--border);box-shadow:var(--shadow-sm);background:var(--white);padding:14px 20px">
+    <div style="padding:14px 20px">
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-        <span style="font-size:.7rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-inline-end:4px">תוספות — זמינות לכל המנות</span>
+        <span style="font-size:.7rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-inline-end:4px">זמינות לכל המנות — לחיצה משביתה/מחזירה למלאי</span>
         ${chips}
         <button onclick="toggleToppingEditor('global')"
           style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:var(--radius-sm);border:1px dashed var(--color-border-strong);background:none;cursor:pointer;font-family:inherit;font-size:.76rem;color:var(--text-muted)">
