@@ -495,29 +495,40 @@ function renderOrderRow(o) {
   // ── Summary row ──
   const chevron = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s;transform:rotate(${isExpanded?'180deg':'0deg'})"><polyline points="6 9 12 15 18 9"/></svg>`;
 
+  // Cells are ordered by criticality on mobile: what the operator must see
+  // without swiping — order #, status, paid?, delivery/pickup — then the rest.
+  const cellNum      = `<div style="font-weight:800;color:var(--primary);font-size:.9rem">#${o.order_number||'—'}</div>`;
+  const cellCustomer = `<div>
+        <div style="font-weight:700;font-size:.88rem">${o.customer_name||'—'}</div>
+        <div style="font-size:.72rem;color:var(--text-muted)">${formatDate(o.created_at)}</div>
+      </div>`;
+  const cellAddress  = `<div style="font-size:.8rem;color:var(--text-muted)">${(o.address||'איסוף עצמי').slice(0,28)}</div>`;
+  const cellMethod   = `<span class="badge ${o.delivery_method==='delivery'?'badge-delivery':'badge-done'}" style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap">
+        ${o.delivery_method==='delivery'?`${SVG.truck} משלוח`:`${SVG.home} איסוף`}
+      </span>`;
+  const cellPayment  = `<span class="badge ${o.payment_status==='paid'?'badge-paid':o.payment_method==='bit'?'badge-bit-pending':'badge-pending-pay'}" style="display:inline-flex;align-items:center;gap:3px">
+        ${o.payment_status==='paid'?`${SVG.check} שולם`:o.payment_method==='bit'?`${SVG.phone} Bit`:`${SVG.clock} ממתין`}
+      </span>`;
+  const cellPrice    = `<div style="font-weight:800;font-size:.95rem">₪${(parseFloat(o.total_price)||0).toFixed(0)}</div>`;
+  const cellStatus   = `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">
+        ${statusBadge(o.status, o)}
+        ${o.refund_status==='manual'?`<span style="background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:999px;padding:2px 8px;font-size:.66rem;font-weight:700;color:#e0004d;white-space:nowrap;display:inline-flex;align-items:center;gap:3px">${SVG.creditCard} זיכוי ידני</span>`:''}
+      </div>`;
+  const cellChevron  = `<div style="display:flex;align-items:center;justify-content:flex-end">${chevron}</div>`;
+
+  const cells = isMobile
+    ? [cellNum, cellStatus, cellPayment, cellMethod, cellPrice, cellCustomer, cellAddress, cellChevron]
+    : [cellNum, cellCustomer, cellAddress, cellMethod, cellPayment, cellPrice, cellStatus, cellChevron];
+  const gridCols = isMobile
+    ? '44px auto auto auto auto 1fr 1fr 60px'
+    : '44px 1fr 1fr auto auto auto auto 60px';
+
   const summaryRow = `
     <div class="order-summary-scroll" style="border-bottom:${isExpanded?'none':'1px solid var(--border)'}">
     <div class="order-grid-row" onclick="toggleOrderExpand('${o.id}')"
-      style="display:grid;grid-template-columns:44px 1fr 1fr auto auto auto auto 60px;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;transition:background .15s;${isExpanded?'background:var(--color-sidebar-active);':''}"
+      style="display:grid;grid-template-columns:${gridCols};align-items:center;gap:12px;padding:12px 16px;cursor:pointer;transition:background .15s;${isExpanded?'background:var(--color-sidebar-active);':''}"
       onmouseover="if(!${isExpanded})this.style.background='var(--bg)'" onmouseout="if(!${isExpanded})this.style.background=''">
-      <div style="font-weight:800;color:var(--primary);font-size:.9rem">#${o.order_number||'—'}</div>
-      <div>
-        <div style="font-weight:700;font-size:.88rem">${o.customer_name||'—'}</div>
-        <div style="font-size:.72rem;color:var(--text-muted)">${formatDate(o.created_at)}</div>
-      </div>
-      <div style="font-size:.8rem;color:var(--text-muted)">${(o.address||'איסוף עצמי').slice(0,28)}</div>
-      <span class="badge ${o.delivery_method==='delivery'?'badge-delivery':'badge-done'}" style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap">
-        ${o.delivery_method==='delivery'?`${SVG.truck} משלוח`:`${SVG.home} איסוף`}
-      </span>
-      <span class="badge ${o.payment_status==='paid'?'badge-paid':o.payment_method==='bit'?'badge-bit-pending':'badge-pending-pay'}" style="display:inline-flex;align-items:center;gap:3px">
-        ${o.payment_status==='paid'?`${SVG.check} שולם`:o.payment_method==='bit'?`${SVG.phone} Bit`:`${SVG.clock} ממתין`}
-      </span>
-      <div style="font-weight:800;font-size:.95rem">₪${(parseFloat(o.total_price)||0).toFixed(0)}</div>
-      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">
-        ${statusBadge(o.status, o)}
-        ${o.refund_status==='manual'?`<span style="background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:999px;padding:2px 8px;font-size:.66rem;font-weight:700;color:#e0004d;white-space:nowrap;display:inline-flex;align-items:center;gap:3px">${SVG.creditCard} זיכוי ידני</span>`:''}
-      </div>
-      <div style="display:flex;align-items:center;justify-content:flex-end">${chevron}</div>
+      ${cells.join('\n      ')}
     </div>
     </div>`;
 
