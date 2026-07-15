@@ -1407,84 +1407,148 @@ function renderProductsTable() {
       ? products.map((p) => renderProductRow(p, cat)).join('')
       : `<div style="padding:32px;text-align:center;color:var(--text-muted);font-size:.88rem">אין מוצרים — לחץ "+ מוצר"</div>`;
 
-    return `<div style="margin-bottom:12px;border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border);box-shadow:var(--shadow-sm);background:var(--white)">${catHeader}${productRows}</div>`;
+    return `<div style="margin-bottom:12px;border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border);box-shadow:var(--shadow-sm);background:var(--white)">${catHeader}${renderCategoryToppings(cat)}${productRows}</div>`;
   }).join('');
 
   container.innerHTML = `<div>${categoryBlocks}</div>`;
 }
 
 function renderProductRow(p, cat) {
-  const isExpanded = expandedProducts.has(p.id);
-  const pData      = encodeProduct(p);
-  const additions  = p.additions || [];
-  const addCount   = additions.length;
-
-  // ── Topping toggles — always visible below the product row ──────────────────
-  const toppingsBar = addCount ? `
-    <div style="padding:8px 16px 12px 52px;display:flex;flex-wrap:wrap;gap:6px;border-top:1px solid var(--border);background:var(--bg)">
-      ${additions.map((a) => `
-        <button onclick="toggleAddition('${p.id}','${a.id}',${!a.is_available})"
-          title="${a.is_available ? 'זמין — לחץ לסימון כאזל' : 'אזל — לחץ להחזרה'}"
-          style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--radius-sm);border:1px solid ${a.is_available ? '#bbf7d0' : '#fecdd3'};background:${a.is_available ? '#f0fdf4' : '#fff1f2'};cursor:pointer;font-family:inherit;font-size:.76rem;font-weight:600;color:${a.is_available ? '#15803d' : '#be123c'};transition:all .15s">
-          <span style="width:6px;height:6px;border-radius:50%;background:${a.is_available ? '#22c55e' : '#e11d48'};flex-shrink:0"></span>
-          ${a.name_he}
-          <span style="font-weight:400;opacity:.75">+₪${parseFloat(a.price).toFixed(0)}</span>
-        </button>`).join('')}
-      <button onclick="toggleExpand('${p.id}')"
-        style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:var(--radius-sm);border:1px dashed var(--color-border-strong);background:none;cursor:pointer;font-family:inherit;font-size:.76rem;color:var(--text-muted)">
-        ${isExpanded ? '▴ פחות' : `${SVG.edit} עריכה`}
-      </button>
-    </div>` : `
-    <div style="padding:6px 16px 10px 52px;border-top:1px solid var(--border);background:var(--bg)">
-      <button onclick="toggleExpand('${p.id}')"
-        style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--radius-sm);border:1px dashed var(--color-border-strong);background:none;cursor:pointer;font-family:inherit;font-size:.76rem;color:var(--text-muted)">
-        + הוסף תוספות
-      </button>
-    </div>`;
-
-  // ── Expanded: full edit table with edit/delete ───────────────────────────────
-  const editSection = isExpanded ? `
-    <div style="margin:0 12px 14px 52px;border-radius:var(--radius-md);border:1px solid var(--border);overflow:hidden;background:var(--white)">
-      <div style="display:grid;grid-template-columns:1fr 70px 50px 100px;padding:8px 14px;background:var(--color-bg);border-bottom:1px solid var(--border);font-size:.68rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;gap:12px">
-        <span>תוספת</span><span>מחיר</span><span>תמונה</span><span></span>
+  const pData = encodeProduct(p);
+  return `
+    <div class="product-row">
+      ${imgThumb(p.image_url)}
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-weight:700;font-size:.92rem">${p.name_he}</span>
+          ${!p.is_available ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:.68rem;background:#fff1f2;color:#be123c;padding:1px 8px;border-radius:var(--radius-sm);font-weight:600;border:1px solid #fecdd3"><span style="width:6px;height:6px;border-radius:50%;background:#e11d48"></span>אזל</span>` : ''}
+        </div>
+        ${p.name_en ? `<div style="font-size:.75rem;color:var(--text-muted)" dir="ltr">${p.name_en}</div>` : ''}
+        ${p.description ? `<div style="font-size:.73rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;margin-top:2px">${p.description}</div>` : ''}
       </div>
-      ${additions.map((a) => `
-        <div style="display:grid;grid-template-columns:1fr 70px 50px 100px;padding:10px 14px;border-top:1px solid var(--border);align-items:center;gap:12px;font-size:.83rem">
+      <div style="font-weight:800;font-size:.95rem;color:var(--primary);min-width:60px">₪${parseFloat(p.price).toFixed(0)}</div>
+      ${toggleSwitch(p.is_available, `toggleProduct('${p.id}',${!p.is_available})`)}
+      <div style="display:flex;gap:6px;margin-inline-start:4px">
+        <button onclick="openProductModal(${pData},'${p.category_id||''}')" class="btn btn-ghost btn-sm">עריכה</button>
+        <button onclick="deleteProduct('${p.id}','${p.name_he}')" class="btn-danger">מחק</button>
+      </div>
+    </div>`;
+}
+
+// ── Category-level toppings (a topping applies to everything — never per dish) ──
+const expandedToppingEditors = new Set();
+
+function _aggToppings(cat) {
+  // unique by name across the category's products; unavailable wins for display
+  const map = new Map();
+  for (const p of (cat.products || [])) {
+    for (const a of (p.additions || [])) {
+      const cur = map.get(a.name_he);
+      if (!cur) map.set(a.name_he, { name_he: a.name_he, price: a.price, is_available: !!a.is_available, count: 1 });
+      else { cur.count++; cur.is_available = cur.is_available && !!a.is_available; }
+    }
+  }
+  return [...map.values()];
+}
+
+function renderCategoryToppings(cat) {
+  const tops = _aggToppings(cat);
+  const editorOpen = expandedToppingEditors.has(cat.id);
+  if (!tops.length && !cat.has_toppings) return '';
+
+  const chips = tops.map((a) => `
+    <button onclick="toggleToppingByName('${a.name_he.replace(/'/g, "\\'")}',${!a.is_available})"
+      title="${a.is_available ? 'זמין — לחץ לסימון כאזל' : 'אזל — לחץ להחזרה'}"
+      style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--radius-sm);border:1px solid ${a.is_available ? '#bbf7d0' : '#fecdd3'};background:${a.is_available ? '#f0fdf4' : '#fff1f2'};cursor:pointer;font-family:inherit;font-size:.76rem;font-weight:600;color:${a.is_available ? '#15803d' : '#be123c'};transition:all .15s">
+      <span style="width:6px;height:6px;border-radius:50%;background:${a.is_available ? '#22c55e' : '#e11d48'};flex-shrink:0"></span>
+      ${a.name_he}
+      <span style="font-weight:400;opacity:.75">+₪${parseFloat(a.price).toFixed(0)}</span>
+    </button>`).join('');
+
+  const editor = editorOpen ? `
+    <div style="margin-top:10px;border-radius:var(--radius-md);border:1px solid var(--border);overflow:hidden;background:var(--white)">
+      <div style="display:grid;grid-template-columns:1fr 110px 90px;padding:8px 14px;background:var(--color-bg);border-bottom:1px solid var(--border);font-size:.68rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;gap:12px">
+        <span>תוספת</span><span>מחיר (₪)</span><span></span>
+      </div>
+      ${tops.map((a) => `
+        <div style="display:grid;grid-template-columns:1fr 110px 90px;padding:9px 14px;border-top:1px solid var(--border);align-items:center;gap:12px;font-size:.83rem">
           <span style="font-weight:600">${a.name_he}</span>
-          <span style="font-weight:700;color:var(--primary)">+₪${parseFloat(a.price).toFixed(0)}</span>
-          <span>${imgThumb(a.image_url)}</span>
-          <div style="display:flex;gap:5px">
-            <button onclick="openAdditionModal('${p.id}',${encodeAddition(a)})" class="btn btn-ghost btn-sm" style="padding:3px 9px;font-size:.72rem">עריכה</button>
-            <button onclick="deleteAddition('${p.id}','${a.id}','${a.name_he}')" class="btn-danger" style="font-size:.72rem;padding:3px 7px">מחק</button>
-          </div>
+          <input type="number" value="${parseFloat(a.price).toFixed(0)}" min="0" dir="ltr"
+            onchange="updateToppingPrice('${a.name_he.replace(/'/g, "\\'")}',this.value)"
+            style="padding:5px 10px;font-size:.8rem;width:100%">
+          <button onclick="deleteToppingByName('${a.name_he.replace(/'/g, "\\'")}')" class="btn-danger" style="font-size:.72rem;padding:3px 7px">מחק</button>
         </div>`).join('')}
-      <div style="padding:10px 14px;border-top:1px solid var(--border)">
-        <button onclick="openAdditionModal('${p.id}',null)" class="btn btn-outline btn-sm">+ הוסף תוספת</button>
+      <div style="display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--border);align-items:center">
+        <input id="newTopName-${cat.id}" type="text" placeholder="שם תוספת" style="flex:1;padding:6px 10px;font-size:.8rem">
+        <input id="newTopPrice-${cat.id}" type="number" placeholder="מחיר" min="0" dir="ltr" style="width:90px;padding:6px 10px;font-size:.8rem">
+        <button onclick="addToppingToCategory('${cat.id}')" class="btn btn-outline btn-sm">+ הוסף</button>
       </div>
     </div>` : '';
 
   return `
-    <div style="border-bottom:1px solid var(--border)">
-      <div class="product-row" style="border-bottom:none">
-        ${imgThumb(p.image_url)}
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-weight:700;font-size:.92rem">${p.name_he}</span>
-            ${!p.is_available ? `<span style="font-size:.68rem;background:#fff0f6;color:#e0004d;padding:1px 8px;border-radius:50px;font-weight:700;border:1px solid #ffd0e6">אזל</span>` : ''}
-          </div>
-          ${p.name_en ? `<div style="font-size:.75rem;color:var(--text-muted)" dir="ltr">${p.name_en}</div>` : ''}
-          ${p.description ? `<div style="font-size:.73rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;margin-top:2px">${p.description}</div>` : ''}
-        </div>
-        <div style="font-weight:800;font-size:.95rem;color:var(--primary);min-width:60px">₪${parseFloat(p.price).toFixed(0)}</div>
-        ${toggleSwitch(p.is_available, `toggleProduct('${p.id}',${!p.is_available})`)}
-        <div style="display:flex;gap:6px;margin-right:4px">
-          <button onclick="openProductModal(${pData},'${p.category_id||''}')" class="btn btn-ghost btn-sm">עריכה</button>
-          <button onclick="deleteProduct('${p.id}','${p.name_he}')" class="btn-danger">מחק</button>
-        </div>
+    <div style="padding:10px 20px 12px;border-bottom:1px solid var(--border);background:var(--color-bg)">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span style="font-size:.7rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-inline-end:4px">תוספות (חלות על כל הקטגוריה)</span>
+        ${chips}
+        <button onclick="toggleToppingEditor('${cat.id}')"
+          style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:var(--radius-sm);border:1px dashed var(--color-border-strong);background:none;cursor:pointer;font-family:inherit;font-size:.76rem;color:var(--text-muted)">
+          ${editorOpen ? '▴ סגור' : `${SVG.edit} ניהול`}
+        </button>
       </div>
-      ${toppingsBar}
-      ${editSection}
+      ${editor}
     </div>`;
+}
+
+function toggleToppingEditor(catId) {
+  if (expandedToppingEditors.has(catId)) expandedToppingEditors.delete(catId);
+  else expandedToppingEditors.add(catId);
+  renderProductsTable();
+}
+
+async function toggleToppingByName(name, isAvailable) {
+  try {
+    await api('PATCH', '/additions/by-name', { name_he: name, is_available: isAvailable });
+    for (const cat of categoriesWithProducts)
+      for (const p of (cat.products || []))
+        for (const a of (p.additions || []))
+          if (a.name_he === name) a.is_available = isAvailable;
+    renderProductsTable();
+    showToast(`${name} — ${isAvailable ? 'חזרה למלאי' : 'סומנה כאזלה'}`);
+  } catch (err) { alert(err.message); }
+}
+
+async function updateToppingPrice(name, price) {
+  try {
+    await api('PATCH', '/additions/by-name', { name_he: name, price: parseFloat(price) || 0 });
+    for (const cat of categoriesWithProducts)
+      for (const p of (cat.products || []))
+        for (const a of (p.additions || []))
+          if (a.name_he === name) a.price = parseFloat(price) || 0;
+    renderProductsTable();
+    showToast('המחיר עודכן בכל המוצרים');
+  } catch (err) { alert(err.message); }
+}
+
+async function deleteToppingByName(name) {
+  if (!confirm(`למחוק את התוספת "${name}" מכל המוצרים?`)) return;
+  try {
+    await api('DELETE', `/additions/by-name?name_he=${encodeURIComponent(name)}`);
+    await loadProducts();
+    showToast(`${name} הוסרה`);
+  } catch (err) { alert(err.message); }
+}
+
+async function addToppingToCategory(catId) {
+  const name  = document.getElementById(`newTopName-${catId}`)?.value.trim();
+  const price = document.getElementById(`newTopPrice-${catId}`)?.value;
+  if (!name || price === '') { alert('שם ומחיר נדרשים'); return; }
+  try {
+    await api('POST', '/additions/by-name', { name_he: name, price: parseFloat(price) || 0, category_id: catId });
+    await loadProducts();
+    expandedToppingEditors.add(catId);
+    renderProductsTable();
+    showToast(`${name} נוספה לכל המוצרים בקטגוריה`);
+  } catch (err) { alert(err.message); }
 }
 
 function encodeProduct(p) {

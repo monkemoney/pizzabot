@@ -636,6 +636,74 @@ router.delete('/products/:id/additions/:addId', requireAdmin, async (req, res) =
   res.json({ success: true });
 });
 
+// ─── Additions by name (global toppings) ─────────────────────────────────────
+// A topping is a tenant-wide concept: "olives" exist or don't — never
+// per-product. The rows are still stored per product (bot compatibility),
+// but the dashboard manages them in bulk by name.
+
+async function _tenantProductIds(req) {
+  const { data } = await supabase.from('products').select('id').eq('tenant_id', tid(req));
+  return (data || []).map(p => p.id);
+}
+
+// PATCH { name_he, is_available? , price? } — applies to every row with that name
+router.patch('/additions/by-name', requireAdmin, async (req, res) => {
+  const { name_he, is_available, price } = req.body;
+  if (!name_he) return res.status(400).json({ error: 'name_he נדרש' });
+  const updates = { updated_at: new Date().toISOString() };
+  if (is_available !== undefined) updates.is_available = is_available;
+  if (price !== undefined) updates.price = price;
+
+  const ids = await _tenantProductIds(req);
+  if (!ids.length) return res.json({ updated: 0 });
+  const { data, error } = await supabase.from('product_additions')
+    .update(updates).eq('name_he', name_he).in('product_id', ids).select('id');
+  if (error) return res.status(400).json({ error: error.message });
+  invalidateCache(tid(req));
+  res.json({ updated: (data || []).length });
+});
+
+// POST { name_he, price, category_id } — adds the topping to every product in the category
+router.post('/additions/by-name', requireAdmin, async (req, res) => {
+  const { name_he, price, category_id } = req.body;
+  if (!name_he || price === undefined || !category_id) {
+    return res.status(400).json({ error: 'name_he, price, category_id נדרשים' });
+  }
+  const { data: prods, error: pErr } = await supabase.from('products')
+    .select('id').eq('tenant_id', tid(req)).eq('category_id', category_id);
+  if (pErr) return res.status(400).json({ error: pErr.message });
+  if (!prods?.length) return res.status(400).json({ error: 'אין מוצרים בקטגוריה' });
+
+  // skip products that already have this topping
+  const ids = prods.map(p => p.id);
+  const { data: existing } = await supabase.from('product_additions')
+    .select('product_id').eq('name_he', name_he).in('product_id', ids);
+  const has = new Set((existing || []).map(e => e.product_id));
+  const rows = ids.filter(id => !has.has(id)).map(id => ({
+    product_id: id, name_he, name_en: name_he, price, sort_order: 0,
+  }));
+  if (rows.length) {
+    const { error } = await supabase.from('product_additions').insert(rows);
+    if (error) return res.status(400).json({ error: error.message });
+  }
+  invalidateCache(tid(req));
+  res.status(201).json({ added: rows.length });
+});
+
+// DELETE ?name_he= — removes the topping everywhere
+router.delete('/additions/by-name', requireAdmin, async (req, res) => {
+  const name_he = req.query.name_he;
+  if (!name_he) return res.status(400).json({ error: 'name_he נדרש' });
+  const ids = await _tenantProductIds(req);
+  if (ids.length) {
+    const { error } = await supabase.from('product_additions')
+      .delete().eq('name_he', name_he).in('product_id', ids);
+    if (error) return res.status(400).json({ error: error.message });
+  }
+  invalidateCache(tid(req));
+  res.json({ success: true });
+});
+
 // ─── Customers ────────────────────────────────────────────────────────────────
 
 router.get('/customers', requireAdmin, async (req, res) => {
