@@ -496,8 +496,9 @@ function renderOrderRow(o) {
   const chevron = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s;transform:rotate(${isExpanded?'180deg':'0deg'})"><polyline points="6 9 12 15 18 9"/></svg>`;
 
   const summaryRow = `
-    <div onclick="toggleOrderExpand('${o.id}')"
-      style="display:grid;grid-template-columns:44px 1fr 1fr auto auto auto auto 60px;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;transition:background .15s;${isExpanded?'background:var(--color-sidebar-active);':''}border-bottom:${isExpanded?'none':'1px solid var(--border)'}"
+    <div class="order-summary-scroll" style="border-bottom:${isExpanded?'none':'1px solid var(--border)'}">
+    <div class="order-grid-row" onclick="toggleOrderExpand('${o.id}')"
+      style="display:grid;grid-template-columns:44px 1fr 1fr auto auto auto auto 60px;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;transition:background .15s;${isExpanded?'background:var(--color-sidebar-active);':''}"
       onmouseover="if(!${isExpanded})this.style.background='var(--bg)'" onmouseout="if(!${isExpanded})this.style.background=''">
       <div style="font-weight:800;color:var(--primary);font-size:.9rem">#${o.order_number||'—'}</div>
       <div>
@@ -517,6 +518,7 @@ function renderOrderRow(o) {
         ${o.refund_status==='manual'?`<span style="background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:999px;padding:2px 8px;font-size:.66rem;font-weight:700;color:#e0004d;white-space:nowrap;display:inline-flex;align-items:center;gap:3px">${SVG.creditCard} זיכוי ידני</span>`:''}
       </div>
       <div style="display:flex;align-items:center;justify-content:flex-end">${chevron}</div>
+    </div>
     </div>`;
 
   return `<div style="border-radius:${isExpanded?'var(--radius-lg)':'0'};overflow:hidden;margin-bottom:${isExpanded?'8px':'0'};${isExpanded?'box-shadow:var(--shadow-md);border:1px solid var(--border);':''}transition:all .2s">

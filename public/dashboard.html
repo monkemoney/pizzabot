@@ -416,6 +416,15 @@ input[type=time] { direction: ltr; }
 
   .main { margin-inline-start: 0 !important; padding: 72px 14px 24px !important; }
 
+  /* Orders: swipe sideways to reveal the full row — no tap needed */
+  .order-summary-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .order-summary-scroll::-webkit-scrollbar { display: none; }
+  .order-summary-scroll .order-grid-row { min-width: 730px; }
+
   /* Status summary strip: tighter segments, dividers off when wrapping */
   .order-kpi-seg { padding: 8px 12px; }
   .order-kpi-div { display: none; }
