@@ -153,7 +153,7 @@ function statusBadge(status, order) {
     done: 'badge-done', cancelled: 'badge-cancelled',
   }[status] || 'badge-done';
   const extra = status === 'scheduled' && order?.scheduled_for
-    ? ' 🕐 ' + new Date(order.scheduled_for).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false })
+    ? ' ' + new Date(order.scheduled_for).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false })
     : '';
   return `<span class="badge ${cls}">${STATUS_LABELS[status] || status}${extra}</span>`;
 }
@@ -216,7 +216,7 @@ function renderStatusSummaryCards(orders) {
     seg(T('kpi_preparing','בהכנה'),         counts.preparing,  '#c07000'),
     seg(T('kpi_out','בדרך ללקוח'),          counts.out,        '#005faa'),
     seg(T('kpi_delivered','נמסרו'),         counts.delivered,  '#008043'),
-    seg(T('kpi_pending_pay','ממתינות לתשלום'), counts.pending, 'var(--accent)'),
+    seg(T('kpi_pending_pay','ממתינות לתשלום'), counts.pending, 'var(--color-warning)'),
   ].join('<div class="order-kpi-div"></div>');
 }
 
@@ -360,7 +360,7 @@ function renderOrderCard(o) {
         ${statusOpts}
       </select>
       <button onclick="openOrderEdit('${o.id}')" title="עריכה"
-        style="background:var(--primary-soft);border:none;border-radius:10px;padding:8px 12px;cursor:pointer;color:var(--primary);display:flex;align-items:center">${SVG.edit}</button>
+        style="background:var(--color-bg);border:none;border-radius:10px;padding:8px 12px;cursor:pointer;color:var(--text);display:flex;align-items:center">${SVG.edit}</button>
       <button onclick="printOrder('${o.id}')" title="הדפסת קבלה"
         style="background:#f0fdf4;border:none;border-radius:10px;padding:8px 12px;cursor:pointer;color:#16a34a;display:flex;align-items:center">${SVG.printer}</button>
       ${!['cancelled','done'].includes(o.status) ? `
@@ -400,7 +400,7 @@ function renderOrderRow(o) {
         ${qty>1?`<span style="color:var(--text-muted);font-size:.78rem"> ×${qty}</span>`:''}
         ${tops?`<div style="font-size:.72rem;color:var(--text-muted)">+ ${tops}</div>`:''}
       </div>
-      <span style="font-weight:700;color:var(--primary);white-space:nowrap;margin-right:12px">₪${lineTotal}</span>
+      <span style="font-weight:700;color:var(--text);white-space:nowrap;margin-right:12px">₪${lineTotal}</span>
     </div>`;
   }).join('') || '<div style="color:var(--text-muted);font-size:.82rem">אין פריטים</div>';
 
@@ -444,18 +444,18 @@ function renderOrderRow(o) {
 
       <!-- Left: customer + delivery -->
       <div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">פרטי לקוח</div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">פרטי לקוח</div>
         <div style="display:flex;flex-direction:column;gap:6px;font-size:.84rem">
           <div style="display:flex;align-items:center;gap:7px">${SVG.phone} <strong>${o.customer_name||'—'}</strong></div>
           ${o.customer_phone||o.phone ? `<div style="color:var(--text-muted)">${o.customer_phone||o.phone}</div>` : ''}
           <div style="display:flex;align-items:center;gap:7px;margin-top:4px">
             ${o.delivery_method==='delivery' ? `${SVG.truck} <span>משלוח — ${o.address||'כתובת לא ידועה'}</span>` : `${SVG.home} <span>איסוף עצמי</span>`}
           </div>
-          ${o.courier_notes ? `<div style="color:var(--text-muted);font-size:.78rem;padding:6px 10px;background:var(--accent-soft);border-radius:8px;margin-top:4px">📝 ${o.courier_notes}</div>` : ''}
+          ${o.courier_notes ? `<div style="display:flex;align-items:baseline;gap:6px;color:var(--text-muted);font-size:.78rem;padding:6px 10px;background:var(--white);border:1px solid var(--border);border-radius:8px;margin-top:4px">${SVG.edit} ${o.courier_notes}</div>` : ''}
           ${o.notes ? `<div style="color:var(--text-muted);font-size:.78rem;margin-top:2px">הערות: ${o.notes}</div>` : ''}
         </div>
 
-        <div style="font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">סטטוס</div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">סטטוס</div>
         <select onchange="updateOrderStatus('${o.id}',this.value,${o.order_number})"
           style="width:100%;padding:8px 12px;border-radius:10px;border:2px solid var(--border);font-family:inherit;font-size:.84rem;cursor:pointer">
           ${statusOpts}
@@ -464,13 +464,13 @@ function renderOrderRow(o) {
 
       <!-- Right: items + totals + actions -->
       <div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">פריטים</div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">פריטים</div>
         <div style="margin-bottom:10px">${itemsHtml}</div>
         <div style="font-size:.8rem;display:flex;flex-direction:column;gap:4px;padding:10px;background:var(--bg);border-radius:10px;margin-bottom:14px">
           ${delivery ? `<div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>משלוח</span><span>₪${delivery.toFixed(0)}</span></div>` : ''}
           <div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>מע"מ 18%</span><span>₪${vat.toFixed(2)}</span></div>
           <div style="display:flex;justify-content:space-between;font-weight:800;font-size:.92rem;border-top:1.5px solid var(--border);padding-top:6px;margin-top:4px">
-            <span>סה"כ</span><span style="color:var(--primary)">₪${total.toFixed(2)}</span>
+            <span>סה"כ</span><span>₪${total.toFixed(2)}</span>
           </div>
           <div style="display:flex;justify-content:space-between;color:var(--text-muted);font-size:.75rem">
             <span>${o.payment_method==='cash'?'מזומן':o.payment_method==='bit'?'Bit':'אשראי'}</span>
@@ -1281,16 +1281,16 @@ function renderEditItems() {
     const qty = item.quantity || 1;
     const toppings = (item.toppings || []).map(t => t.name || t.name_he || '').filter(Boolean).join(', ');
     return `
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#faf8ff;border-radius:12px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--color-bg);border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px">
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;font-size:.88rem">${item.name||item.name_he||'פריט'}</div>
           ${toppings ? `<div style="font-size:.75rem;color:var(--text-muted)">+ ${toppings}</div>` : ''}
         </div>
-        <div style="font-weight:700;color:var(--primary);min-width:50px;text-align:center">₪${((item.price||0)*qty).toFixed(0)}</div>
+        <div style="font-weight:700;color:var(--text);min-width:50px;text-align:center">₪${((item.price||0)*qty).toFixed(0)}</div>
         <div style="display:flex;align-items:center;gap:4px">
           <button onclick="changeQty(${i},-1)" style="width:26px;height:26px;border-radius:50%;border:2px solid var(--border);background:#fff;cursor:pointer;font-weight:700;font-size:1rem;display:flex;align-items:center;justify-content:center">−</button>
           <span style="font-weight:800;min-width:20px;text-align:center">${qty}</span>
-          <button onclick="changeQty(${i},+1)" style="width:26px;height:26px;border-radius:50%;border:2px solid var(--primary);background:var(--primary-soft);color:var(--primary);cursor:pointer;font-weight:700;font-size:1rem;display:flex;align-items:center;justify-content:center">+</button>
+          <button onclick="changeQty(${i},+1)" style="width:26px;height:26px;border-radius:50%;border:2px solid var(--border);background:#fff;cursor:pointer;font-weight:700;font-size:1rem;display:flex;align-items:center;justify-content:center">+</button>
         </div>
         <button onclick="removeEditItem(${i})" style="background:none;border:none;cursor:pointer;color:#e0004d;padding:0 4px;display:flex;align-items:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>`;
@@ -1401,7 +1401,7 @@ function renderProductsTable() {
       return `<div style="margin-bottom:12px;border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border);box-shadow:var(--shadow-sm);background:var(--white)">
         <div class="cat-header" style="cursor:default">
           <div style="display:flex;align-items:center;gap:12px">
-            <span style="width:36px;height:36px;border-radius:var(--radius-sm);background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${_catIcon(cat)}</span>
+            <span style="width:36px;height:36px;border-radius:var(--radius-sm);background:var(--color-bg);color:var(--text-muted);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${_catIcon(cat)}</span>
             <div>
               <span style="font-weight:700;font-size:.95rem;color:var(--text)">${cat.name_he}</span>
               <span style="font-size:.75rem;color:var(--text-muted);margin-inline-start:8px">${_aggToppings().length} תוספות</span>
@@ -1419,11 +1419,11 @@ function renderProductsTable() {
       <div class="cat-header" onclick="toggleCategoryExpand('${cat.id}')">
         <div style="display:flex;align-items:center;gap:12px">
           <span style="font-size:.9rem;color:var(--text-muted);transition:transform .2s;display:inline-block;transform:rotate(${isCatExpanded?'0deg':'-90deg'})"">▾</span>
-          <span style="width:36px;height:36px;border-radius:var(--radius-sm);background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${_catIcon(cat)}</span>
+          <span style="width:36px;height:36px;border-radius:var(--radius-sm);background:var(--color-bg);color:var(--text-muted);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${_catIcon(cat)}</span>
           <div>
             <span style="font-weight:700;font-size:.95rem;color:var(--text)">${cat.name_he}</span>
             <span style="font-size:.75rem;color:var(--text-muted);margin-right:8px">${products.length} פריטים</span>
-            ${cat.has_toppings ? `<span style="font-size:.72rem;background:var(--primary-soft);color:var(--primary);padding:2px 10px;border-radius:50px;font-weight:600">תוספות</span>` : ''}
+            ${cat.has_toppings ? `<span style="font-size:.72rem;background:#f0f0f0;color:#666;padding:2px 10px;border-radius:50px;font-weight:600">תוספות</span>` : ''}
           </div>
         </div>
         <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
@@ -1458,7 +1458,7 @@ function renderProductRow(p, cat) {
         ${p.name_en ? `<div style="font-size:.75rem;color:var(--text-muted)" dir="ltr">${p.name_en}</div>` : ''}
         ${p.description ? `<div style="font-size:.73rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;margin-top:2px">${p.description}</div>` : ''}
       </div>
-      <div style="font-weight:800;font-size:.95rem;color:var(--primary);min-width:60px">₪${parseFloat(p.price).toFixed(0)}</div>
+      <div style="font-weight:800;font-size:.95rem;color:var(--text);min-width:60px">₪${parseFloat(p.price).toFixed(0)}</div>
       ${toggleSwitch(p.is_available, `toggleProduct('${p.id}',${!p.is_available})`)}
       <div style="display:flex;gap:6px;margin-inline-start:4px">
         <button onclick="openProductModal(${pData},'${p.category_id||''}')" class="btn btn-ghost btn-sm">עריכה</button>
@@ -1866,16 +1866,16 @@ function renderCustomerStats(customers) {
   const totalRev   = customers.reduce((s, c) => s + parseFloat(c.total_spent || 0), 0);
 
   statsEl.innerHTML = `
-    <div class="stat-card violet">
+    <div class="stat-card">
       <div class="stat-value">${total}</div>
       <div class="stat-label">סה"כ לקוחות</div>
     </div>
-    <div class="stat-card accent">
-      <div class="stat-value" style="color:var(--accent)">${returning}</div>
-      <div class="stat-label">לקוחות חוזרים <span style="font-size:.75rem;background:var(--accent-soft);color:var(--accent);padding:1px 8px;border-radius:50px">${retPct}%</span></div>
+    <div class="stat-card">
+      <div class="stat-value">${returning}</div>
+      <div class="stat-label">לקוחות חוזרים <span style="font-size:.75rem;background:var(--color-info-bg);color:var(--color-info);padding:1px 8px;border-radius:50px">${retPct}%</span></div>
     </div>
     <div class="stat-card">
-      <div class="stat-value" style="color:var(--primary)">${totalOrders}</div>
+      <div class="stat-value">${totalOrders}</div>
       <div class="stat-label">סה"כ הזמנות</div>
     </div>
     <div class="stat-card green">
@@ -1923,10 +1923,10 @@ function renderCustomersTable(customers) {
             <td><input type="checkbox" value="${c.phone}" onchange="toggleCustomer('${c.phone}',this.checked)" class="customer-checkbox"></td>
             <td>
               <div style="font-weight:700">${c.name||'—'}</div>
-              ${isReturning ? '<span style="font-size:.68rem;background:var(--accent-soft);color:var(--accent);padding:1px 8px;border-radius:50px;font-weight:700">חוזר</span>' : ''}
+              ${isReturning ? '<span style="font-size:.68rem;background:var(--color-info-bg);color:var(--color-info);padding:1px 8px;border-radius:50px;font-weight:700">חוזר</span>' : ''}
             </td>
             <td style="color:var(--text-muted);font-size:.82rem" dir="ltr">${c.customer_phone||c.phone||'—'}</td>
-            <td style="text-align:center;font-weight:800;color:var(--primary)">${c.order_count}</td>
+            <td style="text-align:center;font-weight:800;color:var(--text)">${c.order_count}</td>
             <td style="font-weight:800;color:var(--text)">₪${parseFloat(c.total_spent||0).toFixed(0)}</td>
           </tr>`;
         }).join('')}
@@ -2088,7 +2088,7 @@ async function saveSection(updates, successMsg) {
 function showToast(msg) {
   const t = document.createElement('div');
   t.textContent = msg;
-  t.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:var(--primary);color:#fff;padding:10px 24px;border-radius:50px;font-weight:700;font-size:.88rem;z-index:9999;box-shadow:0 4px 20px rgba(94,23,235,.3)';
+  t.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 24px;border-radius:50px;font-weight:700;font-size:.88rem;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.25)';
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 2500);
 }

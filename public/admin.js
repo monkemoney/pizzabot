@@ -51,7 +51,7 @@ function showToast(msg) {
   const t = document.createElement('div');
   t.textContent = msg;
   const bottomOffset = window.innerWidth <= 768 ? '80px' : '28px';
-  t.style.cssText = `position:fixed;bottom:${bottomOffset};left:50%;transform:translateX(-50%);background:#1a0a3d;color:#fff;padding:10px 24px;border-radius:50px;font-weight:700;font-size:.88rem;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.3)`;
+  t.style.cssText = `position:fixed;bottom:${bottomOffset};left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 24px;border-radius:50px;font-weight:700;font-size:.88rem;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.25)`;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 2500);
 }
@@ -91,10 +91,10 @@ async function refreshDashboard() {
 
     grid.innerHTML =
       card('לקוחות פעילים',  stats.active_clients, '#16a34a') +
-      card('סה"כ לקוחות',    stats.total_clients,  '#5e17eb') +
-      card('סה"כ הזמנות',    stats.total_orders,   '#0369a1') +
-      card('הכנסות כוללות',  `₪${(stats.total_revenue||0).toFixed(0)}`, '#7c3aed') +
-      card('שיחות פתוחות',   stats.total_sessions, '#7a6f8a');
+      card('סה"כ לקוחות',    stats.total_clients,  'var(--text)') +
+      card('סה"כ הזמנות',    stats.total_orders,   'var(--text)') +
+      card('הכנסות כוללות',  `₪${(stats.total_revenue||0).toFixed(0)}`, '#16a34a') +
+      card('שיחות פתוחות',   stats.total_sessions, 'var(--text)');
 
     // Recent clients
     const rc = document.getElementById('recentClients');
@@ -107,7 +107,7 @@ async function refreshDashboard() {
           ${clients.slice(0, 5).map(c => `
             <tr>
               <td style="font-weight:700">${c.name}</td>
-              <td><span class="badge" style="background:#f0ebff;color:#5e17eb">${c.plan}</span></td>
+              <td><span class="badge" style="background:#f0f0f0;color:#555">${c.plan}</span></td>
               <td><span class="badge badge-${c.status}">${{active:'פעיל',trial:'ניסיון',inactive:'מושבת'}[c.status]||c.status}</span></td>
               <td style="font-size:.78rem;color:#9b8fc0">${new Date(c.created_at).toLocaleDateString('he-IL')}</td>
             </tr>`).join('')}
@@ -145,7 +145,7 @@ async function loadUsage() {
         <th>Input</th>
         <th>Output</th>
         <th>Cache</th>
-        <th style="color:#5e17eb">עלות</th>
+        <th>עלות</th>
       </tr></thead>
       <tbody>
         ${rows.map(r => `<tr>
@@ -155,7 +155,7 @@ async function loadUsage() {
           <td style="font-size:.82rem;color:#555">${fmt(r.input)}</td>
           <td style="font-size:.82rem;color:#555">${fmt(r.output)}</td>
           <td style="font-size:.82rem;color:#555">${fmt(r.cache_read)}</td>
-          <td style="font-weight:700;color:#5e17eb">${fmtCost(r.cost_usd)}</td>
+          <td style="font-weight:700;color:var(--text)">${fmtCost(r.cost_usd)}</td>
         </tr>`).join('')}
       </tbody>
     </table>`;
@@ -216,7 +216,7 @@ function renderClients() {
             ${c.tenant_id ? `<div style="font-family:monospace;font-size:.68rem;color:#c4b8e0;direction:ltr;margin-top:2px">${c.tenant_id.slice(0,8)}…</div>` : ''}
           </td>
           <td style="font-family:monospace;direction:ltr;font-size:.82rem;color:#9b8fc0">${c.contact_phone||'—'}</td>
-          <td><span class="badge" style="background:#f0ebff;color:#5e17eb">${PLAN_LABELS[c.plan]||c.plan}</span></td>
+          <td><span class="badge" style="background:#f0f0f0;color:#555">${PLAN_LABELS[c.plan]||c.plan}</span></td>
           <td>
             <select onchange="updateClientStatus('${c.id}',this.value)"
               style="padding:4px 10px;border-radius:8px;border:2px solid #e8e4f5;font-family:inherit;font-size:.78rem;width:auto">
@@ -504,7 +504,7 @@ function _stepBtn(n, label, sub, done) {
   const bg     = active ? 'var(--color-brand-soft,#ede8fd)' : '#fff';
   const col    = active ? 'var(--color-brand,#5e17eb)' : (done ? '#16a34a' : 'var(--text-muted)');
   const badge  = done
-    ? '<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#16a34a;color:#fff;font-size:.65rem;margin-left:6px">✓</span>'
+    ? '<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#16a34a;color:#fff;margin-left:6px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>'
     : `<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;border:1.5px solid currentColor;font-size:.7rem;font-weight:700;margin-left:6px">${n}</span>`;
   return `
     <button onclick="_obStep=${n};renderSessionModal()"
@@ -529,12 +529,12 @@ function _renderStep1(s, step1Done) {
     : '—';
 
   const statusBadge = step1Done
-    ? `<span style="background:#e0fbef;border:1px solid #86efac;color:#16a34a;border-radius:50px;padding:3px 12px;font-size:.75rem;font-weight:700">הלקוח מילא ✓</span>`
+    ? `<span style="background:#e0fbef;border:1px solid #86efac;color:#16a34a;border-radius:50px;padding:3px 12px;font-size:.75rem;font-weight:700">הלקוח מילא <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>`
     : `<span style="background:#fff8e0;border:1px solid #fcd34d;color:#c07000;border-radius:50px;padding:3px 12px;font-size:.75rem;font-weight:700">ממתין ללקוח</span>`;
 
   return `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div style="font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.05em">פרטי עסק</div>
+      <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">פרטי עסק</div>
       ${statusBadge}
     </div>
     <div style="margin-bottom:24px">
@@ -550,7 +550,7 @@ function _renderStep1(s, step1Done) {
     </div>
     ${s.menu_notes ? `
     <div style="margin-bottom:24px">
-      <div style="font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">התפריט שהלקוח שלח</div>
+      <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">התפריט שהלקוח שלח</div>
       <div style="background:var(--color-bg,#eeede9);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:.82rem;white-space:pre-wrap;max-height:220px;overflow-y:auto">${s.menu_notes.replace(/</g,'&lt;')}</div>
     </div>` : ''}
     <button onclick="_obStep=2;renderSessionModal()" class="btn btn-primary" style="width:100%">
@@ -570,7 +570,7 @@ function _renderStep2(s, step1Done, step2Done) {
   const canApprove = step1Done && step2Done;
 
   return `
-    <div style="font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:14px">הגדרות טכניות</div>
+    <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:14px">הגדרות טכניות</div>
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px" id="techFields">
       <div style="font-size:.72rem;color:var(--text-muted);padding:2px 0">WhatsApp רשמי (Meta Cloud API) — מומלץ. צור WABA + מספר במטא והדבק כאן</div>
       ${techInput('meta_phone_number_id', 'Meta Phone Number ID', s.meta_phone_number_id || '', 'ltr')}
@@ -596,7 +596,7 @@ function _renderStep2(s, step1Done, step2Done) {
       <button onclick="saveTechFields('${s.id}')" class="btn btn-ghost btn-sm">שמור</button>
     </div>
 
-    <div style="font-size:.72rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">צ'קליסט</div>
+    <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">צ'קליסט</div>
     <div style="margin-bottom:24px">${checklistHtml}</div>
 
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">

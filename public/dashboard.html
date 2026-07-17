@@ -110,12 +110,12 @@ nav { flex: 1; padding: 16px 12px; display: flex; flex-direction: column; gap: 2
   font-family: inherit; font-size: .84rem; font-weight: 700;
   cursor: pointer; transition: all .18s; letter-spacing: .01em; }
 .btn-primary { background: var(--primary); color: #fff; }
-.btn-primary:hover { background: var(--primary-dark); box-shadow: 0 4px 16px rgba(94,23,235,.3); }
+.btn-primary:hover { background: var(--primary-dark); box-shadow: var(--shadow-md); }
 .btn-accent { background: var(--accent); color: #fff; }
 .btn-accent:hover { filter: brightness(1.06); box-shadow: 0 4px 16px rgba(255,102,196,.3); }
-.btn-outline { background: transparent; color: var(--primary);
-  border: 2px solid var(--primary); }
-.btn-outline:hover { background: var(--primary-soft); }
+.btn-outline { background: transparent; color: var(--text);
+  border: 1.5px solid var(--color-border-strong); }
+.btn-outline:hover { background: var(--color-bg); }
 .btn-ghost { background: transparent; color: var(--text-muted);
   border: 1.5px solid var(--border); }
 .btn-ghost:hover { border-color: var(--primary); color: var(--primary); }
@@ -255,11 +255,10 @@ input[type=time] { direction: ltr; }
   box-shadow: var(--shadow-sm);
   padding: 20px 22px;
 }
-.stat-value { font-size: 1.8rem; font-weight: 800; color: var(--primary); line-height: 1; }
+/* KPI values are neutral-dark per the v2 canon; green stays for revenue (semantic) */
+.stat-value { font-size: 1.8rem; font-weight: 800; color: var(--text); line-height: 1; }
 .stat-label { font-size: .75rem; color: var(--text-muted); margin-top: 4px; font-weight: 600; }
-.stat-card.accent .stat-value { color: var(--accent); }
-.stat-card.green  .stat-value { color: #16a34a; }
-.stat-card.violet .stat-value { color: var(--primary); }
+.stat-card.green .stat-value { color: #16a34a; }
 
 /* ── Orders KPI strip ── */
 .order-kpi-strip {
@@ -294,13 +293,13 @@ input[type=time] { direction: ltr; }
 
 /* ── Modals ── */
 .modal-overlay {
-  position: fixed; inset: 0; background: rgba(20,0,48,.4);
+  position: fixed; inset: 0; background: rgba(17,24,39,.45);
   z-index: 50; display: none; align-items: center; justify-content: center; padding: 20px;
 }
 .modal-overlay.open { display: flex; }
 .modal {
-  background: var(--white); border-radius: 24px;
-  box-shadow: 0 24px 80px rgba(94,23,235,.2);
+  background: var(--white); border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-modal);
   width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto;
 }
 .modal-header {
@@ -319,7 +318,7 @@ input[type=time] { direction: ltr; }
 .modal-body input, .modal-body select, .modal-body textarea { width: 100%; }
 .modal-footer {
   display: flex; gap: 12px; padding: 18px 28px;
-  border-top: 1px solid var(--border); background: #faf8ff; border-radius: 0 0 24px 24px;
+  border-top: 1px solid var(--border); background: var(--color-bg); border-radius: 0 0 var(--radius-xl) var(--radius-xl);
 }
 .modal-footer .btn { flex: 1; justify-content: center; }
 
@@ -358,11 +357,11 @@ input[type=time] { direction: ltr; }
 }
 
 /* ── Additions table ── */
-.additions-table { margin: 0 16px 14px; border: 1.5px solid #e8e2f8;
-  border-radius: 10px; overflow: hidden; font-size: .8rem; }
-.additions-table th { background: #f5f0ff; color: var(--primary);
+.additions-table { margin: 0 16px 14px; border: 1px solid var(--border);
+  border-radius: var(--radius-md); overflow: hidden; font-size: .8rem; }
+.additions-table th { background: var(--color-bg); color: var(--text-muted);
   font-size: .72rem; padding: 8px 12px; }
-.additions-table td { padding: 9px 12px; border-bottom: 1px solid #f0ebff; }
+.additions-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); }
 .additions-table tr:last-child td { border-bottom: none; }
 
 /* ── Hours grid ── */
@@ -720,7 +719,7 @@ input[type=time] { direction: ltr; }
   <div id="page-customers" style="display:none">
     <div class="page-header">
       <div class="page-title" data-i18n="title_customers">לקוחות</div>
-      <button onclick="openBroadcastModal()" class="btn btn-accent btn-sm" style="display:inline-flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> שלח הודעה</button>
+      <button onclick="openBroadcastModal()" class="btn btn-primary btn-sm" style="display:inline-flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> שלח הודעה</button>
     </div>
 
     <!-- Stats -->
@@ -893,10 +892,10 @@ input[type=time] { direction: ltr; }
     <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
 
       <!-- Amount + payment -->
-      <div style="background:#fff0f6;border-radius:14px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between">
+      <div style="background:var(--color-danger-bg);border:1px solid var(--color-danger-border);border-radius:var(--radius-lg);padding:14px 18px;display:flex;align-items:center;justify-content:space-between">
         <div>
           <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:2px">סכום</div>
-          <div style="font-size:1.5rem;font-weight:800;color:#e0004d" id="cancelRefundAmount">₪0</div>
+          <div style="font-size:1.5rem;font-weight:800;color:var(--color-danger)" id="cancelRefundAmount">₪0</div>
         </div>
         <div style="text-align:left">
           <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:2px">תשלום</div>
@@ -908,14 +907,14 @@ input[type=time] { direction: ltr; }
       <div class="form-group" style="margin:0">
         <label style="margin-bottom:8px;display:block">סיבת הביטול</label>
         <div style="display:flex;gap:8px">
-          <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 14px;border:2px solid var(--border);border-radius:12px;cursor:pointer;transition:border-color .18s" id="cancelByBusinessLabel">
+          <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--radius-md);cursor:pointer;transition:border-color .18s" id="cancelByBusinessLabel">
             <input type="radio" name="cancelledBy" value="business" checked
-              onchange="updateCancelUI()" style="accent-color:#e0004d;width:16px;height:16px">
+              onchange="updateCancelUI()" style="accent-color:var(--color-danger);width:16px;height:16px">
             <span style="font-size:.84rem;font-weight:600">יוזמת העסק</span>
           </label>
-          <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 14px;border:2px solid var(--border);border-radius:12px;cursor:pointer;transition:border-color .18s" id="cancelByCustomerLabel">
+          <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--radius-md);cursor:pointer;transition:border-color .18s" id="cancelByCustomerLabel">
             <input type="radio" name="cancelledBy" value="customer"
-              onchange="updateCancelUI()" style="accent-color:#e0004d;width:16px;height:16px">
+              onchange="updateCancelUI()" style="accent-color:var(--color-danger);width:16px;height:16px">
             <span style="font-size:.84rem;font-weight:600">בקשת הלקוח</span>
           </label>
         </div>
@@ -929,7 +928,7 @@ input[type=time] { direction: ltr; }
       </div>
 
       <!-- Send to customer toggle -->
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg);border-radius:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg);border-radius:var(--radius-md)">
         <div>
           <div style="font-size:.84rem;font-weight:700">שלח הערה ללקוח</div>
           <div style="font-size:.74rem;color:var(--text-muted);margin-top:2px" id="cancelSendHint">ההערה תצורף להודעת הביטול ב-WhatsApp</div>
@@ -941,15 +940,15 @@ input[type=time] { direction: ltr; }
       </div>
 
       <!-- Preview (editable) -->
-      <div style="font-size:.76rem;border-radius:10px;border:1.5px solid var(--primary-soft);overflow:hidden">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--primary-soft)">
-          <span style="font-weight:700;color:var(--primary)">הודעה ללקוח — ניתן לעריכה</span>
+      <div style="font-size:.76rem;border-radius:var(--radius-md);border:1px solid var(--border);overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--color-bg);border-bottom:1px solid var(--border)">
+          <span style="font-weight:700;color:var(--text)">הודעה ללקוח — ניתן לעריכה</span>
           <button type="button" onclick="resetCancelPreview()"
-            style="font-size:.72rem;font-weight:700;color:var(--primary);background:none;border:none;cursor:pointer;padding:2px 6px;border-radius:6px;opacity:.8"
+            style="font-size:.72rem;font-weight:700;color:var(--text-muted);background:none;border:none;cursor:pointer;padding:2px 6px;border-radius:6px"
             title="אפס לברירת מחדל">↺ אפס</button>
         </div>
         <textarea id="cancelPreview" rows="4"
-          style="width:100%;border:none;border-radius:0;padding:10px 12px;font-size:.82rem;line-height:1.6;resize:vertical;background:#faf8ff;direction:rtl"
+          style="width:100%;border:none;border-radius:0;padding:10px 12px;font-size:.82rem;line-height:1.6;resize:vertical;background:#fff;direction:rtl"
           oninput="onPreviewEdit()"></textarea>
       </div>
 
@@ -957,7 +956,7 @@ input[type=time] { direction: ltr; }
     <div class="modal-footer">
       <button onclick="closeModal('cancelRefundModal')" class="btn btn-ghost">חזרה</button>
       <button onclick="confirmCancelRefund()" id="cancelRefundBtn"
-        class="btn" style="background:#e0004d;color:#fff">אשר ביטול</button>
+        class="btn" style="background:var(--color-danger);color:#fff">אשר ביטול</button>
     </div>
   </div>
 </div>
@@ -1009,7 +1008,7 @@ input[type=time] { direction: ltr; }
 
       <!-- Address -->
       <div style="margin-bottom:20px">
-        <div style="font-weight:700;font-size:.88rem;color:var(--primary);margin-bottom:12px;text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> כתובת למשלוח</div>
+        <div style="font-weight:700;font-size:.88rem;color:var(--text-muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> כתובת למשלוח</div>
         <div class="address-grid" style="display:grid;grid-template-columns:1fr 1fr 80px;gap:10px;margin-bottom:10px">
           <div><label>עיר</label><input type="text" id="editCity" style="width:100%;margin-top:4px"></div>
           <div><label>רחוב</label><input type="text" id="editStreet" style="width:100%;margin-top:4px"></div>
@@ -1034,14 +1033,14 @@ input[type=time] { direction: ltr; }
 
       <!-- Items -->
       <div style="margin-bottom:20px">
-        <div style="font-weight:700;font-size:.88rem;color:var(--primary);margin-bottom:12px;text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> פריטי ההזמנה</div>
+        <div style="font-weight:700;font-size:.88rem;color:var(--text-muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> פריטי ההזמנה</div>
         <div id="editItemsList"></div>
         <button onclick="openAddProductToOrder()" class="btn btn-outline btn-sm" style="margin-top:10px">+ הוסף מוצר</button>
       </div>
 
       <!-- Financial summary -->
-      <div style="background:var(--primary-soft);border-radius:14px;padding:16px 18px">
-        <div style="font-weight:700;font-size:.88rem;color:var(--primary);margin-bottom:12px;display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> סיכום כספי</div>
+      <div style="background:var(--color-bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 18px">
+        <div style="font-weight:700;font-size:.88rem;color:var(--text-muted);margin-bottom:12px;display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> סיכום כספי</div>
         <div style="display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:6px">
           <span style="color:var(--text-muted)">סכום ביניים</span>
           <span id="editSubtotal" style="font-weight:700">₪0</span>
@@ -1053,7 +1052,7 @@ input[type=time] { direction: ltr; }
         <div style="border-top:1px solid var(--border);margin:8px 0"></div>
         <div style="display:flex;justify-content:space-between;font-size:.95rem">
           <span style="font-weight:800">סה"כ</span>
-          <span id="editTotal" style="font-weight:800;color:var(--primary)">₪0</span>
+          <span id="editTotal" style="font-weight:800">₪0</span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:.75rem;color:var(--text-muted);margin-top:4px">
           <span>כולל מע"מ 18%</span>
@@ -1233,7 +1232,7 @@ input[type=time] { direction: ltr; }
     </div>
     <div class="modal-footer">
       <button onclick="closeModal('broadcastModal')" class="btn btn-ghost">ביטול</button>
-      <button onclick="sendBroadcast()" class="btn btn-accent">שלח</button>
+      <button onclick="sendBroadcast()" class="btn btn-primary">שלח</button>
     </div>
   </div>
 </div>
