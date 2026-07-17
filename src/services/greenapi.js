@@ -76,6 +76,21 @@ async function sendMessage(phone, message, tenantId = null) {
 }
 
 /**
+ * Send a business-initiated message: Meta tenants need an approved template
+ * (outside the 24h window Meta rejects free text); Green API tenants have no
+ * such rule, so they get fallbackText as a plain message.
+ * template = { name, lang, params }.
+ */
+async function sendTemplate(phone, template, tenantId = null, fallbackText = null) {
+  const meta = await _metaCreds(tenantId);
+  if (meta) {
+    return metaWA.sendTemplate(phone, template.name, template.lang || 'he', template.params || [], meta);
+  }
+  if (fallbackText) return sendMessage(phone, fallbackText, tenantId);
+  throw new Error(`[greenapi] tenant ${tenantId} has no Meta creds and no fallback text for template "${template.name}"`);
+}
+
+/**
  * Configure Green API webhook URL for a specific instance.
  * Called during client provisioning.
  */
@@ -309,7 +324,7 @@ async function sendButtons(phone, message, buttons) {
 }
 
 module.exports = {
-  sendMessage, sendListMessage, sendMenuList, sendCategoryPoll,
+  sendMessage, sendTemplate, sendListMessage, sendMenuList, sendCategoryPoll,
   sendToppingsPoll, sendPoll, resolveCategoryVote,
   isControlOption, CTRL_CONFIRM, CTRL_BACK, CTRL_NO_TOP,
   sendButtons, formatPhone, toChatId, setWebhook,

@@ -90,7 +90,7 @@ logs=data if isinstance(data,list) else data.get('logs',data.get('data',[]))
 
 # Before every push (MANDATORY)
 node --check public/app.js && node --check public/admin.js
-npm test -- --forceExit     # 146 tests across 12 suites; --forceExit avoids hanging on setInterval timers
+npm test -- --forceExit     # 168 tests across 13 suites; --forceExit avoids hanging on setInterval timers
 
 # Deploy (auto on push)
 git push origin main
@@ -127,6 +127,7 @@ pizza-bot/
 │   │   └── vendor-alerts.js      # Throttled WhatsApp alerts to vendor
 │   ├── routes/
 │   │   ├── dashboard-api.js      # All /api/* endpoints — tenant-scoped, vendor routes, onboarding, inbox
+│   │   ├── call-events.js        # POST /webhook/calls/:tenantId — VoIP CDR webhook (missed-call recovery)
 │   │   ├── payment.js            # POST /webhook/payment + GET /payment/success (embeds rv= in URL)
 │   │   ├── admin.js              # Legacy /admin/orders (backwards compat)
 │   │   └── business-bot.js       # POST /webhook/business (not yet active)
@@ -142,9 +143,9 @@ pizza-bot/
 │   └── sw.js                     # Service Worker — push notifications only (no fetch caching)
 ├── supabase/schema.sql           # Full DB schema (documentation — NOT auto-applied, see Schema drift)
 ├── scripts/                      # backup/sync Render env, render-guard
-├── tests/                        # 12 suites / 146 tests — auth, sessions, admin bot, webhook routing
+├── tests/                        # 13 suites / 168 tests — auth, sessions, admin bot, webhook routing
 │                                 #   (incl. Meta), onboarding+draft, payments, audit, settings+overnight,
-│                                 #   meta-whatsapp parsing, slug, inbox/handoff
+│                                 #   meta-whatsapp parsing, slug, inbox/handoff, missed-call recovery
 ├── .design/jasell-dashboard/     # Design brief + review (Confident SaaS direction)
 ├── .env.production               # ALL SECRETS — gitignored
 └── CLAUDE.md
@@ -168,6 +169,8 @@ POST /webhook             → WhatsApp webhook — Meta payloads routed by phone
 POST /webhook/:tenantId   → per-tenant webhook (Green API tenants point here)
 POST /webhook/payment     → Cardcom IndicatorUrl (paymentRouter registered BEFORE :tenantId — never reorder;
                             paymentRouter only defines /payment,/success,/failed and falls through via next())
+POST /webhook/calls/:tenantId → VoIP CDR webhook, missed-call recovery (call-events.js; ?token= auth;
+                            also registered BEFORE :tenantId — same never-reorder rule)
 /api/*                    → dashboard-api.js
 ```
 
@@ -187,6 +190,17 @@ Meta specifics:
 - `subscribeWaba(wabaId, token)` must be called once per WABA or Meta sends nothing — approve() does it automatically. Symptom of a missing subscription: webhook verified but zero POSTs. Also check the WABA's `subscribed_apps` — Meta's own "WA DevX Webhook Events" test app being subscribed does NOT mean ours is.
 - Sandbox numbers can only message verified test recipients (error `#131030`); recipients must complete SMS verification, not just be added.
 - Service conversations (customer-initiated, 24h window) are free — nearly all ordering traffic. Business-initiated messages outside the window need approved templates.
+
+### Missed-Call Recovery (telephony → WhatsApp)
+
+The tenant's business number lives at a VoIP provider (pilot: DIDWW — number owned by Jasell, calls forwarded to the owner's mobile). The provider's CDR webhook POSTs every inbound call to `/webhook/calls/:tenantId?token=<missed_call_webhook_token>`; unanswered calls trigger a WhatsApp recovery message to the caller ("we missed your call — order here"), turning missed calls into bot conversations.
+
+- **Business-initiated ⇒ Meta requires an approved template** (`missed_call_template` setting, default `missed_call_recovery`, lang `he`). Sent via `greenapi.sendTemplate()` facade → Meta tenants get the template, Green API tenants get plain text (`missed_call_text`) — no template rule on the unofficial channel. Customer's reply opens a free 24h service window; the normal bot takes over.
+- **Filters before sending:** unusable caller id (anonymous), the forward-target phone (`missed_call_forward_number`), couriers, admin_users, business closed (unless `missed_call_when_closed`).
+- **Throttle:** in-memory per `tenant:caller`, `missed_call_throttle_hours` (default 3h) — also absorbs provider webhook retries/duplicates. Resets on deploy (accepted, like login rate limiting). Failed sends release the throttle key.
+- **CDR parsing** (`parseCallEvents`): DIDWW Voice IN shape `{data:[{type:'inbound-cdr',attributes:{success,duration,time_connect,src_number}}]}`; caller-field probing covers naming variants. Answered = `success===true` | `time_connect` | `duration>0`. Unparsable bodies are logged in full — calibrate against the first real event.
+- **Settings** (per tenant): `missed_call_enabled`, `missed_call_webhook_token` (required — 403 without it), template name/lang/params, text fallback, forward number, throttle hours, when-closed. Dashboard toggle: הגדרות → "שיחות שלא נענו".
+- Master switch off ⇒ webhook returns 200 (not 4xx) so the provider doesn't retry-spam.
 
 ### Auth & Tenant Isolation (auth.js)
 
@@ -327,7 +341,7 @@ Order status flow: `new → preparing → ready → out_for_delivery → deliver
 
 1. **Backup before infra change:** `node scripts/backup-render-env.js`
 2. **Schema changes only via Supabase Management API** (or SQL editor from desktop). Never direct `pg` — see DB access lesson. **After adding columns to schema.sql, verify they exist in the real DB** (`information_schema.columns`) — schema.sql is documentation, drift means silent feature failure (9 columns once existed only on paper).
-3. **Before every commit:** `node --check public/app.js && node --check public/admin.js` (a missing backtick silently blanks the whole SPA) + `npm test -- --forceExit` (146 tests)
+3. **Before every commit:** `node --check public/app.js && node --check public/admin.js` (a missing backtick silently blanks the whole SPA) + `npm test -- --forceExit` (168 tests)
 4. **Every desktop UI change must include mobile** — media queries + `window.innerWidth <= 768` branches
 5. **delivery_zones** is authoritative (5 fields: city, area, fee, min_order, eta_minutes); `saveZones()` syncs legacy `delivery_cities`; bot reads zones first
 6. **Vendor portal ≠ business dashboard** — separate SPAs, changes to one never affect the other

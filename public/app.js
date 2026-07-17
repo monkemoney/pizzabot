@@ -2133,9 +2133,10 @@ function renderSettingsForm(s) {
     clock: ico('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'),
     pin:   ico('<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>'),
     truck: ico('<rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 7v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>'),
+    phone: ico('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>'),
   };
 
-  const NAV_LABELS = ['פרטי העסק','תשלום','סוגי הזמנה','מתוזמנות','שינויי הזמנות','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים'];
+  const NAV_LABELS = ['פרטי העסק','תשלום','סוגי הזמנה','מתוזמנות','שינויי הזמנות','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים','שיחות שלא נענו'];
 
   _sCardSeq = 0;
   document.getElementById('settingsForm').innerHTML = `
@@ -2222,6 +2223,21 @@ function renderSettingsForm(s) {
       </div>
       ${saveBtn('saveCouriers')}
     `)}
+
+    ${sCard(ICONS.phone, 'שיחות שלא נענו', 'לקוח שהתקשר ולא נענה מקבל אוטומטית הזמנה להזמין בוואטסאפ', `
+      ${sToggle('missed_call_enabled', 'שלח וואטסאפ אוטומטי למי שהתקשר ולא נענה', s.missed_call_enabled === true)}
+      ${sToggle('missed_call_when_closed', 'שלח גם כשהעסק סגור', s.missed_call_when_closed === true)}
+      <div style="margin-top:14px;display:flex;align-items:center;gap:12px">
+        <span style="font-size:.88rem;color:var(--text)">${TR('מינימום')}</span>
+        <input type="number" id="missedCallThrottle" dir="ltr" value="${s.missed_call_throttle_hours ?? 3}" min="1" max="48"
+          style="width:90px;font-weight:700;text-align:center">
+        <span style="font-size:.88rem;color:var(--text)">${TR('שעות בין הודעות לאותו מתקשר')}</span>
+      </div>
+      <div style="margin-top:14px;font-size:.84rem;color:var(--text-muted)">
+        ${TR("חיבור מספר הטלפון לשירות נעשה על ידי ג'אסל.")}
+      </div>
+      ${saveBtn('saveMissedCalls')}
+    `)}
   `;
 
   wireSettingsNavSpy(NAV_LABELS.length);
@@ -2294,6 +2310,17 @@ async function saveOrderTypes() {
 async function saveEditSettings() {
   const allow = document.querySelector('.setting-toggle[data-key="allow_order_edits"]')?.checked ?? true;
   await saveSection({ allow_order_edits: allow });
+}
+
+async function saveMissedCalls() {
+  const enabled    = !!document.querySelector('.setting-toggle[data-key="missed_call_enabled"]')?.checked;
+  const whenClosed = !!document.querySelector('.setting-toggle[data-key="missed_call_when_closed"]')?.checked;
+  const hours      = parseInt(document.getElementById('missedCallThrottle')?.value) || 3;
+  await saveSection({
+    missed_call_enabled:        enabled,
+    missed_call_when_closed:    whenClosed,
+    missed_call_throttle_hours: Math.max(1, Math.min(48, hours)),
+  });
 }
 
 async function saveHours() {

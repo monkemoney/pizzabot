@@ -46,6 +46,34 @@ async function sendMessage(phone, message, creds = ENV_CREDS) {
 }
 
 /**
+ * Send an approved template message — the only message type Meta allows
+ * business-initiated, outside the 24h customer-service window (used by
+ * missed-call recovery). params become {{1}},{{2}},... body variables.
+ */
+async function sendTemplate(phone, templateName, langCode = 'he', params = [], creds = ENV_CREDS) {
+  const to = formatPhone(phone);
+  const template = { name: templateName, language: { code: langCode } };
+  if (Array.isArray(params) && params.length) {
+    template.components = [{
+      type: 'body',
+      parameters: params.map((p) => ({ type: 'text', text: String(p) })),
+    }];
+  }
+  try {
+    const r = await axios.post(
+      apiUrl(`${creds.phoneNumberId}/messages`),
+      { messaging_product: 'whatsapp', to, type: 'template', template },
+      { headers: authHeaders(creds) }
+    );
+    return r.data;
+  } catch (err) {
+    const detail = err.response ? JSON.stringify(err.response.data) : err.message;
+    console.error(`[meta-wa] sendTemplate "${templateName}" failed for ${to}:`, detail);
+    throw err;
+  }
+}
+
+/**
  * Send a single-select interactive list message.
  * Meta Cloud API has no native multi-select poll — this is the closest
  * equivalent (one row picked per message). rows: [{ id, title, description }]
@@ -165,7 +193,7 @@ function parseIncoming(body) {
 }
 
 module.exports = {
-  sendMessage, sendList, sendToppingsList, subscribeWaba,
+  sendMessage, sendTemplate, sendList, sendToppingsList, subscribeWaba,
   verifyWebhook, parseIncoming, formatPhone,
   PHONE_NUMBER_ID, WABA_ID, ENV_CREDS,
 };

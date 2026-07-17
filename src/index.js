@@ -54,6 +54,11 @@ app.use('/api', dashboardApi);
 app.use('/webhook', paymentRouter);   // POST /webhook/payment
 app.use('/payment', paymentRouter);   // GET  /payment/success, /payment/failed
 
+// ─── Telephony CDR webhook (missed-call recovery) ─────────────────────────────
+// Must stay mounted before the /webhook/:tenantId catch-all, like paymentRouter —
+// otherwise :tenantId swallows /webhook/calls/... as tenantId='calls'.
+app.use('/webhook', require('./routes/call-events'));   // POST /webhook/calls/:tenantId
+
 // ─── Legacy admin routes ──────────────────────────────────────────────────────
 app.use('/admin', adminRouter);
 
