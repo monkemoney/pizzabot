@@ -97,6 +97,7 @@
     margin-bottom: 14px;
   }
 </style>
+<script src="/i18n.js"></script>
 </head>
 <body>
 <div class="card">
@@ -105,16 +106,19 @@
       <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 11h.01"/><path d="M11 15h.01"/><path d="M16 16h.01"/><path d="m2 16 20 6-6-20A20 20 0 0 0 2 16"/></svg>
     </div>
     <div class="logo-text" style="display:block">Jasell</div>
-    <div class="logo-sub">ממשק ניהול</div>
+    <div class="logo-sub" data-i18n="logo_sub">ממשק ניהול</div>
   </div>
 
+  <button onclick="toggleLang()" type="button" data-i18n="lang_toggle"
+    style="position:absolute;top:16px;inset-inline-end:16px;width:34px;height:34px;border-radius:8px;border:1px solid var(--border,#e5e7eb);background:#fff;cursor:pointer;font-size:.7rem;font-weight:800;color:#4b5563;font-family:inherit">EN</button>
+
   <form id="loginForm">
-    <label>שם משתמש</label>
-    <input type="text" id="username" required autocomplete="username" placeholder="שם משתמש" dir="ltr">
-    <label>סיסמא</label>
+    <label data-tr>שם משתמש</label>
+    <input type="text" id="username" required autocomplete="username" placeholder="שם משתמש" data-tr-placeholder dir="ltr">
+    <label data-tr>סיסמא</label>
     <input type="password" id="password" required autocomplete="current-password">
     <div class="error" id="errorMsg"></div>
-    <button type="submit" class="btn" id="submitBtn">כניסה</button>
+    <button type="submit" class="btn" id="submitBtn" data-tr>כניסה</button>
   </form>
 </div>
 
@@ -127,7 +131,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
   const btn = document.getElementById('submitBtn');
 
   btn.disabled = true;
-  btn.textContent = 'מתחבר...';
+  btn.textContent = (typeof tr==='function'?tr('מתחבר...'):'מתחבר...');
   errorMsg.style.display = 'none';
 
   try {
@@ -137,7 +141,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
       body: JSON.stringify({ username, password }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'שגיאת כניסה');
+    if (!res.ok) throw new Error(data.error || (typeof tr==='function'?tr('שגיאת כניסה'):'שגיאת כניסה'));
     localStorage.setItem('token', data.token);
     localStorage.setItem('role', data.role);
     localStorage.setItem('username', data.username);
@@ -147,7 +151,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     errorMsg.textContent = err.message;
     errorMsg.style.display = 'block';
     btn.disabled = false;
-    btn.textContent = 'כניסה';
+    btn.textContent = (typeof tr==='function'?tr('כניסה'):'כניסה');
   }
 });
 </script>

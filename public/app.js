@@ -11,7 +11,7 @@ if (!token) { window.location.href = '/'; }
 if (role === 'vendor') { window.location.href = '/admin'; }
 
 document.getElementById('userDisplayName').textContent = username || '';
-document.getElementById('userRole').textContent = role === 'admin' ? 'מנהל' : 'מנג׳ר';
+document.getElementById('userRole').textContent = (typeof tr === 'function' ? tr(role === 'admin' ? 'מנהל' : 'מנג׳ר') : (role === 'admin' ? 'מנהל' : 'מנג׳ר'));
 
 if (role === 'admin') {
   document.querySelectorAll('.admin-only').forEach((el) => {
@@ -128,21 +128,26 @@ document.querySelectorAll('.modal-overlay').forEach((overlay) => {
   });
 });
 
+// i18n: tr() comes from i18n.js (Hebrew→English string map); TR guards against
+// pages that load app.js without it. LOCALE follows the dashboard language.
+const TR = (str) => (typeof tr === 'function' ? tr(str) : str);
+const LOCALE = (typeof LANG !== 'undefined' && LANG === 'en') ? 'en-GB' : 'he-IL';
+
 function formatDate(iso) {
   if (!iso) return '';
   const d = new Date(iso);
-  return d.toLocaleDateString('he-IL') + ' ' + d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString(LOCALE) + ' ' + d.toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
 }
 
 const STATUS_LABELS = {
-  new:              'חדשה',
-  scheduled:        'מתוזמן',
-  preparing:        'בהכנה',
-  ready:            'מוכן',
-  out_for_delivery: 'יצא למשלוח',
-  delivered:        'נמסרה',
-  done:             'הסתיימה',
-  cancelled:        'בוטלה',
+  new:              TR('חדשה'),
+  scheduled:        TR('מתוזמן'),
+  preparing:        TR('בהכנה'),
+  ready:            TR('מוכן'),
+  out_for_delivery: TR('יצא למשלוח'),
+  delivered:        TR('נמסרה'),
+  done:             TR('הסתיימה'),
+  cancelled:        TR('בוטלה'),
 };
 
 function statusBadge(status, order) {
@@ -153,7 +158,7 @@ function statusBadge(status, order) {
     done: 'badge-done', cancelled: 'badge-cancelled',
   }[status] || 'badge-done';
   const extra = status === 'scheduled' && order?.scheduled_for
-    ? ' ' + new Date(order.scheduled_for).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false })
+    ? ' ' + new Date(order.scheduled_for).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit', hour12: false })
     : '';
   return `<span class="badge ${cls}">${STATUS_LABELS[status] || status}${extra}</span>`;
 }
@@ -166,7 +171,7 @@ const expandedOrders = new Set();
 
 async function loadOrders() {
   const container = document.getElementById('ordersTable');
-  container.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-muted)">טוען...</div>';
+  container.innerHTML = `<div style="padding:32px;text-align:center;color:var(--text-muted)">${TR('טוען...')}</div>`;
   try {
     const data = await api('GET', '/orders');
     currentOrders = data.orders || [];
@@ -273,7 +278,7 @@ function exportOrdersCSV() {
     (o.address        || '').toLowerCase().includes(q)
   );
 
-  if (!list.length) { showToast('אין הזמנות לייצוא'); return; }
+  if (!list.length) { showToast(TR('אין הזמנות לייצוא')); return; }
 
   const statusHe = {
     new:'חדשה', preparing:'בהכנה', ready:'מוכן', out_for_delivery:'יצא למשלוח',
@@ -281,9 +286,9 @@ function exportOrdersCSV() {
   };
 
   const headers = [
-    'מספר הזמנה','תאריך','שעה','שם לקוח','טלפון',
-    'סוג אספקה','כתובת','אמצעי תשלום','סטטוס תשלום',
-    'סטטוס הזמנה','פריטים','תוספות','סה"כ','הערות',
+    TR('מספר הזמנה'),TR('תאריך'),TR('שעה'),TR('שם לקוח'),TR('טלפון'),
+    TR('סוג אספקה'),TR('כתובת'),TR('אמצעי תשלום'),TR('סטטוס תשלום'),
+    TR('סטטוס הזמנה'),TR('פריטים'),TR('תוספות'),TR('סה"כ'),TR('הערות'),
   ];
 
   const esc = (v) => {
@@ -293,8 +298,8 @@ function exportOrdersCSV() {
 
   const rows = list.map(o => {
     const d       = new Date(o.created_at);
-    const date    = d.toLocaleDateString('he-IL');
-    const time    = d.toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' });
+    const date    = d.toLocaleDateString(LOCALE);
+    const time    = d.toLocaleTimeString(LOCALE, { hour:'2-digit', minute:'2-digit' });
     const items   = (o.items||[]).map(it => {
       const qty = it.quantity || it.qty || 1;
       return `${it.name||it.name_he||''}${qty>1?` ×${qty}`:''}`;
@@ -308,10 +313,10 @@ function exportOrdersCSV() {
       date, time,
       o.customer_name  || '',
       o.customer_phone || o.phone || '',
-      o.delivery_method === 'delivery' ? 'משלוח' : 'איסוף',
+      o.delivery_method === 'delivery' ? TR('משלוח') : TR('איסוף'),
       o.address || '',
-      o.payment_method === 'cash' ? 'מזומן' : o.payment_method === 'bit' ? 'Bit' : 'אשראי',
-      o.payment_status === 'paid'  ? 'שולם'  : 'ממתין',
+      o.payment_method === 'cash' ? TR('מזומן') : o.payment_method === 'bit' ? 'Bit' : TR('אשראי'),
+      o.payment_status === 'paid'  ? TR('שולם')  : TR('ממתין'),
       statusHe[o.status] || o.status || '',
       items,
       toppings,
@@ -332,7 +337,7 @@ function exportOrdersCSV() {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-  showToast(`יוצאו ${list.length} הזמנות`);
+  showToast(`${TR('יוצאו')} ${list.length} ${TR('הזמנות')}`);
 }
 
 function renderOrderCard(o) {
@@ -350,9 +355,9 @@ function renderOrderCard(o) {
     <div style="font-weight:700;font-size:.92rem;margin-bottom:4px">${o.customer_name||'—'}</div>
     ${o.address ? `<div style="font-size:.75rem;color:var(--text-muted);margin-bottom:8px;display:flex;align-items:center;gap:4px">${SVG.pin} ${o.address}</div>` : '<div style="margin-bottom:8px"></div>'}
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
-      <span class="badge ${o.delivery_method==='delivery'?'badge-delivery':'badge-done'}" style="display:inline-flex;align-items:center;gap:4px">${o.delivery_method==='delivery'?`${SVG.truck} משלוח`:`${SVG.home} איסוף`}</span>
-      <span style="display:inline-flex;align-items:center;gap:4px;font-size:.72rem;background:var(--bg);padding:3px 10px;border-radius:999px;color:var(--text-muted)">${o.payment_method==='cash'?`${SVG.wallet} מזומן`:o.payment_method==='bit'?`${SVG.phone} Bit`:`${SVG.card} אשראי`}</span>
-      <span class="badge ${o.payment_status==='paid'?'badge-paid':o.payment_method==='bit'?'badge-bit-pending':'badge-pending-pay'}" style="display:inline-flex;align-items:center;gap:4px">${o.payment_status==='paid'?`${SVG.check} שולם`:o.payment_method==='bit'?`${SVG.phone} ממתין לBit`:`${SVG.clock} ממתין`}</span>
+      <span class="badge ${o.delivery_method==='delivery'?'badge-delivery':'badge-done'}" style="display:inline-flex;align-items:center;gap:4px">${o.delivery_method==='delivery'?`${SVG.truck} ${TR('משלוח')}`:`${SVG.home} ${TR('איסוף')}`}</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;font-size:.72rem;background:var(--bg);padding:3px 10px;border-radius:999px;color:var(--text-muted)">${o.payment_method==='cash'?`${SVG.wallet} ${TR('מזומן')}`:o.payment_method==='bit'?`${SVG.phone} Bit`:`${SVG.card} ${TR('אשראי')}`}</span>
+      <span class="badge ${o.payment_status==='paid'?'badge-paid':o.payment_method==='bit'?'badge-bit-pending':'badge-pending-pay'}" style="display:inline-flex;align-items:center;gap:4px">${o.payment_status==='paid'?`${SVG.check} ${TR('שולם')}`:o.payment_method==='bit'?`${SVG.phone} ${TR('ממתין לBit')}`:`${SVG.clock} ${TR('ממתין')}`}</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
       <select onchange="updateOrderStatus('${o.id}',this.value,${o.order_number})"
@@ -372,7 +377,7 @@ function renderOrderCard(o) {
     ${o.refund_status==='manual'?`
     <a href="https://secure.cardcom.solutions" target="_blank"
       style="display:flex;align-items:center;justify-content:space-between;background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:10px;padding:9px 13px;margin-top:10px;font-size:.78rem;font-weight:700;color:#e0004d;text-decoration:none">
-      <span style="display:inline-flex;align-items:center;gap:5px">${SVG.creditCard} נדרש זיכוי ידני בכרטקום</span><span>↗</span>
+      <span style="display:inline-flex;align-items:center;gap:5px">${SVG.creditCard} ${TR('נדרש זיכוי ידני בכרטקום')}</span><span>↗</span>
     </a>`:''}
   </div>`;
 }
@@ -396,13 +401,13 @@ function renderOrderRow(o) {
     const lineTotal = ((parseFloat(it.price)||0)*qty).toFixed(0);
     return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--border)">
       <div>
-        <span style="font-weight:600;font-size:.85rem">${it.name||it.name_he||'פריט'}</span>
+        <span style="font-weight:600;font-size:.85rem">${it.name||it.name_he||TR('פריט')}</span>
         ${qty>1?`<span style="color:var(--text-muted);font-size:.78rem"> ×${qty}</span>`:''}
         ${tops?`<div style="font-size:.72rem;color:var(--text-muted)">+ ${tops}</div>`:''}
       </div>
       <span style="font-weight:700;color:var(--text);white-space:nowrap;margin-right:12px">₪${lineTotal}</span>
     </div>`;
-  }).join('') || '<div style="color:var(--text-muted);font-size:.82rem">אין פריטים</div>';
+  }).join('') || `<div style="color:var(--text-muted);font-size:.82rem">${TR('אין פריטים')}</div>`;
 
   // ── Financial summary ──
   const total    = parseFloat(o.total_price)||0;
@@ -417,24 +422,24 @@ function renderOrderRow(o) {
   const actions = `
     <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
       <button onclick="event.stopPropagation();openOrderEdit('${o.id}')"
-        class="btn btn-ghost btn-sm" style="gap:5px">${SVG.edit} ערוך פריטים</button>
+        class="btn btn-ghost btn-sm" style="gap:5px">${SVG.edit} ${TR('ערוך פריטים')}</button>
       <button onclick="event.stopPropagation();printOrder('${o.id}')"
-        class="btn btn-ghost btn-sm" style="gap:5px;color:#16a34a;border-color:#bbf7d0">${SVG.printer} הדפסה</button>
+        class="btn btn-ghost btn-sm" style="gap:5px;color:#16a34a;border-color:#bbf7d0">${SVG.printer} ${TR('הדפסה')}</button>
       ${!isCancelled ? `
         ${o.dispute_status==='pending'
-          ? `<span style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:50px;padding:5px 14px;font-size:.78rem;font-weight:700;color:#d97706">${SVG.alertTriangle} מחלוקת פתוחה</span>`
+          ? `<span style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:50px;padding:5px 14px;font-size:.78rem;font-weight:700;color:#d97706">${SVG.alertTriangle} ${TR('מחלוקת פתוחה')}</span>`
           : `<button onclick="event.stopPropagation();openDisputeModal('${o.id}')"
-              class="btn btn-sm" style="background:#fffbeb;border-color:#fcd34d;color:#d97706;gap:5px">${SVG.alertTriangle} פריט חסר</button>`}
+              class="btn btn-sm" style="background:#fffbeb;border-color:#fcd34d;color:#d97706;gap:5px">${SVG.alertTriangle} ${TR('פריט חסר')}</button>`}
         <button onclick="event.stopPropagation();openCancelRefundModal('${o.id}')"
-          class="btn btn-sm" style="background:#fff0f6;border-color:#ffd0e6;color:#e0004d;gap:5px">${SVG.xCircle} ביטול</button>
+          class="btn btn-sm" style="background:#fff0f6;border-color:#ffd0e6;color:#e0004d;gap:5px">${SVG.xCircle} ${TR('ביטול')}</button>
       ` : `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
         <span class="badge badge-cancelled" style="font-size:.78rem">
-          ${o.cancelled_by==='customer'?'בוטל ע"י לקוח':'בוטל ע"י העסק'}
+          ${o.cancelled_by==='customer'?TR('בוטל ע"י לקוח'):TR('בוטל ע"י העסק')}
           ${o.cancel_reason?`— ${o.cancel_reason}`:''}
         </span>
         ${o.refund_status==='manual'?`<a href="https://secure.cardcom.solutions" target="_blank" onclick="event.stopPropagation()"
           style="background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:50px;padding:4px 12px;font-size:.72rem;font-weight:700;color:#e0004d;text-decoration:none;white-space:nowrap">
-          <span style="display:inline-flex;align-items:center;gap:4px">${SVG.creditCard} זיכוי ידני נדרש</span> ↗</a>`:''}
+          <span style="display:inline-flex;align-items:center;gap:4px">${SVG.creditCard} ${TR('זיכוי ידני נדרש')}</span> ↗</a>`:''}
       </div>`}
     </div>`;
 
@@ -444,18 +449,18 @@ function renderOrderRow(o) {
 
       <!-- Left: customer + delivery -->
       <div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">פרטי לקוח</div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">${TR('פרטי לקוח')}</div>
         <div style="display:flex;flex-direction:column;gap:6px;font-size:.84rem">
           <div style="display:flex;align-items:center;gap:7px">${SVG.phone} <strong>${o.customer_name||'—'}</strong></div>
           ${o.customer_phone||o.phone ? `<div style="color:var(--text-muted)">${o.customer_phone||o.phone}</div>` : ''}
           <div style="display:flex;align-items:center;gap:7px;margin-top:4px">
-            ${o.delivery_method==='delivery' ? `${SVG.truck} <span>משלוח — ${o.address||'כתובת לא ידועה'}</span>` : `${SVG.home} <span>איסוף עצמי</span>`}
+            ${o.delivery_method==='delivery' ? `${SVG.truck} <span>${TR('משלוח')} — ${o.address||TR('כתובת לא ידועה')}</span>` : `${SVG.home} <span>${TR('איסוף עצמי')}</span>`}
           </div>
           ${o.courier_notes ? `<div style="display:flex;align-items:baseline;gap:6px;color:var(--text-muted);font-size:.78rem;padding:6px 10px;background:var(--white);border:1px solid var(--border);border-radius:8px;margin-top:4px">${SVG.edit} ${o.courier_notes}</div>` : ''}
-          ${o.notes ? `<div style="color:var(--text-muted);font-size:.78rem;margin-top:2px">הערות: ${o.notes}</div>` : ''}
+          ${o.notes ? `<div style="color:var(--text-muted);font-size:.78rem;margin-top:2px">${TR('הערות')}: ${o.notes}</div>` : ''}
         </div>
 
-        <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">סטטוס</div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">${TR('סטטוס')}</div>
         <select onchange="updateOrderStatus('${o.id}',this.value,${o.order_number})"
           style="width:100%;padding:8px 12px;border-radius:10px;border:2px solid var(--border);font-family:inherit;font-size:.84rem;cursor:pointer">
           ${statusOpts}
@@ -464,28 +469,28 @@ function renderOrderRow(o) {
 
       <!-- Right: items + totals + actions -->
       <div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">פריטים</div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">${TR('פריטים')}</div>
         <div style="margin-bottom:10px">${itemsHtml}</div>
         <div style="font-size:.8rem;display:flex;flex-direction:column;gap:4px;padding:10px;background:var(--bg);border-radius:10px;margin-bottom:14px">
-          ${delivery ? `<div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>משלוח</span><span>₪${delivery.toFixed(0)}</span></div>` : ''}
-          <div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>מע"מ 18%</span><span>₪${vat.toFixed(2)}</span></div>
+          ${delivery ? `<div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>${TR('משלוח')}</span><span>₪${delivery.toFixed(0)}</span></div>` : ''}
+          <div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>${TR('מע"מ 18%')}</span><span>₪${vat.toFixed(2)}</span></div>
           <div style="display:flex;justify-content:space-between;font-weight:800;font-size:.92rem;border-top:1.5px solid var(--border);padding-top:6px;margin-top:4px">
-            <span>סה"כ</span><span>₪${total.toFixed(2)}</span>
+            <span>${TR('סה"כ')}</span><span>₪${total.toFixed(2)}</span>
           </div>
           <div style="display:flex;justify-content:space-between;color:var(--text-muted);font-size:.75rem">
-            <span>${o.payment_method==='cash'?'מזומן':o.payment_method==='bit'?'Bit':'אשראי'}</span>
-            <span class="badge ${o.payment_status==='paid'?'badge-paid':o.payment_method==='bit'?'badge-bit-pending':'badge-pending-pay'}">${o.payment_status==='paid'?'שולם':o.payment_method==='bit'?'ממתין לBit':'ממתין'}</span>
+            <span>${o.payment_method==='cash'?TR('מזומן'):o.payment_method==='bit'?'Bit':TR('אשראי')}</span>
+            <span class="badge ${o.payment_status==='paid'?'badge-paid':o.payment_method==='bit'?'badge-bit-pending':'badge-pending-pay'}">${o.payment_status==='paid'?TR('שולם'):o.payment_method==='bit'?TR('ממתין לBit'):TR('ממתין')}</span>
           </div>
           ${o.payment_method==='bit' && o.payment_status!=='paid' && !isCancelled ? `
           <button onclick="event.stopPropagation();confirmBitPayment('${o.id}')"
             style="display:flex;align-items:center;justify-content:center;gap:6px;width:100%;background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:8px 14px;margin-top:8px;font-size:.8rem;font-weight:700;color:#16a34a;cursor:pointer;font-family:inherit">
-            ${SVG.check} אשר קבלת תשלום Bit
+            ${SVG.check} ${TR('אשר קבלת תשלום Bit')}
           </button>` : ''}
           ${o.refund_status==='manual'?`
           <a href="https://secure.cardcom.solutions" target="_blank" onclick="event.stopPropagation()"
             style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:10px;padding:9px 13px;margin-top:8px;font-size:.78rem;font-weight:700;color:#e0004d;text-decoration:none">
-            <span style="display:inline-flex;align-items:center;gap:5px">${SVG.creditCard} נדרש זיכוי ידני בכרטקום</span>
-            <span style="font-size:.72rem;opacity:.8">פתח ↗</span>
+            <span style="display:inline-flex;align-items:center;gap:5px">${SVG.creditCard} ${TR('נדרש זיכוי ידני בכרטקום')}</span>
+            <span style="font-size:.72rem;opacity:.8">${TR('פתח')} ↗</span>
           </a>`:''}
         </div>
         ${actions}
@@ -502,17 +507,17 @@ function renderOrderRow(o) {
         <div style="font-weight:700;font-size:.88rem">${o.customer_name||'—'}</div>
         <div style="font-size:.72rem;color:var(--text-muted)">${formatDate(o.created_at)}</div>
       </div>`;
-  const cellAddress  = `<div style="font-size:.8rem;color:var(--text-muted)">${(o.address||'איסוף עצמי').slice(0,28)}</div>`;
+  const cellAddress  = `<div style="font-size:.8rem;color:var(--text-muted)">${(o.address||TR('איסוף עצמי')).slice(0,28)}</div>`;
   const cellMethod   = `<span class="badge ${o.delivery_method==='delivery'?'badge-delivery':'badge-done'}" style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap">
-        ${o.delivery_method==='delivery'?`${SVG.truck} משלוח`:`${SVG.home} איסוף`}
+        ${o.delivery_method==='delivery'?`${SVG.truck} ${TR('משלוח')}`:`${SVG.home} ${TR('איסוף')}`}
       </span>`;
   const cellPayment  = `<span class="badge ${o.payment_status==='paid'?'badge-paid':o.payment_method==='bit'?'badge-bit-pending':'badge-pending-pay'}" style="display:inline-flex;align-items:center;gap:3px">
-        ${o.payment_status==='paid'?`${SVG.check} שולם`:o.payment_method==='bit'?`${SVG.phone} Bit`:`${SVG.clock} ממתין`}
+        ${o.payment_status==='paid'?`${SVG.check} ${TR('שולם')}`:o.payment_method==='bit'?`${SVG.phone} Bit`:`${SVG.clock} ${TR('ממתין')}`}
       </span>`;
   const cellPrice    = `<div style="font-weight:800;font-size:.95rem">₪${(parseFloat(o.total_price)||0).toFixed(0)}</div>`;
   const cellStatus   = `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">
         ${statusBadge(o.status, o)}
-        ${o.refund_status==='manual'?`<span style="background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:999px;padding:2px 8px;font-size:.66rem;font-weight:700;color:#e0004d;white-space:nowrap;display:inline-flex;align-items:center;gap:3px">${SVG.creditCard} זיכוי ידני</span>`:''}
+        ${o.refund_status==='manual'?`<span style="background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:999px;padding:2px 8px;font-size:.66rem;font-weight:700;color:#e0004d;white-space:nowrap;display:inline-flex;align-items:center;gap:3px">${SVG.creditCard} ${TR('זיכוי ידני')}</span>`:''}
       </div>`;
   const cellChevron  = `<div style="display:flex;align-items:center;justify-content:flex-end">${chevron}</div>`;
 
@@ -549,10 +554,10 @@ function renderOrdersTable(orders) {
       document.getElementById('dateToFilter')?.value;
     container.innerHTML = `<div class="empty-state">
       <div class="empty-state-icon">${hasFilters ? SVG.search : SVG.clipboard}</div>
-      <div class="empty-state-title">${hasFilters ? 'אין הזמנות תואמות' : 'אין הזמנות עדיין'}</div>
+      <div class="empty-state-title">${hasFilters ? TR('אין הזמנות תואמות') : TR('אין הזמנות עדיין')}</div>
       <div class="empty-state-sub">${hasFilters
-        ? `<button onclick="clearOrderFilters()" style="background:none;border:none;cursor:pointer;color:var(--primary);font-weight:700;font-size:.84rem;padding:0;text-decoration:underline;font-family:inherit">נקה פילטרים</button>`
-        : 'הזמנות יופיעו כאן ברגע שלקוח יזמין'}</div>
+        ? `<button onclick="clearOrderFilters()" style="background:none;border:none;cursor:pointer;color:var(--primary);font-weight:700;font-size:.84rem;padding:0;text-decoration:underline;font-family:inherit">${TR('נקה פילטרים')}</button>`
+        : TR('הזמנות יופיעו כאן ברגע שלקוח יזמין')}</div>
     </div>`;
     return;
   }
@@ -570,7 +575,7 @@ async function updateOrderStatus(orderId, status, orderNumber) {
     renderStatusSummaryCards(currentOrders);
     filterOrders();
   } catch (err) {
-    alert('שגיאה: ' + err.message);
+    alert(TR('שגיאה') + ': ' + err.message);
     loadOrders();
   }
 }
@@ -594,7 +599,7 @@ function mkChart(id, config) {
       empty = document.createElement('div');
       empty.className = 'chart-empty';
       empty.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:140px;color:var(--text-muted);font-size:.82rem;font-weight:600';
-      empty.innerHTML = `${S('<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 16h8"/><path d="M7 11h12"/><path d="M7 6h3"/>', 26)}<span>אין עדיין נתונים לתקופה זו</span>`;
+      empty.innerHTML = `${S('<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 16h8"/><path d="M7 11h12"/><path d="M7 6h3"/>', 26)}<span>${TR('אין עדיין נתונים לתקופה זו')}</span>`;
       canvas.parentElement.appendChild(empty);
     }
     empty.style.display = 'flex';
@@ -648,13 +653,13 @@ async function loadStats(period = 'today', date) {
   const cardsEl = document.getElementById('statsCards');
   if (!cardsEl) return;
 
-  cardsEl.innerHTML = '<div style="color:var(--text-muted);font-size:.85rem;padding:8px">טוען...</div>';
+  cardsEl.innerHTML = `<div style="color:var(--text-muted);font-size:.85rem;padding:8px">${TR('טוען...')}</div>`;
 
   try {
     const params = date ? `period=${period}&date=${date}` : `period=${period}`;
     const s = await api('GET', `/stats?${params}`);
     const { textColor, mutedColor, gridColor } = chartDefaults();
-    const periodLabel = {today:'היום',week:'השבוע',month:'החודש',year:'השנה',all:'הכל'}[period] || period;
+    const periodLabel = TR({today:'היום',week:'השבוע',month:'החודש',year:'השנה',all:'הכל'}[period] || period);
 
     // ── KPI cards ──
     // v0 language: values stay neutral-dark; color is semantic only (cancellations)
@@ -664,12 +669,12 @@ async function loadStats(period = 'today', date) {
         <div class="stat-label" style="margin-top:6px">${label}</div>
       </div>`;
     cardsEl.innerHTML =
-      kpi(`הזמנות — ${periodLabel}`,  s.order_count) +
-      kpi('הכנסות',                   `₪${(s.revenue||0).toFixed(0)}`) +
-      kpi('ממוצע להזמנה',             s.order_count ? `₪${((s.revenue||0)/s.order_count).toFixed(0)}` : '—') +
-      kpi('זמן מסירה ממוצע',          s.avg_delivery_minutes != null ? s.avg_delivery_minutes+'′' : '—') +
-      kpi('ביטולים',                  s.cancelled_count || 0, (s.cancelled_count||0) > 0 ? C_RED : 'var(--text)') +
-      kpi('יחס המרה',                 s.conversion_rate != null ? s.conversion_rate+'%' : '—');
+      kpi(`${TR('הזמנות')} — ${periodLabel}`,  s.order_count) +
+      kpi(TR('הכנסות'),                   `₪${(s.revenue||0).toFixed(0)}`) +
+      kpi(TR('ממוצע להזמנה'),             s.order_count ? `₪${((s.revenue||0)/s.order_count).toFixed(0)}` : '—') +
+      kpi(TR('זמן מסירה ממוצע'),          s.avg_delivery_minutes != null ? s.avg_delivery_minutes+'′' : '—') +
+      kpi(TR('ביטולים'),                  s.cancelled_count || 0, (s.cancelled_count||0) > 0 ? C_RED : 'var(--text)') +
+      kpi(TR('יחס המרה'),                 s.conversion_rate != null ? s.conversion_rate+'%' : '—');
 
     // ── 1. Orders per day — line chart ──
     const byDay = s.orders_by_day || {};
@@ -679,7 +684,7 @@ async function loadStats(period = 'today', date) {
       data: {
         labels:   days.map(d => d.slice(5)),
         datasets: [{
-          label: 'הזמנות',
+          label: TR('הזמנות'),
           data:  days.map(d => byDay[d].count),
           backgroundColor: 'rgba(94,23,235,.55)',
           borderRadius: 6,
@@ -689,7 +694,7 @@ async function loadStats(period = 'today', date) {
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false }, tooltip: { rtl: true, callbacks: {
-          label: ctx => ` ${ctx.parsed.y} הזמנות`
+          label: ctx => ` ${ctx.parsed.y} ${TR('הזמנות')}`
         }}},
         scales: {
           x: { ticks: { color: mutedColor, font: { family: C_FONT, size: 11 } }, grid: { display: false } },
@@ -704,7 +709,7 @@ async function loadStats(period = 'today', date) {
       data: {
         labels:   days.map(d => d.slice(5)),
         datasets: [{
-          label: 'הכנסות ₪',
+          label: TR('הכנסות') + ' ₪',
           data:  days.map(d => byDay[d].revenue || 0),
           borderColor: C_GREEN,
           backgroundColor: 'rgba(34,197,94,.12)',
@@ -734,7 +739,7 @@ async function loadStats(period = 'today', date) {
       data: {
         labels: hourly.map((_, i) => i + ':00'),
         datasets: [{
-          label: 'הזמנות',
+          label: TR('הזמנות'),
           data: hourly,
           backgroundColor: hourly.map(v => {
             const mx = Math.max(...hourly, 1);
@@ -747,7 +752,7 @@ async function loadStats(period = 'today', date) {
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false }, tooltip: { rtl: true, callbacks: {
-          label: ctx => ` ${ctx.parsed.y} הזמנות`
+          label: ctx => ` ${ctx.parsed.y} ${TR('הזמנות')}`
         }}},
         scales: {
           x: { ticks: { color: mutedColor, font: { family: C_FONT, size: 9 }, maxRotation: 0 }, grid: { display: false } },
@@ -758,7 +763,7 @@ async function loadStats(period = 'today', date) {
 
     // ── 4. Delivery pie ──
     const ds = s.delivery_split || {};
-    const delivLabels  = ['משלוח', 'איסוף'];
+    const delivLabels  = [TR('משלוח'), TR('איסוף')];
     const delivColors  = [C_VIOLET, C_BLUE];
     const delivData    = [ds.delivery || 0, ds.pickup || 0];
     mkChart('chartDelivery', {
@@ -773,7 +778,7 @@ async function loadStats(period = 'today', date) {
 
     // ── 5. Payment pie ──
     const ps = s.payment_split || {};
-    const payLabels = ['מזומן', 'אשראי'];
+    const payLabels = [TR('מזומן'), TR('אשראי')];
     const payColors = [C_AMBER, C_GREEN];
     const payData   = [ps.cash || 0, ps.credit || 0];
     mkChart('chartPayment', {
@@ -789,9 +794,9 @@ async function loadStats(period = 'today', date) {
     // ── 6. Status donut ──
     const sb = s.status_breakdown || {};
     const statusMeta = [
-      ['new','חדשה', C_VIOLET], ['preparing','בהכנה', C_AMBER],
-      ['out_for_delivery','בדרך', C_BLUE], ['delivered','נמסרה', C_GREEN],
-      ['done','הסתיימה','#9ca3af'], ['cancelled','בוטלה', C_RED],
+      ['new',TR('חדשה'), C_VIOLET], ['preparing',TR('בהכנה'), C_AMBER],
+      ['out_for_delivery',TR('בדרך'), C_BLUE], ['delivered',TR('נמסרה'), C_GREEN],
+      ['done',TR('הסתיימה'),'#9ca3af'], ['cancelled',TR('בוטלה'), C_RED],
     ].filter(([k]) => sb[k]);
     const stLabels = statusMeta.map(([,l]) => l);
     const stColors = statusMeta.map(([,,c]) => c);
@@ -813,8 +818,8 @@ async function loadStats(period = 'today', date) {
       data: {
         labels: tops.map(p => p.name),
         datasets: [
-          { label: 'כמות', data: tops.map(p => p.count), backgroundColor: 'rgba(94,23,235,.8)', borderRadius: 6, yAxisID: 'y' },
-          { label: 'הכנסה ₪', data: tops.map(p => p.revenue || 0), backgroundColor: 'rgba(34,197,94,.7)', borderRadius: 6, yAxisID: 'y2' },
+          { label: TR('כמות'), data: tops.map(p => p.count), backgroundColor: 'rgba(94,23,235,.8)', borderRadius: 6, yAxisID: 'y' },
+          { label: TR('הכנסה') + ' ₪', data: tops.map(p => p.revenue || 0), backgroundColor: 'rgba(34,197,94,.7)', borderRadius: 6, yAxisID: 'y2' },
         ],
       },
       options: {
@@ -833,7 +838,7 @@ async function loadStats(period = 'today', date) {
     });
 
   } catch (err) {
-    if (cardsEl) cardsEl.innerHTML = `<div style="color:red;font-size:.85rem">שגיאה: ${err.message}</div>`;
+    if (cardsEl) cardsEl.innerHTML = `<div style="color:red;font-size:.85rem">${TR('שגיאה')}: ${err.message}</div>`;
   }
 }
 
@@ -854,13 +859,13 @@ function openDisputeModal(orderId) {
   const list  = document.getElementById('disputeItemList');
 
   list.innerHTML = items.map((it, i) => {
-    const name     = it.name || it.name_he || 'פריט';
+    const name     = it.name || it.name_he || TR('פריט');
     const qty      = it.quantity || it.qty || 1;
     const price    = parseFloat(it.price) || 0;
     const toppings = (it.toppings || []).filter(t => (t.name || t.name_he));
 
     const toppingRows = toppings.map((t, ti) => {
-      const tName  = t.name || t.name_he || 'תוספת';
+      const tName  = t.name || t.name_he || TR('תוספת');
       const tPrice = parseFloat(t.price) || 0;
       return `
         <label style="display:flex;align-items:center;gap:8px;padding:5px 10px 5px 28px;cursor:pointer;font-size:.8rem;color:var(--text-muted)">
@@ -882,7 +887,7 @@ function openDisputeModal(orderId) {
         </label>
         ${toppingRows}
       </div>`;
-  }).join('') || '<div style="color:var(--text-muted);font-size:.84rem;padding:8px">אין פריטים בהזמנה</div>';
+  }).join('') || `<div style="color:var(--text-muted);font-size:.84rem;padding:8px">${TR('אין פריטים בהזמנה')}</div>`;
 
   updateDisputePreview();
   openModal('disputeModal');
@@ -931,7 +936,7 @@ function updateDisputePreview() {
   const disputes = getCheckedDisputes();
 
   if (!o || !disputes.length) {
-    el.textContent = 'יש לסמן לפחות פריט אחד כדי לראות תצוגה מקדימה.';
+    el.textContent = TR('יש לסמן לפחות פריט אחד כדי לראות תצוגה מקדימה.');
     return;
   }
 
@@ -960,10 +965,10 @@ function updateDisputePreview() {
 
 async function confirmDispute() {
   const disputes = getCheckedDisputes();
-  if (!disputes.length) { alert('יש לסמן לפחות פריט אחד'); return; }
+  if (!disputes.length) { alert(TR('יש לסמן לפחות פריט אחד')); return; }
 
   const btn = document.getElementById('disputeConfirmBtn');
-  btn.disabled = true; btn.textContent = 'שולח...';
+  btn.disabled = true; btn.textContent = TR('שולח...');
 
   try {
     await api('POST', `/orders/${_disputeOrderId}/item-dispute`, { disputes });
@@ -971,11 +976,11 @@ async function confirmDispute() {
     const ord = currentOrders.find(x => x.id === _disputeOrderId);
     if (ord) { ord.dispute_status = 'pending'; ord.dispute_items = disputes; }
     filterOrders();
-    showToast(`הודעה נשלחה ללקוח — ${disputes.length} ${disputes.length === 1 ? 'פריט' : 'פריטים'} חסרים`);
+    showToast(`${TR('הודעה נשלחה ללקוח')} — ${disputes.length}`);
   } catch (err) {
-    alert(err.message || 'שגיאה בשליחת המחלוקת');
+    alert(err.message || TR('שגיאה בשליחת המחלוקת'));
   } finally {
-    btn.disabled = false; btn.textContent = 'שלח ללקוח';
+    btn.disabled = false; btn.textContent = TR('שלח ללקוח');
   }
 }
 
@@ -1002,13 +1007,13 @@ function buildCancelMessage() {
 async function confirmBitPayment(orderId) {
   const o = currentOrders.find(x => x.id === orderId);
   if (!o) return;
-  if (!confirm(`לאשר קבלת תשלום Bit עבור הזמנה #${o.order_number} (₪${parseFloat(o.total_price||0).toFixed(0)})?`)) return;
+  if (!confirm(`${TR('לאשר קבלת תשלום Bit עבור הזמנה')} #${o.order_number} (₪${parseFloat(o.total_price||0).toFixed(0)})?`)) return;
   try {
     await api('POST', `/orders/${orderId}/confirm-payment`);
-    showToast('תשלום אושר!');
+    showToast(TR('תשלום אושר!'));
     loadOrders();
   } catch (err) {
-    showToast(err.message || 'שגיאה באישור תשלום');
+    showToast(err.message || TR('שגיאה באישור תשלום'));
   }
 }
 
@@ -1020,9 +1025,9 @@ function openCancelRefundModal(orderId) {
 
   const isCreditPaid = o.payment_method === 'credit' && o.payment_status === 'paid';
 
-  document.getElementById('cancelRefundTitle').textContent   = `ביטול הזמנה #${o.order_number}`;
+  document.getElementById('cancelRefundTitle').textContent   = `${TR('ביטול הזמנה')} #${o.order_number}`;
   document.getElementById('cancelRefundAmount').textContent  = `₪${parseFloat(o.total_price||0).toFixed(2)}`;
-  document.getElementById('cancelRefundPayment').textContent = isCreditPaid ? 'אשראי — יינתן זיכוי' : o.payment_method === 'cash' ? 'מזומן' : o.payment_method === 'bit' ? `Bit${o.payment_status==='paid'?' — שולם':' — ממתין'}` : 'לא שולם';
+  document.getElementById('cancelRefundPayment').textContent = isCreditPaid ? TR('אשראי — יינתן זיכוי') : o.payment_method === 'cash' ? TR('מזומן') : o.payment_method === 'bit' ? `Bit${o.payment_status==='paid'?' — '+TR('שולם'):' — '+TR('ממתין')}` : TR('לא שולם');
   document.getElementById('cancelRefundPayment').style.color = isCreditPaid ? '#16a34a' : '#c07000';
   document.getElementById('cancelRefundReason').value        = '';
   document.getElementById('cancelSendToCustomer').checked    = true;
@@ -1047,8 +1052,8 @@ function updateCancelUI() {
 
   const hint = document.getElementById('cancelSendHint');
   if (hint) hint.textContent = sendToCustomer
-    ? 'ההערה תצורף להודעת הביטול ב-WhatsApp'
-    : 'ההערה תישמר פנימית בלבד — לא תישלח ללקוח';
+    ? TR('ההערה תצורף להודעת הביטול ב-WhatsApp')
+    : TR('ההערה תישמר פנימית בלבד — לא תישלח ללקוח');
 }
 
 function onPreviewEdit() {
@@ -1069,7 +1074,7 @@ async function confirmCancelRefund() {
   const customMessage  = document.getElementById('cancelPreview').value.trim();
   const btn            = document.getElementById('cancelRefundBtn');
 
-  btn.textContent = 'מבטל...';
+  btn.textContent = TR('מבטל...');
   btn.disabled    = true;
 
   try {
@@ -1082,15 +1087,15 @@ async function confirmCancelRefund() {
     closeModal('cancelRefundModal');
     loadOrders();
 
-    showToast(`הזמנה בוטלה${res.refundMessage ? ' — ' + res.refundMessage : ''}`);
+    showToast(`${TR('הזמנה בוטלה')}${res.refundMessage ? ' — ' + res.refundMessage : ''}`);
 
     if (res.refundStatus === 'manual') {
       setTimeout(() => alert(`נדרש זיכוי ידני\n\n${res.refundMessage}\n\nבצע זיכוי דרך:\nhttps://secure.cardcom.solutions`), 300);
     }
   } catch (err) {
-    alert('שגיאה: ' + err.message);
+    alert(TR('שגיאה') + ': ' + err.message);
   } finally {
-    btn.textContent = 'אשר ביטול';
+    btn.textContent = TR('אשר ביטול');
     btn.disabled    = false;
   }
 }
@@ -1255,7 +1260,7 @@ async function openOrderEdit(orderId) {
   _editOrder = order;
   _editItems = JSON.parse(JSON.stringify(order.items || []));
 
-  document.getElementById('orderEditTitle').textContent = `עריכת הזמנה #${order.order_number}`;
+  document.getElementById('orderEditTitle').textContent = `${TR('עריכת הזמנה')} #${order.order_number}`;
 
   // Parse address
   const addr = order.address || '';
@@ -1274,7 +1279,7 @@ function renderEditItems() {
   const el = document.getElementById('editItemsList');
   if (!el) return;
   if (!_editItems.length) {
-    el.innerHTML = '<div style="color:var(--text-muted);font-size:.85rem;padding:8px 0">אין פריטים</div>';
+    el.innerHTML = `<div style="color:var(--text-muted);font-size:.85rem;padding:8px 0">${TR('אין פריטים')}</div>`;
     return;
   }
   el.innerHTML = _editItems.map((item, i) => {
@@ -1283,7 +1288,7 @@ function renderEditItems() {
     return `
       <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--color-bg);border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px">
         <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:.88rem">${item.name||item.name_he||'פריט'}</div>
+          <div style="font-weight:700;font-size:.88rem">${item.name||item.name_he||TR('פריט')}</div>
           ${toppings ? `<div style="font-size:.75rem;color:var(--text-muted)">+ ${toppings}</div>` : ''}
         </div>
         <div style="font-weight:700;color:var(--text);min-width:50px;text-align:center">₪${((item.price||0)*qty).toFixed(0)}</div>
@@ -1322,9 +1327,9 @@ function updateEditSummary(order) {
 
 function openAddProductToOrder() {
   // Simple prompt for now — future: product picker modal
-  const name = prompt('שם המוצר:');
+  const name = prompt(TR('שם המוצר:'));
   if (!name) return;
-  const price = parseFloat(prompt('מחיר:') || '0');
+  const price = parseFloat(prompt(TR('מחיר:')) || '0');
   _editItems.push({ name, price, quantity: 1, toppings: [] });
   renderEditItems();
 }
@@ -1349,7 +1354,7 @@ async function saveOrderEdit() {
     });
     closeModal('orderEditModal');
     await loadOrders();
-    showToast('הזמנה עודכנה');
+    showToast(TR('הזמנה עודכנה'));
   } catch (err) { alert(err.message); }
 }
 
@@ -1362,7 +1367,7 @@ const expandedProducts   = new Set();
 
 async function loadProducts() {
   const container = document.getElementById('productsTable');
-  container.innerHTML = '<div class="p-8 text-center text-gray-400">טוען...</div>';
+  container.innerHTML = `<div class="p-8 text-center text-gray-400">${TR('טוען...')}</div>`;
   try {
     [categoriesWithProducts, allCategories] = await Promise.all([
       api('GET', '/products'),   // returns grouped by category
@@ -1388,7 +1393,7 @@ function toggleSwitch(isOn, onClickFn) {
 function renderProductsTable() {
   const container = document.getElementById('productsTable');
   if (!categoriesWithProducts.length) {
-    container.innerHTML = '<div class="p-12 text-center text-gray-400">אין קטגוריות — לחץ "+ קטגוריה"</div>';
+    container.innerHTML = `<div class="p-12 text-center text-gray-400">${TR('אין קטגוריות — לחץ "+ קטגוריה"')}</div>`;
     return;
   }
 
@@ -1404,11 +1409,11 @@ function renderProductsTable() {
             <span style="width:36px;height:36px;border-radius:var(--radius-sm);background:var(--color-bg);color:var(--text-muted);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${_catIcon(cat)}</span>
             <div>
               <span style="font-weight:700;font-size:.95rem;color:var(--text)">${cat.name_he}</span>
-              <span style="font-size:.75rem;color:var(--text-muted);margin-inline-start:8px">${_aggToppings().length} תוספות</span>
+              <span style="font-size:.75rem;color:var(--text-muted);margin-inline-start:8px">${_aggToppings().length} ${TR('תוספות')}</span>
             </div>
           </div>
           <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
-            <button onclick="openCategoryModal(${encodeProduct(cat)})" class="btn btn-ghost btn-sm">עריכה</button>
+            <button onclick="openCategoryModal(${encodeProduct(cat)})" class="btn btn-ghost btn-sm">${TR('עריכה')}</button>
           </div>
         </div>
         <div style="border-top:1px solid var(--border)">${renderGlobalToppings()}</div>
@@ -1422,14 +1427,14 @@ function renderProductsTable() {
           <span style="width:36px;height:36px;border-radius:var(--radius-sm);background:var(--color-bg);color:var(--text-muted);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${_catIcon(cat)}</span>
           <div>
             <span style="font-weight:700;font-size:.95rem;color:var(--text)">${cat.name_he}</span>
-            <span style="font-size:.75rem;color:var(--text-muted);margin-right:8px">${products.length} פריטים</span>
-            ${cat.has_toppings ? `<span style="font-size:.72rem;background:#f0f0f0;color:#666;padding:2px 10px;border-radius:50px;font-weight:600">תוספות</span>` : ''}
+            <span style="font-size:.75rem;color:var(--text-muted);margin-right:8px">${products.length} ${TR('פריטים')}</span>
+            ${cat.has_toppings ? `<span style="font-size:.72rem;background:#f0f0f0;color:#666;padding:2px 10px;border-radius:50px;font-weight:600">${TR('תוספות')}</span>` : ''}
           </div>
         </div>
         <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
-          <button onclick="openProductModal(null,'${cat.id}')" class="btn btn-primary btn-sm">+ מוצר</button>
-          <button onclick="openCategoryModal(${encodeProduct(cat)})" class="btn btn-ghost btn-sm">עריכה</button>
-          <button onclick="deleteCategory('${cat.id}','${cat.name_he}')" class="btn-danger">מחיקה</button>
+          <button onclick="openProductModal(null,'${cat.id}')" class="btn btn-primary btn-sm">${TR('+ מוצר')}</button>
+          <button onclick="openCategoryModal(${encodeProduct(cat)})" class="btn btn-ghost btn-sm">${TR('עריכה')}</button>
+          <button onclick="deleteCategory('${cat.id}','${cat.name_he}')" class="btn-danger">${TR('מחיקה')}</button>
         </div>
       </div>`;
 
@@ -1437,7 +1442,7 @@ function renderProductsTable() {
 
     const productRows = products.length
       ? products.map((p) => renderProductRow(p, cat)).join('')
-      : `<div style="padding:32px;text-align:center;color:var(--text-muted);font-size:.88rem">אין מוצרים — לחץ "+ מוצר"</div>`;
+      : `<div style="padding:32px;text-align:center;color:var(--text-muted);font-size:.88rem">${TR('אין מוצרים — לחץ "+ מוצר"')}</div>`;
 
     return `<div style="margin-bottom:12px;border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border);box-shadow:var(--shadow-sm);background:var(--white)">${catHeader}${productRows}</div>`;
   }).join('');
@@ -1453,7 +1458,7 @@ function renderProductRow(p, cat) {
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-weight:700;font-size:.92rem">${p.name_he}</span>
-          ${!p.is_available ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:.68rem;background:#fff1f2;color:#be123c;padding:1px 8px;border-radius:var(--radius-sm);font-weight:600;border:1px solid #fecdd3"><span style="width:6px;height:6px;border-radius:50%;background:#e11d48"></span>אזל</span>` : ''}
+          ${!p.is_available ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:.68rem;background:#fff1f2;color:#be123c;padding:1px 8px;border-radius:var(--radius-sm);font-weight:600;border:1px solid #fecdd3"><span style="width:6px;height:6px;border-radius:50%;background:#e11d48"></span>${TR('אזל')}</span>` : ''}
         </div>
         ${p.name_en ? `<div style="font-size:.75rem;color:var(--text-muted)" dir="ltr">${p.name_en}</div>` : ''}
         ${p.description ? `<div style="font-size:.73rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;margin-top:2px">${p.description}</div>` : ''}
@@ -1461,8 +1466,8 @@ function renderProductRow(p, cat) {
       <div style="font-weight:800;font-size:.95rem;color:var(--text);min-width:60px">₪${parseFloat(p.price).toFixed(0)}</div>
       ${toggleSwitch(p.is_available, `toggleProduct('${p.id}',${!p.is_available})`)}
       <div style="display:flex;gap:6px;margin-inline-start:4px">
-        <button onclick="openProductModal(${pData},'${p.category_id||''}')" class="btn btn-ghost btn-sm">עריכה</button>
-        <button onclick="deleteProduct('${p.id}','${p.name_he}')" class="btn-danger">מחק</button>
+        <button onclick="openProductModal(${pData},'${p.category_id||''}')" class="btn btn-ghost btn-sm">${TR('עריכה')}</button>
+        <button onclick="deleteProduct('${p.id}','${p.name_he}')" class="btn-danger">${TR('מחק')}</button>
       </div>
     </div>`;
 }
@@ -1492,7 +1497,7 @@ function renderGlobalToppings() {
 
   const chips = tops.map((a) => `
     <button onclick="toggleToppingByName('${a.name_he.replace(/'/g, "\\'")}',${!a.is_available})"
-      title="${a.is_available ? 'זמין — לחץ לסימון כאזל' : 'אזל — לחץ להחזרה'}"
+      title="${a.is_available ? TR('זמין — לחץ לסימון כאזל') : TR('אזל — לחץ להחזרה')}"
       style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--radius-sm);border:1px solid ${a.is_available ? '#bbf7d0' : '#fecdd3'};background:${a.is_available ? '#f0fdf4' : '#fff1f2'};cursor:pointer;font-family:inherit;font-size:.76rem;font-weight:600;color:${a.is_available ? '#15803d' : '#be123c'};transition:all .15s">
       <span style="width:6px;height:6px;border-radius:50%;background:${a.is_available ? '#22c55e' : '#e11d48'};flex-shrink:0"></span>
       ${a.name_he}
@@ -1502,7 +1507,7 @@ function renderGlobalToppings() {
   const editor = editorOpen ? `
     <div style="margin-top:10px;border-radius:var(--radius-md);border:1px solid var(--border);overflow:hidden;background:var(--white)">
       <div style="display:grid;grid-template-columns:1fr 110px 90px;padding:8px 14px;background:var(--color-bg);border-bottom:1px solid var(--border);font-size:.68rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;gap:12px">
-        <span>תוספת</span><span>מחיר (₪)</span><span></span>
+        <span>${TR('תוספת')}</span><span>${TR('מחיר (₪)')}</span><span></span>
       </div>
       ${tops.map((a) => `
         <div style="display:grid;grid-template-columns:1fr 110px 90px;padding:9px 14px;border-top:1px solid var(--border);align-items:center;gap:12px;font-size:.83rem">
@@ -1513,20 +1518,20 @@ function renderGlobalToppings() {
           <button onclick="deleteToppingByName('${a.name_he.replace(/'/g, "\\'")}')" class="btn-danger" style="font-size:.72rem;padding:3px 7px">מחק</button>
         </div>`).join('')}
       <div style="display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--border);align-items:center">
-        <input id="newTopName-global" type="text" placeholder="שם תוספת" style="flex:1;padding:6px 10px;font-size:.8rem">
-        <input id="newTopPrice-global" type="number" placeholder="מחיר" min="0" dir="ltr" style="width:90px;padding:6px 10px;font-size:.8rem">
-        <button onclick="addToppingGlobal()" class="btn btn-outline btn-sm">+ הוסף</button>
+        <input id="newTopName-global" type="text" placeholder="${TR('שם תוספת')}" style="flex:1;padding:6px 10px;font-size:.8rem">
+        <input id="newTopPrice-global" type="number" placeholder="${TR('מחיר')}" min="0" dir="ltr" style="width:90px;padding:6px 10px;font-size:.8rem">
+        <button onclick="addToppingGlobal()" class="btn btn-outline btn-sm">${TR('+ הוסף')}</button>
       </div>
     </div>` : '';
 
   return `
     <div style="padding:14px 20px">
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-        <span style="font-size:.7rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-inline-end:4px">זמינות לכל המנות — לחיצה משביתה/מחזירה למלאי</span>
+        <span style="font-size:.7rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-inline-end:4px">${TR('זמינות לכל המנות — לחיצה משביתה/מחזירה למלאי')}</span>
         ${chips}
         <button onclick="toggleToppingEditor('global')"
           style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:var(--radius-sm);border:1px dashed var(--color-border-strong);background:none;cursor:pointer;font-family:inherit;font-size:.76rem;color:var(--text-muted)">
-          ${editorOpen ? '▴ סגור' : `${SVG.edit} ניהול`}
+          ${editorOpen ? '▴ ' + TR('סגור') : `${SVG.edit} ${TR('ניהול')}`}
         </button>
       </div>
       ${editor}
@@ -1547,7 +1552,7 @@ async function toggleToppingByName(name, isAvailable) {
         for (const a of (p.additions || []))
           if (a.name_he === name) a.is_available = isAvailable;
     renderProductsTable();
-    showToast(`${name} — ${isAvailable ? 'חזרה למלאי' : 'סומנה כאזלה'}`);
+    showToast(`${name} — ${isAvailable ? TR('חזרה למלאי') : TR('סומנה כאזלה')}`);
   } catch (err) { alert(err.message); }
 }
 
@@ -1559,29 +1564,29 @@ async function updateToppingPrice(name, price) {
         for (const a of (p.additions || []))
           if (a.name_he === name) a.price = parseFloat(price) || 0;
     renderProductsTable();
-    showToast('המחיר עודכן בכל המוצרים');
+    showToast(TR('המחיר עודכן בכל המוצרים'));
   } catch (err) { alert(err.message); }
 }
 
 async function deleteToppingByName(name) {
-  if (!confirm(`למחוק את התוספת "${name}" מכל המוצרים?`)) return;
+  if (!confirm(`${TR('למחוק את התוספת')} "${name}"?`)) return;
   try {
     await api('DELETE', `/additions/by-name?name_he=${encodeURIComponent(name)}`);
     await loadProducts();
-    showToast(`${name} הוסרה`);
+    showToast(`${name} ${TR('הוסרה')}`);
   } catch (err) { alert(err.message); }
 }
 
 async function addToppingGlobal() {
   const name  = document.getElementById('newTopName-global')?.value.trim();
   const price = document.getElementById('newTopPrice-global')?.value;
-  if (!name || price === '') { alert('שם ומחיר נדרשים'); return; }
+  if (!name || price === '') { alert(TR('שם ומחיר נדרשים')); return; }
   try {
     await api('POST', '/additions/by-name', { name_he: name, price: parseFloat(price) || 0 });
     await loadProducts();
     expandedToppingEditors.add('global');
     renderProductsTable();
-    showToast(`${name} נוספה לכל המנות`);
+    showToast(`${name} ${TR('נוספה לכל המנות')}`);
   } catch (err) { alert(err.message); }
 }
 
@@ -1637,7 +1642,7 @@ async function toggleAddition(productId, addId, available) {
 
 function openCategoryModal(b64OrNull) {
   const c = b64OrNull ? decodeData(b64OrNull) : null;
-  document.getElementById('categoryModalTitle').textContent = c?.id ? 'עריכת קטגוריה' : 'קטגוריה חדשה';
+  document.getElementById('categoryModalTitle').textContent = c?.id ? TR('עריכת קטגוריה') : TR('קטגוריה חדשה');
   document.getElementById('categoryId').value           = c?.id           || '';
   document.getElementById('categoryEmoji').value        = c?.emoji        || '';
   document.getElementById('categoryNameHe').value       = c?.name_he      || '';
@@ -1664,7 +1669,7 @@ document.getElementById('categoryForm').addEventListener('submit', async (e) => 
 });
 
 async function deleteCategory(id, name) {
-  if (!confirm(`למחוק את "${name}"?`)) return;
+  if (!confirm(`${TR('למחוק את')} "${name}"?`)) return;
   try {
     await api('DELETE', `/categories/${id}`);
     loadProducts();
@@ -1677,7 +1682,7 @@ let _productCategoryId = null;
 function openProductModal(b64OrNull, categoryId) {
   const p = b64OrNull ? decodeData(b64OrNull) : null;
   _productCategoryId = categoryId || p?.category_id || null;
-  document.getElementById('productModalTitle').textContent = p?.id ? 'עריכת מוצר' : 'מוצר חדש';
+  document.getElementById('productModalTitle').textContent = p?.id ? TR('עריכת מוצר') : TR('מוצר חדש');
   document.getElementById('productId').value          = p?.id          || '';
   document.getElementById('productNameHe').value      = p?.name_he     || '';
   document.getElementById('productNameEn').value      = p?.name_en     || '';
@@ -1703,7 +1708,7 @@ async function uploadProductImage(input) {
   if (!input.files || !input.files[0]) return;
   const file = input.files[0];
   const btn  = document.getElementById('productUploadBtn');
-  btn.textContent = 'מעלה...';
+  btn.textContent = TR('מעלה...');
   btn.disabled = true;
   try {
     const formData = new FormData();
@@ -1717,11 +1722,11 @@ async function uploadProductImage(input) {
     if (!res.ok) throw new Error(data.error || 'שגיאה');
     document.getElementById('productImageUrl').value = data.url;
     previewProductImg(data.url);
-    showToast('תמונה הועלתה');
+    showToast(TR('תמונה הועלתה'));
   } catch (err) {
-    alert('שגיאה בהעלאה: ' + err.message);
+    alert(TR('שגיאה בהעלאה') + ': ' + err.message);
   } finally {
-    btn.textContent = 'העלאת קובץ';
+    btn.textContent = TR('העלאת קובץ');
     btn.disabled = false;
   }
 }
@@ -1746,7 +1751,7 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
 });
 
 async function deleteProduct(id, name) {
-  if (!confirm(`למחוק את "${name}"?`)) return;
+  if (!confirm(`${TR('למחוק את')} "${name}"?`)) return;
   try {
     await api('DELETE', `/products/${id}`);
     expandedProducts.delete(id);
@@ -1761,7 +1766,7 @@ let _additionProductId = null;
 function openAdditionModal(productId, b64OrNull) {
   _additionProductId = productId;
   const a = b64OrNull ? decodeData(b64OrNull) : null;
-  document.getElementById('additionModalTitle').textContent = a?.id ? 'עריכת תוספת' : 'תוספת חדשה';
+  document.getElementById('additionModalTitle').textContent = a?.id ? TR('עריכת תוספת') : TR('תוספת חדשה');
   document.getElementById('additionId').value       = a?.id        || '';
   document.getElementById('additionNameHe').value   = a?.name_he   || '';
   document.getElementById('additionNameEn').value   = a?.name_en   || '';
@@ -1786,7 +1791,7 @@ async function uploadAdditionImage(input) {
   if (!input.files || !input.files[0]) return;
   const file = input.files[0];
   const btn  = document.getElementById('additionUploadBtn');
-  btn.textContent = 'מעלה...';
+  btn.textContent = TR('מעלה...');
   btn.disabled = true;
   try {
     const formData = new FormData();
@@ -1800,11 +1805,11 @@ async function uploadAdditionImage(input) {
     if (!res.ok) throw new Error(data.error || 'שגיאה');
     document.getElementById('additionImageUrl').value = data.url;
     previewAdditionImg(data.url);
-    showToast('תמונה הועלתה');
+    showToast(TR('תמונה הועלתה'));
   } catch (err) {
-    alert('שגיאה בהעלאה: ' + err.message);
+    alert(TR('שגיאה בהעלאה') + ': ' + err.message);
   } finally {
-    btn.textContent = 'העלאת קובץ';
+    btn.textContent = TR('העלאת קובץ');
     btn.disabled = false;
   }
 }
@@ -1829,7 +1834,7 @@ document.getElementById('additionForm').addEventListener('submit', async (e) => 
 });
 
 async function deleteAddition(productId, addId, name) {
-  if (!confirm(`למחוק את "${name}"?`)) return;
+  if (!confirm(`${TR('למחוק את')} "${name}"?`)) return;
   try {
     await api('DELETE', `/products/${productId}/additions/${addId}`);
     loadProducts();
@@ -1843,7 +1848,7 @@ let selectedPhones = new Set();
 
 async function loadCustomers() {
   const container = document.getElementById('customersTable');
-  container.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-muted)">טוען...</div>';
+  container.innerHTML = `<div style="padding:32px;text-align:center;color:var(--text-muted)">${TR('טוען...')}</div>`;
   selectedPhones.clear();
   try {
     // Always load all customers — filtering is client-side
@@ -1868,19 +1873,19 @@ function renderCustomerStats(customers) {
   statsEl.innerHTML = `
     <div class="stat-card">
       <div class="stat-value">${total}</div>
-      <div class="stat-label">סה"כ לקוחות</div>
+      <div class="stat-label">${TR('סה"כ לקוחות')}</div>
     </div>
     <div class="stat-card">
       <div class="stat-value">${returning}</div>
-      <div class="stat-label">לקוחות חוזרים <span style="font-size:.75rem;background:var(--color-info-bg);color:var(--color-info);padding:1px 8px;border-radius:50px">${retPct}%</span></div>
+      <div class="stat-label">${TR('לקוחות חוזרים')} <span style="font-size:.75rem;background:var(--color-info-bg);color:var(--color-info);padding:1px 8px;border-radius:50px">${retPct}%</span></div>
     </div>
     <div class="stat-card">
       <div class="stat-value">${totalOrders}</div>
-      <div class="stat-label">סה"כ הזמנות</div>
+      <div class="stat-label">${TR('סה"כ הזמנות')}</div>
     </div>
     <div class="stat-card green">
       <div class="stat-value">₪${Math.round(totalRev).toLocaleString()}</div>
-      <div class="stat-label">סה"כ הכנסות</div>
+      <div class="stat-label">${TR('סה"כ הכנסות')}</div>
     </div>`;
 }
 
@@ -1901,7 +1906,7 @@ function filterCustomers() {
 function renderCustomersTable(customers) {
   const container = document.getElementById('customersTable');
   if (!customers.length) {
-    container.innerHTML = '<div class="empty-state">אין לקוחות תואמים לחיפוש</div>';
+    container.innerHTML = `<div class="empty-state">${TR('אין לקוחות תואמים לחיפוש')}</div>`;
     return;
   }
   container.innerHTML = `
@@ -1910,10 +1915,10 @@ function renderCustomersTable(customers) {
       <thead>
         <tr>
           <th><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
-          <th>שם לקוח</th>
-          <th>טלפון</th>
-          <th>הזמנות</th>
-          <th>סה"כ רכישות</th>
+          <th>${TR('שם לקוח')}</th>
+          <th>${TR('טלפון')}</th>
+          <th>${TR('הזמנות')}</th>
+          <th>${TR('סה"כ רכישות')}</th>
         </tr>
       </thead>
       <tbody>
@@ -1923,7 +1928,7 @@ function renderCustomersTable(customers) {
             <td><input type="checkbox" value="${c.phone}" onchange="toggleCustomer('${c.phone}',this.checked)" class="customer-checkbox"></td>
             <td>
               <div style="font-weight:700">${c.name||'—'}</div>
-              ${isReturning ? '<span style="font-size:.68rem;background:var(--color-info-bg);color:var(--color-info);padding:1px 8px;border-radius:50px;font-weight:700">חוזר</span>' : ''}
+              ${isReturning ? `<span style="font-size:.68rem;background:var(--color-info-bg);color:var(--color-info);padding:1px 8px;border-radius:50px;font-weight:700">${TR('חוזר')}</span>` : ''}
             </td>
             <td style="color:var(--text-muted);font-size:.82rem" dir="ltr">${c.customer_phone||c.phone||'—'}</td>
             <td style="text-align:center;font-weight:800;color:var(--text)">${c.order_count}</td>
@@ -1947,21 +1952,21 @@ function toggleCustomer(phone, selected) {
 }
 
 function openBroadcastModal() {
-  if (selectedPhones.size === 0) { alert('יש לבחור לקוחות לפני השליחה'); return; }
-  document.getElementById('broadcastRecipients').textContent = `נמענים נבחרו: ${selectedPhones.size}`;
+  if (selectedPhones.size === 0) { alert(TR('יש לבחור לקוחות לפני השליחה')); return; }
+  document.getElementById('broadcastRecipients').textContent = `${TR('נמענים נבחרו')}: ${selectedPhones.size}`;
   document.getElementById('broadcastMessage').value = '';
   openModal('broadcastModal');
 }
 
 async function sendBroadcast() {
   const message = document.getElementById('broadcastMessage').value.trim();
-  if (!message) { alert('יש לכתוב הודעה'); return; }
+  if (!message) { alert(TR('יש לכתוב הודעה')); return; }
   try {
     const result = await api('POST', '/customers/broadcast', {
       phones:  [...selectedPhones],
       message,
     });
-    alert(`נשלח: ${result.sent} | נכשל: ${result.failed}`);
+    alert(`${TR('נשלח')}: ${result.sent} | ${TR('נכשל')}: ${result.failed}`);
     closeModal('broadcastModal');
   } catch (err) { alert(err.message); }
 }
@@ -1975,7 +1980,7 @@ let _deliveryZones   = [];
 
 async function loadSettings() {
   const container = document.getElementById('settingsForm');
-  container.innerHTML = '<div style="color:var(--text-muted);padding:20px">טוען...</div>';
+  container.innerHTML = `<div style="color:var(--text-muted);padding:20px">${TR('טוען...')}</div>`;
   try {
     _currentSettings = await api('GET', '/settings');
     _deliveryZones   = Array.isArray(_currentSettings.delivery_zones) ? _currentSettings.delivery_zones : [];
@@ -1993,7 +1998,7 @@ const DAY_ORDER  = ['sun','mon','tue','wed','thu','fri','sat'];
 
 function sField(id, label, value, type='text', placeholder='') {
   return `<div style="margin-bottom:14px">
-    <label style="display:block;font-size:.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">${label}</label>
+    <label style="display:block;font-size:.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">${TR(label)}</label>
     <input type="${type}" id="${id}" value="${value||''}" placeholder="${placeholder}" style="width:100%">
   </div>`;
 }
@@ -2001,8 +2006,8 @@ function sField(id, label, value, type='text', placeholder='') {
 function sToggle(key, label, checked, cls='', desc='') {
   return `<div class="setting-row ${cls}">
     <div style="min-width:0">
-      <div style="font-weight:600;font-size:.9rem;color:var(--text)">${label}</div>
-      ${desc ? `<div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">${desc}</div>` : ''}
+      <div style="font-weight:600;font-size:.9rem;color:var(--text)">${TR(label)}</div>
+      ${desc ? `<div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">${TR(desc)}</div>` : ''}
     </div>
     <label class="toggle-switch">
       <input type="checkbox" class="setting-toggle" data-key="${key}" ${checked?'checked':''}>
@@ -2012,6 +2017,7 @@ function sToggle(key, label, checked, cls='', desc='') {
 }
 
 function saveBtn(fn, label='שמור') {
+  label = TR(label);
   return `<div style="display:flex;justify-content:flex-end;margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
     <button onclick="${fn}()" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:7px">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -2025,8 +2031,8 @@ function sCard(icon, title, sub, content) {
     <div style="display:flex;align-items:center;gap:12px;padding:18px 24px;border-bottom:1px solid var(--border)">
       <div style="width:36px;height:36px;border-radius:var(--radius-md);background:var(--color-bg);display:flex;align-items:center;justify-content:center;color:var(--text-muted);flex-shrink:0">${icon}</div>
       <div style="min-width:0">
-        <div style="font-size:.95rem;font-weight:700;color:var(--text)">${title}</div>
-        ${sub ? `<div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">${sub}</div>` : ''}
+        <div style="font-size:.95rem;font-weight:700;color:var(--text)">${TR(title)}</div>
+        ${sub ? `<div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">${TR(sub)}</div>` : ''}
       </div>
     </div>
     <div style="padding:20px 24px">${content}</div>
@@ -2037,7 +2043,7 @@ function sCard(icon, title, sub, content) {
 // Active chip follows the scroll position (wired in wireSettingsNavSpy).
 function settingsNav(labels) {
   const chip = (i, label) =>
-    `<button id="schip-${i}" class="settings-chip" onclick="settingsNavGo(${i})">${label}</button>`;
+    `<button id="schip-${i}" class="settings-chip" onclick="settingsNavGo(${i})">${TR(label)}</button>`;
   return `<div style="position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 0 12px">
     <div class="settings-nav">${labels.map((l, i) => chip(i, l)).join('')}</div>
   </div>`;
@@ -2081,7 +2087,7 @@ function wireSettingsNavSpy(count) {
 async function saveSection(updates, successMsg) {
   try {
     await api('PATCH', '/settings', updates);
-    showToast(successMsg || 'נשמר');
+    showToast(successMsg || TR('נשמר'));
   } catch (err) { alert(err.message); }
 }
 
@@ -2104,7 +2110,7 @@ function buildHoursRows(hoursObj, activeClass, inputClass) {
         <input type="checkbox" class="${activeClass}" data-day="${day}" ${open?'checked':''}>
         <span class="toggle-track"></span>
       </label>
-      <span style="font-weight:600;font-size:.85rem;color:var(--text);min-width:62px">יום ${DAY_LABELS[day]}</span>
+      <span style="font-weight:600;font-size:.85rem;color:var(--text);min-width:62px">${TR(`יום ${DAY_LABELS[day]}`)}</span>
       <input type="time" dir="ltr" value="${h.open}"  data-day="${day}" data-field="open"  class="${inputClass}" style="width:110px" ${!open?'disabled':''}>
       <span style="color:var(--text-muted);font-size:.82rem">—</span>
       <input type="time" dir="ltr" value="${h.close}" data-day="${day}" data-field="close" class="${inputClass}" style="width:110px" ${!open?'disabled':''}>
@@ -2168,7 +2174,7 @@ function renderSettingsForm(s) {
       <div style="display:flex;align-items:center;gap:12px">
         <input type="number" id="prepLeadTime" value="${s.prep_lead_time ?? 45}" min="15" max="120"
           style="width:90px;font-weight:700;text-align:center">
-        <span style="font-size:.88rem;color:var(--text)">דקות לפני</span>
+        <span style="font-size:.88rem;color:var(--text)">${TR('דקות לפני')}</span>
       </div>
       ${saveBtn('savePrepLeadTime')}
     `)}
@@ -2192,7 +2198,7 @@ function renderSettingsForm(s) {
     ${sCard(ICONS.pin, 'אזורי משלוח', 'ערים ואזורים שהעסק משלח אליהם, כולל דמי משלוח ומינימום הזמנה', `
       <div id="zonesTable"></div>
       <div style="margin-top:12px">
-        <button onclick="addZoneRow()" class="btn btn-outline btn-sm">+ הוסף אזור</button>
+        <button onclick="addZoneRow()" class="btn btn-outline btn-sm">${TR('+ הוסף אזור')}</button>
       </div>
       ${saveBtn('saveZones')}
     `)}
@@ -2201,18 +2207,18 @@ function renderSettingsForm(s) {
       ${sToggle('courier_notify_enabled', 'שלח פרטי הזמנה לשליח אוטומטית', !!s.courier_notify_enabled, 'courier_notify_enabled',
         'הודעת וואטסאפ עם פרטי ההזמנה והכתובת תישלח לכל השליחים')}
       <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-        <label style="font-size:.84rem;font-weight:600;color:var(--text);min-width:120px">שלח בסטטוס:</label>
+        <label style="font-size:.84rem;font-weight:600;color:var(--text);min-width:120px">${TR('שלח בסטטוס:')}</label>
         <select id="courier_notify_on_status" style="flex:1;min-width:160px;cursor:pointer">
-          <option value="preparing"        ${(s.courier_notify_on_status||'out_for_delivery')==='preparing'        ?'selected':''}>בהכנה</option>
-          <option value="out_for_delivery" ${(s.courier_notify_on_status||'out_for_delivery')==='out_for_delivery' ?'selected':''}>יצא למשלוח</option>
-          <option value="new"              ${(s.courier_notify_on_status||'out_for_delivery')==='new'              ?'selected':''}>חדשה</option>
+          <option value="preparing"        ${(s.courier_notify_on_status||'out_for_delivery')==='preparing'        ?'selected':''}>${TR('בהכנה')}</option>
+          <option value="out_for_delivery" ${(s.courier_notify_on_status||'out_for_delivery')==='out_for_delivery' ?'selected':''}>${TR('יצא למשלוח')}</option>
+          <option value="new"              ${(s.courier_notify_on_status||'out_for_delivery')==='new'              ?'selected':''}>${TR('חדשה')}</option>
         </select>
       </div>
 
       <div style="margin-top:18px">
-        <div style="font-size:.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">שליחים</div>
+        <div style="font-size:.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">${TR('שליחים')}</div>
         <div id="couriersTable"></div>
-        <button onclick="addCourierRow()" class="btn btn-outline btn-sm" style="margin-top:10px">+ הוסף שליח</button>
+        <button onclick="addCourierRow()" class="btn btn-outline btn-sm" style="margin-top:10px">${TR('+ הוסף שליח')}</button>
       </div>
       ${saveBtn('saveCouriers')}
     `)}
@@ -2318,7 +2324,7 @@ function renderZonesTable() {
   const t = document.getElementById('zonesTable');
   if (!t) return;
   if (!_deliveryZones.length) {
-    t.innerHTML = '<div style="color:var(--text-muted);font-size:.85rem;padding:8px 0">אין אזורי משלוח — הוסף אזור ראשון</div>';
+    t.innerHTML = `<div style="color:var(--text-muted);font-size:.85rem;padding:8px 0">${TR('אין אזורי משלוח — הוסף אזור ראשון')}</div>`;
     return;
   }
   t.innerHTML = `
@@ -2326,11 +2332,11 @@ function renderZonesTable() {
     <table>
       <thead>
         <tr>
-          <th>עיר</th>
-          <th>אזור</th>
-          <th>דמי משלוח (₪)</th>
-          <th>מינימום (₪)</th>
-          <th>זמן משוער (דק׳)</th>
+          <th>${TR('עיר')}</th>
+          <th>${TR('אזור')}</th>
+          <th>${TR('דמי משלוח (₪)')}</th>
+          <th>${TR('מינימום (₪)')}</th>
+          <th>${TR('זמן משוער (דק׳)')}</th>
           <th></th>
         </tr>
       </thead>
@@ -2348,7 +2354,7 @@ function renderZonesTable() {
           <td style="padding:8px 10px"><input type="number" value="${z.eta_minutes||45}" data-zi="${i}" data-zf="eta_minutes"
             style="width:80px" class="zone-inp" min="1"></td>
           <td style="padding:8px 10px">
-            <button onclick="removeZone(${i})" class="btn-danger" style="font-size:.75rem;padding:4px 10px">הסר</button>
+            <button onclick="removeZone(${i})" class="btn-danger" style="font-size:.75rem;padding:4px 10px">${TR('הסר')}</button>
           </td>
         </tr>`).join('')}
       </tbody>
@@ -2390,14 +2396,14 @@ function renderCouriersTable() {
   const t = document.getElementById('couriersTable');
   if (!t) return;
   if (!_couriers.length) {
-    t.innerHTML = '<div style="color:var(--text-muted);font-size:.84rem;padding:6px 0">אין שליחים — הוסף שליח ראשון</div>';
+    t.innerHTML = `<div style="color:var(--text-muted);font-size:.84rem;padding:6px 0">${TR('אין שליחים — הוסף שליח ראשון')}</div>`;
     return;
   }
   t.innerHTML = _couriers.map((c, i) => `
     <div style="display:grid;grid-template-columns:1fr 1fr 36px;gap:10px;align-items:center;margin-bottom:8px">
       <input type="text"
         value="${c.name || ''}"
-        placeholder="שם השליח"
+        placeholder="${TR('שם השליח')}"
         oninput="_couriers[${i}].name=this.value"
         style="font-size:.84rem;min-width:0">
       <input type="tel" dir="ltr"
@@ -2405,7 +2411,7 @@ function renderCouriersTable() {
         placeholder="972501234567"
         oninput="_couriers[${i}].phone=this.value.replace(/\\D/g,'')"
         style="font-size:.84rem;letter-spacing:.04em;min-width:0">
-      <button onclick="removeCourier(${i})" class="btn-danger" title="הסר שליח"
+      <button onclick="removeCourier(${i})" class="btn-danger" title="${TR('הסר שליח')}"
         style="width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
@@ -2496,7 +2502,7 @@ function updateNotifBadge() {
 
 function toggleNotifPanel() {
   const newOrders = currentOrders.filter(o => o.status === 'new');
-  if (!newOrders.length) { showToast('אין הזמנות חדשות'); return; }
+  if (!newOrders.length) { showToast(TR('אין הזמנות חדשות')); return; }
   // Switch to orders tab filtered to 'new'
   showTab('orders');
   const sf = document.getElementById('statusFilter');
@@ -2538,7 +2544,7 @@ function _kitchenCard(o) {
   const statusColor = o.status === 'ready' ? '#22c55e' : t.color;
 
   const btn = o.status === 'preparing'
-    ? `<button onclick="kitchenSetStatus('${o.id}','ready')" style="width:100%;padding:20px;border:none;border-radius:12px;background:#16a34a;color:#fff;font-size:1.4rem;font-weight:800;cursor:pointer;font-family:inherit">מוכן</button>`
+    ? `<button onclick="kitchenSetStatus('${o.id}','ready')" style="width:100%;padding:20px;border:none;border-radius:12px;background:#16a34a;color:#fff;font-size:1.4rem;font-weight:800;cursor:pointer;font-family:inherit">${TR('מוכן')}</button>`
     : '';
 
   return `<div id="kitchen-card-${o.id}" style="background:#fff;border-radius:14px;border-right:6px solid ${statusColor};box-shadow:0 2px 10px rgba(0,0,0,.09);padding:20px 24px;margin-bottom:18px">
@@ -2547,7 +2553,7 @@ function _kitchenCard(o) {
         <span style="font-size:2.2rem;font-weight:900;color:#111;line-height:1">#${o.order_number}</span>
         ${o.customer_name ? `<span style="font-size:1.15rem;color:#666;font-weight:600">${o.customer_name}</span>` : ''}
       </div>
-      <span style="font-size:1.15rem;font-weight:800;color:${t.color};background:${t.bg};border-radius:8px;padding:6px 14px;white-space:nowrap">${t.min > 99 ? '+99' : t.min} דק'</span>
+      <span style="font-size:1.15rem;font-weight:800;color:${t.color};background:${t.bg};border-radius:8px;padding:6px 14px;white-space:nowrap">${t.min > 99 ? '+99' : t.min} ${TR("דק'")}</span>
     </div>
     <div style="margin-bottom:${btn ? '18px' : '0'}">${items}</div>
     ${notes}
@@ -2560,11 +2566,11 @@ function renderKitchen() {
   const el = document.getElementById('kitchen-feed');
   if (!el) return;
   if (!list.length) {
-    el.innerHTML = '<div style="text-align:center;padding:48px 16px;color:var(--text-muted);font-size:1rem">אין הזמנות פעילות</div>';
+    el.innerHTML = `<div style="text-align:center;padding:48px 16px;color:var(--text-muted);font-size:1rem">${TR('אין הזמנות פעילות')}</div>`;
     return;
   }
   el.innerHTML = list.map(_kitchenCard).join('');
-  document.getElementById('kitchen-count').textContent = list.length + ' הזמנות';
+  document.getElementById('kitchen-count').textContent = list.length + ' ' + TR('הזמנות');
 }
 
 async function kitchenSetStatus(id, status) {
@@ -2574,7 +2580,7 @@ async function kitchenSetStatus(id, status) {
     const data = await api('PATCH', `/orders/${id}/status`, { status });
     if (data?.order) { _kitchenOrders[id] = data.order; renderKitchen(); }
   } catch (e) {
-    showToast(e.message || 'שגיאה');
+    showToast(e.message || TR('שגיאה'));
     if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
   }
 }
@@ -2597,7 +2603,7 @@ function _kitchenConnectSSE() {
   _kitchenSSE = es;
   es.addEventListener('new_order', (e) => {
     const o = JSON.parse(e.data);
-    if (['preparing','ready'].includes(o.status)) { _kitchenOrders[o.id] = o; renderKitchen(); showToast(`הזמנה #${o.order_number} עברה להכנה`); }
+    if (['preparing','ready'].includes(o.status)) { _kitchenOrders[o.id] = o; renderKitchen(); showToast(`${TR('הזמנה')} #${o.order_number} ${TR('עברה להכנה')}`); }
   });
   es.addEventListener('order_updated', (e) => {
     const o = JSON.parse(e.data);
@@ -2609,13 +2615,13 @@ function _kitchenConnectSSE() {
     const dot = document.getElementById('kitchen-dot');
     const lbl = document.getElementById('kitchen-conn');
     if (dot) dot.style.background = '#22c55e';
-    if (lbl) lbl.textContent = 'מחובר';
+    if (lbl) lbl.textContent = TR('מחובר');
   };
   es.onerror = () => {
     const dot = document.getElementById('kitchen-dot');
     const lbl = document.getElementById('kitchen-conn');
     if (dot) dot.style.background = '#ef4444';
-    if (lbl) lbl.textContent = 'מתחבר מחדש…';
+    if (lbl) lbl.textContent = TR('מתחבר מחדש…');
   };
 }
 
@@ -2647,7 +2653,7 @@ async function loadInbox() {
 function _updateInboxBadge() {
   const total = _inboxSessions.reduce((s, c) => s + (c.unread_count || 0), 0);
   const label = document.getElementById('inbox-nav-label');
-  if (label) label.textContent = total > 0 ? `הודעות (${total})` : 'הודעות';
+  if (label) label.textContent = total > 0 ? `${TR('הודעות')} (${total})` : TR('הודעות');
 }
 
 function _fmtPhone(phone) {
@@ -2670,8 +2676,8 @@ function renderInboxList() {
     const unread = s.unread_count > 0;
     const initial = (profile.name || '#').trim().charAt(0);
     const ts = s.last_message_at || s.updated_at;
-    const timeStr = ts ? new Date(ts).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem', hour12: false }) : '';
-    const agentDot = s.is_bot_active ? '' : `<span title="בטיפול נציג" style="width:8px;height:8px;border-radius:50%;background:var(--color-warning);display:inline-block;flex-shrink:0"></span>`;
+    const timeStr = ts ? new Date(ts).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem', hour12: false }) : '';
+    const agentDot = s.is_bot_active ? '' : `<span title="${TR('בטיפול נציג')}" style="width:8px;height:8px;border-radius:50%;background:var(--color-warning);display:inline-block;flex-shrink:0"></span>`;
     return `<div onclick="inboxSelectSession('${s.phone}')" style="display:flex;gap:10px;align-items:center;padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--color-border);background:${active ? 'var(--color-brand-soft)' : 'transparent'};transition:background .15s">
       <span style="width:38px;height:38px;border-radius:50%;background:${s.is_bot_active ? 'var(--color-brand-soft)' : '#fff4e0'};color:${s.is_bot_active ? 'var(--color-brand)' : 'var(--color-warning)'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex-shrink:0">${initial}</span>
       <div style="flex:1;min-width:0">
@@ -2740,7 +2746,7 @@ function renderInboxThread(phone) {
       const bg    = isUser ? 'var(--color-surface)' : (isAgent ? 'var(--color-brand)' : 'var(--color-brand-soft)');
       const fg    = isAgent ? '#fff' : 'var(--color-text)';
       const align = isUser ? 'flex-start' : 'flex-end';
-      const label = isAgent ? 'נציג' : (isUser ? custName : 'בוט');
+      const label = isAgent ? TR('נציג') : (isUser ? custName : TR('בוט'));
       const labelColor = isAgent ? 'rgba(255,255,255,.75)' : 'var(--color-text-secondary)';
       return `<div style="display:flex;justify-content:${align}">
         <div style="max-width:75%;background:${bg};border:1px solid ${isUser ? 'var(--color-border)' : 'transparent'};border-radius:12px;padding:8px 12px;font-size:13px;line-height:1.55;box-shadow:var(--shadow-sm)">
@@ -2764,7 +2770,7 @@ async function inboxHandoff(phone) {
     if (s) { s.is_bot_active = false; }
     renderInboxList();
     renderInboxThread(phone);
-    showToast('השיחה הועברה לנציג');
+    showToast(TR('השיחה הועברה לנציג'));
   } catch (err) { alert(err.message); }
 }
 
@@ -2793,7 +2799,7 @@ async function inboxReturn(phone) {
       if (replyBar) replyBar.style.display = 'none';
     }
     _updateInboxBadge();
-    showToast('הבוט חזר לניהול השיחה');
+    showToast(TR('הבוט חזר לניהול השיחה'));
   } catch (err) { alert(err.message); }
 }
 
@@ -2905,11 +2911,11 @@ function updatePushBtn(sub) {
     const slash = document.getElementById(slashId);
     if (!btn) return;
     if (sub) {
-      btn.title = 'התראות push פעילות — לחץ לכיבוי';
+      btn.title = TR('התראות push פעילות — לחץ לכיבוי');
       btn.style.color = '#4ade80';
       if (slash) slash.style.display = 'none';
     } else {
-      btn.title = 'הפעל התראות push';
+      btn.title = TR('הפעל התראות push');
       btn.style.color = '';
       if (slash) slash.style.display = '';
     }
@@ -2918,7 +2924,7 @@ function updatePushBtn(sub) {
 
 async function togglePushSubscription() {
   if (!('serviceWorker' in navigator)) {
-    alert('הדפדפן שלך לא תומך בהתראות push');
+    alert(TR('הדפדפן שלך לא תומך בהתראות push'));
     return;
   }
 
@@ -2930,14 +2936,14 @@ async function togglePushSubscription() {
     await api('POST', '/push-unsubscribe', { endpoint: _pushSubscription.endpoint }).catch(() => {});
     _pushSubscription = null;
     updatePushBtn(null);
-    showToast('התראות push כובו');
+    showToast(TR('התראות push כובו'));
     return;
   }
 
   // Request permission
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') {
-    showToast('נדרשת הרשאה להתראות בדפדפן');
+    showToast(TR('נדרשת הרשאה להתראות בדפדפן'));
     return;
   }
 
@@ -2946,7 +2952,7 @@ async function togglePushSubscription() {
   try {
     const { publicKey } = await api('GET', '/push-vapid-key');
     vapidPublicKey = publicKey;
-  } catch { showToast('שגיאה בהגדרת push'); return; }
+  } catch { showToast(TR('שגיאה בהגדרת push')); return; }
 
   // Subscribe
   const sub = await reg.pushManager.subscribe({
@@ -2957,7 +2963,7 @@ async function togglePushSubscription() {
   await api('POST', '/push-subscribe', sub.toJSON());
   _pushSubscription = sub;
   updatePushBtn(sub);
-  showToast('התראות push הופעלו!');
+  showToast(TR('התראות push הופעלו!'));
 }
 
 function urlBase64ToUint8Array(base64String) {
@@ -2990,20 +2996,20 @@ function renderAdminUsers() {
 
   if (!_adminUsers.length) {
     el.innerHTML = `<div style="color:var(--text-muted);font-size:.84rem;padding:20px 24px;text-align:center">
-      אין מנהלים עדיין — לחץ "+ הוסף מנהל" כדי להתחיל
+      ${TR('אין מנהלים עדיין — לחץ "+ הוסף מנהל" כדי להתחיל')}
     </div>`;
     return;
   }
 
-  const roleLabel = { admin: 'מנהל', manager: 'מנג׳ר' };
+  const roleLabel = { admin: TR('מנהל'), manager: TR('מנג׳ר') };
 
   el.innerHTML = `
     <table>
       <thead><tr>
-        <th>שם</th>
-        <th>טלפון</th>
-        <th>תפקיד</th>
-        <th>נוסף</th>
+        <th>${TR('שם')}</th>
+        <th>${TR('טלפון')}</th>
+        <th>${TR('תפקיד')}</th>
+        <th>${TR('נוסף')}</th>
         <th></th>
       </tr></thead>
       <tbody>
@@ -3019,7 +3025,7 @@ function renderAdminUsers() {
             <td style="font-size:.78rem;color:var(--text-muted)">${formatDate(u.created_at)}</td>
             <td>
               <button onclick="deleteAdminUser('${u.id}','${u.name}')"
-                class="btn-danger" style="font-size:.76rem;padding:4px 10px">מחק</button>
+                class="btn-danger" style="font-size:.76rem;padding:4px 10px">${TR('מחק')}</button>
             </td>
           </tr>`).join('')}
       </tbody>
@@ -3040,28 +3046,28 @@ async function submitAddAdmin(e) {
   const phone = document.getElementById('adminPhone').value.trim();
   const role  = document.getElementById('adminRole').value;
   const btn   = e.target.querySelector('[type=submit]');
-  btn.disabled = true; btn.textContent = 'שומר...';
+  btn.disabled = true; btn.textContent = TR('שומר...');
 
   try {
     const user = await api('POST', '/admin-users', { name, phone, role });
     _adminUsers.push(user);
     renderAdminUsers();
     closeModal('addAdminModal');
-    showToast(`${name} נוסף כמנהל`);
+    showToast(`${name} ${TR('נוסף כמנהל')}`);
   } catch (err) {
     alert(err.message);
   } finally {
-    btn.disabled = false; btn.textContent = 'הוסף';
+    btn.disabled = false; btn.textContent = TR('הוסף');
   }
 }
 
 async function deleteAdminUser(id, name) {
-  if (!confirm(`למחוק את "${name}" מרשימת המנהלים?`)) return;
+  if (!confirm(`${TR('למחוק את')} "${name}"?`)) return;
   try {
     await api('DELETE', `/admin-users/${id}`);
     _adminUsers = _adminUsers.filter(u => u.id !== id);
     renderAdminUsers();
-    showToast(`${name} הוסר`);
+    showToast(`${name} ${TR('הוסר')}`);
   } catch (err) {
     alert(err.message);
   }
