@@ -1998,9 +1998,12 @@ function sField(id, label, value, type='text', placeholder='') {
   </div>`;
 }
 
-function sToggle(key, label, checked, cls='') {
+function sToggle(key, label, checked, cls='', desc='') {
   return `<div class="setting-row ${cls}">
-    <span style="font-weight:600;font-size:.9rem">${label}</span>
+    <div style="min-width:0">
+      <div style="font-weight:600;font-size:.9rem;color:var(--text)">${label}</div>
+      ${desc ? `<div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">${desc}</div>` : ''}
+    </div>
     <label class="toggle-switch">
       <input type="checkbox" class="setting-toggle" data-key="${key}" ${checked?'checked':''}>
       <span class="toggle-track"></span>
@@ -2010,24 +2013,69 @@ function sToggle(key, label, checked, cls='') {
 
 function saveBtn(fn, label='שמור') {
   return `<div style="display:flex;justify-content:flex-end;margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
-    <button onclick="${fn}()" class="btn btn-primary">${label}</button>
+    <button onclick="${fn}()" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:7px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      ${label}</button>
   </div>`;
 }
 
 let _sCardSeq = 0;
-function sCard(title, content) {
-  return `<div class="card" id="scard-${_sCardSeq++}" style="padding:24px 26px;margin-bottom:18px;scroll-margin-top:64px">
-    <div style="font-size:1rem;font-weight:800;color:var(--text);margin-bottom:18px">${title}</div>
-    ${content}
+function sCard(icon, title, sub, content) {
+  return `<div class="card" id="scard-${_sCardSeq++}" style="margin-bottom:18px;scroll-margin-top:72px">
+    <div style="display:flex;align-items:center;gap:12px;padding:18px 24px;border-bottom:1px solid var(--border)">
+      <div style="width:36px;height:36px;border-radius:var(--radius-md);background:var(--color-bg);display:flex;align-items:center;justify-content:center;color:var(--text-muted);flex-shrink:0">${icon}</div>
+      <div style="min-width:0">
+        <div style="font-size:.95rem;font-weight:700;color:var(--text)">${title}</div>
+        ${sub ? `<div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">${sub}</div>` : ''}
+      </div>
+    </div>
+    <div style="padding:20px 24px">${content}</div>
   </div>`;
 }
 
-// Sticky chip nav for the long settings scroll — labels in card order
+// Sticky segmented anchor nav for the long settings scroll — labels in card order.
+// Active chip follows the scroll position (wired in wireSettingsNavSpy).
 function settingsNav(labels) {
   const chip = (i, label) =>
-    `<button onclick="document.getElementById('scard-${i}')?.scrollIntoView({behavior:'smooth'})"
-      style="border:1px solid var(--border);background:var(--white);color:var(--text);border-radius:var(--radius-full);padding:6px 14px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">${label}</button>`;
-  return `<div style="position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 0 12px;display:flex;gap:8px;flex-wrap:wrap">${labels.map((l, i) => chip(i, l)).join('')}</div>`;
+    `<button id="schip-${i}" class="settings-chip" onclick="settingsNavGo(${i})">${label}</button>`;
+  return `<div style="position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 0 12px">
+    <div class="settings-nav">${labels.map((l, i) => chip(i, l)).join('')}</div>
+  </div>`;
+}
+
+function settingsNavGo(i) {
+  _settingsSpyLock = Date.now() + 700; // let smooth-scroll finish before the spy takes over
+  setActiveSettingsChip(i);
+  document.getElementById(`scard-${i}`)?.scrollIntoView({ behavior: 'smooth' });
+}
+
+let _settingsSpyLock = 0;
+let _settingsActiveChip = -1;
+function setActiveSettingsChip(i) {
+  if (i === _settingsActiveChip) return; // avoid layout work on every scroll event
+  _settingsActiveChip = i;
+  document.querySelectorAll('.settings-chip').forEach((c, ci) => c.classList.toggle('active', ci === i));
+  document.getElementById(`schip-${i}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+let _settingsSpyHandler = null;
+function wireSettingsNavSpy(count) {
+  if (_settingsSpyHandler) window.removeEventListener('scroll', _settingsSpyHandler);
+  _settingsActiveChip = -1; // chips were just re-rendered
+  const onScroll = () => {
+    const first = document.getElementById('scard-0');
+    if (!first || !first.offsetParent) return; // settings tab not visible
+    if (Date.now() < _settingsSpyLock) return;
+    let active = 0;
+    for (let i = 0; i < count; i++) {
+      const el = document.getElementById(`scard-${i}`);
+      if (el && el.getBoundingClientRect().top <= 120) active = i;
+    }
+    setActiveSettingsChip(active);
+  };
+  _settingsSpyHandler = onScroll;
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
 }
 
 async function saveSection(updates, successMsg) {
@@ -2051,12 +2099,12 @@ function buildHoursRows(hoursObj, activeClass, inputClass) {
   return DAY_ORDER.map((day) => {
     const h = hoursObj[day] || { open: '10:00', close: '23:00', is_open: true };
     const open = h.is_open !== false;
-    return `<div class="hours-row" style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:var(--primary-soft);border-radius:14px;margin-bottom:8px">
+    return `<div class="hours-row" style="display:flex;align-items:center;gap:14px;padding:12px 16px;border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px">
       <label class="toggle-switch">
         <input type="checkbox" class="${activeClass}" data-day="${day}" ${open?'checked':''}>
         <span class="toggle-track"></span>
       </label>
-      <span style="font-weight:700;font-size:.85rem;color:var(--text);min-width:62px">יום ${DAY_LABELS[day]}</span>
+      <span style="font-weight:600;font-size:.85rem;color:var(--text);min-width:62px">יום ${DAY_LABELS[day]}</span>
       <input type="time" dir="ltr" value="${h.open}"  data-day="${day}" data-field="open"  class="${inputClass}" style="width:110px" ${!open?'disabled':''}>
       <span style="color:var(--text-muted);font-size:.82rem">—</span>
       <input type="time" dir="ltr" value="${h.close}" data-day="${day}" data-field="close" class="${inputClass}" style="width:110px" ${!open?'disabled':''}>
@@ -2069,22 +2117,25 @@ function renderSettingsForm(s) {
   const deliveryHoursRows = buildHoursRows(s.delivery_hours  || {}, 'delivery-hours-active', 'delivery-hours-input');
 
   const ico = (path, vb='0 0 24 24') =>
-    `<svg width="16" height="16" viewBox="${vb}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-left:6px">${path}</svg>`;
+    `<svg width="17" height="17" viewBox="${vb}" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
 
   const ICONS = {
-    biz:     ico('<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>'),
-    pay:     ico('<rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>'),
-    delivery:ico('<rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 7v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>'),
-    edit:    ico('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'),
-    clock:   ico('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'),
-    pin:     ico('<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>'),
+    biz:   ico('<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>'),
+    pay:   ico('<rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>'),
+    bag:   ico('<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>'),
+    edit:  ico('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'),
+    clock: ico('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'),
+    pin:   ico('<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>'),
+    truck: ico('<rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 7v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>'),
   };
+
+  const NAV_LABELS = ['פרטי העסק','תשלום','סוגי הזמנה','מתוזמנות','שינויי הזמנות','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים'];
 
   _sCardSeq = 0;
   document.getElementById('settingsForm').innerHTML = `
-    ${settingsNav(['פרטי העסק','תשלום','סוגי הזמנה','מתוזמנות','שינויי הזמנות','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים'])}
+    ${settingsNav(NAV_LABELS)}
 
-    ${sCard(`${ICONS.biz} פרטי העסק`, `
+    ${sCard(ICONS.biz, 'פרטי העסק', 'פרטים המוצגים ללקוחות בבוט ובתפריט הציבורי', `
       ${sField('biz_name',    'שם העסק',           s.business_name    || '', 'text', 'פיצה דליבריס')}
       ${sField('biz_name_en', 'שם לועזי (לקישור התפריט הציבורי)', s.business_name_en || '', 'text', 'pizza-deliveries')}
       ${sField('biz_address', 'כתובת העסק',         s.business_address || '', 'text', 'רוטשילד 19, תל אביב')}
@@ -2094,55 +2145,51 @@ function renderSettingsForm(s) {
       ${saveBtn('saveBizInfo')}
     `)}
 
-    ${sCard(`${ICONS.pay} אמצעי תשלום`, `
-      ${sToggle('payment_cash',   'מזומן',   s.payment_cash   !== false)}
-      ${sToggle('payment_credit', 'אשראי',   s.payment_credit !== false)}
-      ${sToggle('payment_bit',    'ביט',      !!s.payment_bit)}
-      <div id="bitPhoneRow" style="margin:10px 0 4px 0;padding:12px 14px;background:var(--primary-soft);border-radius:12px;${s.payment_bit?'':'display:none'}">
+    ${sCard(ICONS.pay, 'אמצעי תשלום', 'אילו אמצעי תשלום הבוט מציע ללקוחות', `
+      ${sToggle('payment_cash',   'מזומן',   s.payment_cash   !== false, '', 'תשלום במזומן בעת המסירה')}
+      ${sToggle('payment_credit', 'אשראי',   s.payment_credit !== false, '', 'תשלום מאובטח בכרטיס אשראי')}
+      ${sToggle('payment_bit',    'ביט',      !!s.payment_bit,            '', 'העברה למספר הביט של העסק')}
+      <div id="bitPhoneRow" style="margin:10px 0 4px 0;padding:14px 16px 4px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--color-bg);${s.payment_bit?'':'display:none'}">
         ${sField('bit_phone', 'מספר טלפון לBit', s.bit_phone || '', 'tel', '050-0000000')}
       </div>
-      ${sToggle('payment_paybox', 'פייבוקס',  !!s.payment_paybox)}
-      ${sToggle('payment_other',  'אחר',      !!s.payment_other)}
+      ${sToggle('payment_paybox', 'פייבוקס',  !!s.payment_paybox, '', 'העברה בפייבוקס')}
+      ${sToggle('payment_other',  'אחר',      !!s.payment_other,  '', 'תיאום אמצעי תשלום אחר מול העסק')}
       ${saveBtn('savePayments')}
     `)}
 
-    ${sCard(`${ICONS.delivery} סוגי הזמנה`, `
-      ${sToggle('delivery_enabled', 'משלוח מאופשר',      s.delivery_enabled !== false)}
-      ${sToggle('pickup_enabled',   'איסוף עצמי מאופשר', s.pickup_enabled   !== false)}
-      ${sToggle('is_open',          'בוט פתוח לקבלת הזמנות', s.is_open !== false)}
+    ${sCard(ICONS.bag, 'סוגי הזמנה', 'אילו אפשרויות קבלה פתוחות ללקוחות', `
+      ${sToggle('delivery_enabled', 'משלוח מאופשר',      s.delivery_enabled !== false, '', 'הבוט יציע משלוח עד הבית לפי אזורי המשלוח')}
+      ${sToggle('pickup_enabled',   'איסוף עצמי מאופשר', s.pickup_enabled   !== false, '', 'הבוט יציע איסוף מכתובת העסק')}
+      ${sToggle('is_open',          'בוט פתוח לקבלת הזמנות', s.is_open !== false,      '', 'כיבוי עוצר מיידית קבלת הזמנות חדשות')}
       ${saveBtn('saveOrderTypes')}
     `)}
 
-    ${sCard(`${ICONS.clock} הזמנות מתוזמנות`, `
-      <div style="font-size:.84rem;color:var(--text-muted);margin-bottom:14px">כמה דקות לפני השעה המבוקשת להעביר את ההזמנה להכנה</div>
+    ${sCard(ICONS.clock, 'הזמנות מתוזמנות', 'כמה דקות לפני השעה המבוקשת להעביר את ההזמנה להכנה', `
       <div style="display:flex;align-items:center;gap:12px">
         <input type="number" id="prepLeadTime" value="${s.prep_lead_time ?? 45}" min="15" max="120"
-          style="width:80px;padding:8px 12px;border-radius:10px;border:2px solid var(--border);font-family:inherit;font-size:1rem;font-weight:700;text-align:center">
+          style="width:90px;font-weight:700;text-align:center">
         <span style="font-size:.88rem;color:var(--text)">דקות לפני</span>
       </div>
       ${saveBtn('savePrepLeadTime')}
     `)}
 
-    ${sCard(`${ICONS.edit} הגדרות שינוי הזמנות`, `
-      ${sToggle('allow_order_edits', 'אפשר ללקוח לשנות/לבטל הזמנה', s.allow_order_edits !== false)}
-      <div style="margin-top:14px;font-size:.84rem;color:var(--text-muted)">
-        הלקוח יכול לשנות או לבטל את ההזמנה כל עוד היא לא עברה למצב "בהכנה". מרגע שההזמנה נכנסת להכנה, לא ניתן יותר לשנות אותה.
-      </div>
+    ${sCard(ICONS.edit, 'שינויי הזמנות', 'מה לקוח יכול לשנות אחרי שההזמנה נשלחה', `
+      ${sToggle('allow_order_edits', 'אפשר ללקוח לשנות/לבטל הזמנה', s.allow_order_edits !== false, '',
+        'זמין כל עוד ההזמנה לא עברה למצב "בהכנה" — מרגע שההכנה מתחילה ההזמנה ננעלת')}
       ${saveBtn('saveEditSettings')}
     `)}
 
-    ${sCard(`${ICONS.clock} שעות פעילות`, `
+    ${sCard(ICONS.clock, 'שעות פעילות', 'מתי הבוט מקבל הזמנות; מחוץ לשעות אלה לקוחות יקבלו הודעת סגור', `
       <div>${hoursRows}</div>
       ${saveBtn('saveHours')}
     `)}
 
-    ${sCard(`${ICONS.truck} שעות משלוח`, `
-      <div style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">הגדר באילו שעות המשלוח זמין. בימים שאינם פעילים לא יוצע משלוח.</div>
+    ${sCard(ICONS.truck, 'שעות משלוח', 'באילו שעות מוצע משלוח; בימים שאינם פעילים יוצע איסוף בלבד', `
       <div>${deliveryHoursRows}</div>
       ${saveBtn('saveDeliveryHours')}
     `)}
 
-    ${sCard(`${ICONS.pin} אזורי משלוח`, `
+    ${sCard(ICONS.pin, 'אזורי משלוח', 'ערים ואזורים שהעסק משלח אליהם, כולל דמי משלוח ומינימום הזמנה', `
       <div id="zonesTable"></div>
       <div style="margin-top:12px">
         <button onclick="addZoneRow()" class="btn btn-outline btn-sm">+ הוסף אזור</button>
@@ -2150,12 +2197,12 @@ function renderSettingsForm(s) {
       ${saveBtn('saveZones')}
     `)}
 
-    ${sCard(`${ICONS.truck} שליחים`, `
-      ${sToggle('courier_notify_enabled', 'שלח פרטי הזמנה לשליח אוטומטית', !!s.courier_notify_enabled, 'courier_notify_enabled')}
+    ${sCard(ICONS.truck, 'שליחים', 'שליחת פרטי הזמנה לשליחים בוואטסאפ', `
+      ${sToggle('courier_notify_enabled', 'שלח פרטי הזמנה לשליח אוטומטית', !!s.courier_notify_enabled, 'courier_notify_enabled',
+        'הודעת וואטסאפ עם פרטי ההזמנה והכתובת תישלח לכל השליחים')}
       <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <label style="font-size:.84rem;font-weight:600;color:var(--text);min-width:120px">שלח בסטטוס:</label>
-        <select id="courier_notify_on_status"
-          style="padding:8px 14px;border-radius:10px;border:2px solid var(--border);font-family:inherit;font-size:.84rem;flex:1;min-width:160px">
+        <select id="courier_notify_on_status" style="flex:1;min-width:160px;cursor:pointer">
           <option value="preparing"        ${(s.courier_notify_on_status||'out_for_delivery')==='preparing'        ?'selected':''}>בהכנה</option>
           <option value="out_for_delivery" ${(s.courier_notify_on_status||'out_for_delivery')==='out_for_delivery' ?'selected':''}>יצא למשלוח</option>
           <option value="new"              ${(s.courier_notify_on_status||'out_for_delivery')==='new'              ?'selected':''}>חדשה</option>
@@ -2163,13 +2210,15 @@ function renderSettingsForm(s) {
       </div>
 
       <div style="margin-top:18px">
-        <div style="font-size:.8rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">שליחים</div>
+        <div style="font-size:.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">שליחים</div>
         <div id="couriersTable"></div>
         <button onclick="addCourierRow()" class="btn btn-outline btn-sm" style="margin-top:10px">+ הוסף שליח</button>
       </div>
       ${saveBtn('saveCouriers')}
     `)}
   `;
+
+  wireSettingsNavSpy(NAV_LABELS.length);
 
   renderZonesTable();
   renderCouriersTable();
@@ -2273,21 +2322,21 @@ function renderZonesTable() {
     return;
   }
   t.innerHTML = `
-    <div style="overflow-x:auto">
-    <table style="width:100%;border-collapse:collapse;font-size:.83rem">
+    <div style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-md)">
+    <table>
       <thead>
-        <tr style="background:var(--primary-soft);text-align:right">
-          <th style="padding:9px 12px;font-weight:700;color:var(--primary)">עיר</th>
-          <th style="padding:9px 12px;font-weight:700;color:var(--primary)">אזור</th>
-          <th style="padding:9px 12px;font-weight:700;color:var(--primary)">דמי משלוח (₪)</th>
-          <th style="padding:9px 12px;font-weight:700;color:var(--primary)">מינימום (₪)</th>
-          <th style="padding:9px 12px;font-weight:700;color:var(--primary)">זמן משוער (דק׳)</th>
-          <th style="padding:9px 12px"></th>
+        <tr>
+          <th>עיר</th>
+          <th>אזור</th>
+          <th>דמי משלוח (₪)</th>
+          <th>מינימום (₪)</th>
+          <th>זמן משוער (דק׳)</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
         ${_deliveryZones.map((z, i) => `
-        <tr style="border-bottom:1px solid var(--border)">
+        <tr>
           <td style="padding:8px 10px"><input type="text" value="${z.city||''}" data-zi="${i}" data-zf="city"
             style="width:100%;min-width:80px" class="zone-inp"></td>
           <td style="padding:8px 10px"><input type="text" value="${z.area||''}" data-zi="${i}" data-zf="area"
@@ -2350,14 +2399,16 @@ function renderCouriersTable() {
         value="${c.name || ''}"
         placeholder="שם השליח"
         oninput="_couriers[${i}].name=this.value"
-        style="border-radius:10px;padding:8px 12px;border:2px solid var(--border);font-family:inherit;font-size:.84rem">
+        style="font-size:.84rem;min-width:0">
       <input type="tel" dir="ltr"
         value="${c.phone || ''}"
         placeholder="972501234567"
         oninput="_couriers[${i}].phone=this.value.replace(/\\D/g,'')"
-        style="border-radius:10px;padding:8px 12px;border:2px solid var(--border);font-family:inherit;font-size:.84rem;letter-spacing:.04em">
-      <button onclick="removeCourier(${i})"
-        style="width:32px;height:32px;border-radius:8px;border:none;background:#fff0f6;color:#e0004d;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center">✕</button>
+        style="font-size:.84rem;letter-spacing:.04em;min-width:0">
+      <button onclick="removeCourier(${i})" class="btn-danger" title="הסר שליח"
+        style="width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>`).join('');
 }
 
@@ -2929,7 +2980,7 @@ async function loadAdminUsers() {
     _adminUsers = await api('GET', '/admin-users');
     renderAdminUsers();
   } catch (err) {
-    el.innerHTML = `<div style="color:red;font-size:.84rem">${err.message}</div>`;
+    el.innerHTML = `<div style="color:var(--color-danger);font-size:.84rem;padding:16px 24px">${err.message}</div>`;
   }
 }
 
@@ -2938,7 +2989,7 @@ function renderAdminUsers() {
   if (!el) return;
 
   if (!_adminUsers.length) {
-    el.innerHTML = `<div style="color:var(--text-muted);font-size:.84rem;padding:12px 0;text-align:center">
+    el.innerHTML = `<div style="color:var(--text-muted);font-size:.84rem;padding:20px 24px;text-align:center">
       אין מנהלים עדיין — לחץ "+ הוסף מנהל" כדי להתחיל
     </div>`;
     return;

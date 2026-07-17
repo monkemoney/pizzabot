@@ -369,9 +369,30 @@ input[type=time] { direction: ltr; }
 .hours-grid { display: grid; gap: 8px; }
 .hours-row {
   display: flex; align-items: center; gap: 12px;
-  padding: 8px 12px; background: #faf8ff; border-radius: 10px;
+  padding: 8px 12px; background: var(--white);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
 }
-.hours-day { font-size: .82rem; font-weight: 700; color: var(--primary); width: 60px; }
+.hours-day { font-size: .82rem; font-weight: 600; color: var(--text); width: 60px; }
+
+/* ── Settings anchor nav (v0 tabs idiom: gray segmented strip, white active pill) ── */
+.settings-nav {
+  display: flex; gap: 2px; padding: 4px;
+  background: #f3f4f6; border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+.settings-nav::-webkit-scrollbar { display: none; }
+.settings-chip {
+  border: none; background: transparent; color: var(--text-muted);
+  border-radius: var(--radius-md); padding: 7px 14px;
+  font-size: .78rem; font-weight: 600; cursor: pointer;
+  font-family: inherit; white-space: nowrap; flex-shrink: 0;
+  transition: all .15s;
+}
+.settings-chip:hover { color: var(--text); }
+.settings-chip.active { background: var(--white); color: var(--text); box-shadow: var(--shadow-sm); }
+[data-theme="dark"] .settings-nav { background: #1e1530; }
+[data-theme="dark"] .settings-chip.active { background: #2a1860; }
 
 /* ── Mobile layout ── */
 .mobile-header     { display: none; }
@@ -725,16 +746,19 @@ input[type=time] { direction: ltr; }
     <div id="settingsForm" style="display:flex;flex-direction:column;gap:18px"></div>
 
     <!-- Admin users section -->
-    <div class="card" style="padding:24px 26px;margin-top:18px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-        <div>
-          <div style="font-size:1rem;font-weight:800;color:var(--text)">מנהלי וואצפ</div>
-          <div style="font-size:.78rem;color:var(--text-muted);margin-top:3px">מספרי טלפון שיוכלו לנהל את הבוט דרך וואצפ</div>
+    <div class="card" style="margin-top:18px">
+      <div style="display:flex;align-items:center;gap:12px;padding:18px 24px;border-bottom:1px solid var(--border)">
+        <div style="width:36px;height:36px;border-radius:var(--radius-md);background:var(--color-bg);display:flex;align-items:center;justify-content:center;color:var(--text-muted);flex-shrink:0">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div style="min-width:0;flex:1">
+          <div style="font-size:.95rem;font-weight:700;color:var(--text)">מנהלי וואצפ</div>
+          <div style="font-size:.78rem;color:var(--text-muted);margin-top:2px">מספרי טלפון שיוכלו לנהל את הבוט דרך וואצפ</div>
         </div>
         <button onclick="openAddAdminModal()" class="btn btn-primary btn-sm">+ הוסף מנהל</button>
       </div>
       <div id="adminUsersTable">
-        <div style="color:var(--text-muted);font-size:.85rem;padding:12px 0">טוען...</div>
+        <div style="color:var(--text-muted);font-size:.85rem;padding:16px 24px">טוען...</div>
       </div>
     </div>
   </div>
