@@ -2560,7 +2560,7 @@ function renderKitchen() {
   const el = document.getElementById('kitchen-feed');
   if (!el) return;
   if (!list.length) {
-    el.innerHTML = '<div style="text-align:center;padding:48px 16px;color:#aaa;font-size:1rem">אין הזמנות פעילות 🎉</div>';
+    el.innerHTML = '<div style="text-align:center;padding:48px 16px;color:var(--text-muted);font-size:1rem">אין הזמנות פעילות</div>';
     return;
   }
   el.innerHTML = list.map(_kitchenCard).join('');
@@ -2597,7 +2597,7 @@ function _kitchenConnectSSE() {
   _kitchenSSE = es;
   es.addEventListener('new_order', (e) => {
     const o = JSON.parse(e.data);
-    if (['preparing','ready'].includes(o.status)) { _kitchenOrders[o.id] = o; renderKitchen(); showToast(`🔥 הזמנה #${o.order_number} עברה להכנה`); }
+    if (['preparing','ready'].includes(o.status)) { _kitchenOrders[o.id] = o; renderKitchen(); showToast(`הזמנה #${o.order_number} עברה להכנה`); }
   });
   es.addEventListener('order_updated', (e) => {
     const o = JSON.parse(e.data);

@@ -46,16 +46,24 @@ function renderCard(order) {
     </li>`;
   }).join('');
 
-  const methodClass = order.delivery_method === 'pickup' ? 'method-pickup' : 'method-delivery';
-  const methodLabel = order.delivery_method === 'pickup' ? '🏍️ איסוף' : '🛵 משלוח';
+  const ico = (path) =>
+    `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+  const ICO_TRUCK = ico('<rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 7v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>');
+  const ICO_HOME  = ico('<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>');
+  const ICO_NOTE  = ico('<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>');
+  const ICO_FLAME = ico('<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>');
+  const ICO_CHECK = ico('<polyline points="20 6 9 17 4 12"/>');
 
-  const notes = order.notes ? `<div class="card-notes">📝 ${order.notes}</div>` : '';
+  const methodClass = order.delivery_method === 'pickup' ? 'method-pickup' : 'method-delivery';
+  const methodLabel = order.delivery_method === 'pickup' ? `${ICO_HOME} איסוף` : `${ICO_TRUCK} משלוח`;
+
+  const notes = order.notes ? `<div class="card-notes">${ICO_NOTE} ${order.notes}</div>` : '';
 
   let actions = '';
   if (order.status === 'new') {
-    actions = `<button class="btn-action btn-prep" onclick="setStatus('${order.id}','preparing')">🔥 בתנור</button>`;
+    actions = `<button class="btn-action btn-prep" onclick="setStatus('${order.id}','preparing')">${ICO_FLAME} בתנור</button>`;
   } else if (order.status === 'preparing') {
-    actions = `<button class="btn-action btn-ready" onclick="setStatus('${order.id}','ready')">✅ מוכן</button>`;
+    actions = `<button class="btn-action btn-ready" onclick="setStatus('${order.id}','ready')">${ICO_CHECK} מוכן</button>`;
   }
 
   return `
@@ -105,7 +113,7 @@ async function setStatus(id, status) {
     _orders[id] = data.order;
     renderAll();
   }
-  showToast(status === 'preparing' ? '🔥 הזמנה עברה להכנה' : '✅ הזמנה מוכנה');
+  showToast(status === 'preparing' ? 'הזמנה עברה להכנה' : 'הזמנה מוכנה');
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -119,7 +127,9 @@ function showToast(msg) {
 }
 
 // ── SSE ───────────────────────────────────────────────────────────────────────
+// Auth via ?token= query param — EventSource doesn't support custom headers
 let _es = null;
+let _reconnectTimer = null;
 
 function connectSSE() {
   if (_es) _es.close();
@@ -130,10 +140,10 @@ function connectSSE() {
     if (['new','preparing','ready'].includes(order.status)) {
       _orders[order.id] = order;
       renderAll();
-      showToast(`📦 הזמנה חדשה #${order.order_number}`);
+      showToast(`הזמנה חדשה #${order.order_number}`);
       // Push notification if page is hidden
       if (document.hidden && Notification.permission === 'granted') {
-        new Notification('הזמנה חדשה 🍕', { body: `#${order.order_number} — ₪${order.total_price}` });
+        new Notification('הזמנה חדשה', { body: `#${order.order_number} — ₪${order.total_price}` });
       }
     }
   });
@@ -156,55 +166,10 @@ function connectSSE() {
   _es.onerror = () => {
     document.getElementById('dot').classList.remove('connected');
     document.getElementById('connLabel').textContent = 'מתחבר מחדש…';
-    // Reconnect after 4s
-    setTimeout(connectSSE, 4000);
+    clearTimeout(_reconnectTimer);
+    _reconnectTimer = setTimeout(connectSSE, 4000);
   };
 }
-
-// SSE auth via query param (EventSource doesn't support headers)
-// Override connectSSE to append token
-const _origConnect = connectSSE;
-function connectSSE() {
-  if (_es) _es.close();
-  const url = `/api/sse?token=${encodeURIComponent(getToken())}`;
-  _es = new EventSource(url);
-
-  _es.addEventListener('new_order', (e) => {
-    const order = JSON.parse(e.data);
-    if (['new','preparing','ready'].includes(order.status)) {
-      _orders[order.id] = order;
-      renderAll();
-      showToast(`📦 הזמנה חדשה #${order.order_number}`);
-      if (document.hidden && Notification.permission === 'granted') {
-        new Notification('הזמנה חדשה 🍕', { body: `#${order.order_number} — ₪${order.total_price}` });
-      }
-    }
-  });
-
-  _es.addEventListener('order_updated', (e) => {
-    const order = JSON.parse(e.data);
-    if (['new','preparing','ready'].includes(order.status)) {
-      _orders[order.id] = order;
-    } else {
-      delete _orders[order.id];
-    }
-    renderAll();
-  });
-
-  _es.onopen = () => {
-    document.getElementById('dot').classList.add('connected');
-    document.getElementById('connLabel').textContent = 'מחובר';
-  };
-
-  _es.onerror = () => {
-    document.getElementById('dot').classList.remove('connected');
-    document.getElementById('connLabel').textContent = 'מתחבר מחדש…';
-  };
-}
-
-// ── SSE token via query param ─────────────────────────────────────────────────
-// EventSource doesn't support custom headers — auth middleware reads ?token too
-// Patch requireKitchenOrAdmin to also accept query param token (done in API)
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function init() {
