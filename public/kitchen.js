@@ -1,5 +1,8 @@
 'use strict';
 
+// tr() comes from i18n.js (loaded before this script); guard just in case
+const TR = (str) => (typeof tr === 'function' ? tr(str) : str);
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 let _token = null;
 
@@ -30,9 +33,9 @@ let _orders = {};   // id → order
 // ── Render ────────────────────────────────────────────────────────────────────
 function elapsedLabel(createdAt) {
   const mins = Math.floor((Date.now() - new Date(createdAt)) / 60000);
-  if (mins < 1)  return 'הרגע';
-  if (mins < 60) return `${mins} דק'`;
-  return `${Math.floor(mins / 60)}ש' ${mins % 60}דק'`;
+  if (mins < 1)  return TR('הרגע');
+  if (mins < 60) return `${mins} ${TR("דק'")}`;
+  return `${Math.floor(mins / 60)}${TR("ש'")} ${mins % 60}${TR("דק'")}`;
 }
 
 function renderCard(order) {
@@ -55,15 +58,15 @@ function renderCard(order) {
   const ICO_CHECK = ico('<polyline points="20 6 9 17 4 12"/>');
 
   const methodClass = order.delivery_method === 'pickup' ? 'method-pickup' : 'method-delivery';
-  const methodLabel = order.delivery_method === 'pickup' ? `${ICO_HOME} איסוף` : `${ICO_TRUCK} משלוח`;
+  const methodLabel = order.delivery_method === 'pickup' ? `${ICO_HOME} ${TR('איסוף')}` : `${ICO_TRUCK} ${TR('משלוח')}`;
 
   const notes = order.notes ? `<div class="card-notes">${ICO_NOTE} ${order.notes}</div>` : '';
 
   let actions = '';
   if (order.status === 'new') {
-    actions = `<button class="btn-action btn-prep" onclick="setStatus('${order.id}','preparing')">${ICO_FLAME} בתנור</button>`;
+    actions = `<button class="btn-action btn-prep" onclick="setStatus('${order.id}','preparing')">${ICO_FLAME} ${TR('בתנור')}</button>`;
   } else if (order.status === 'preparing') {
-    actions = `<button class="btn-action btn-ready" onclick="setStatus('${order.id}','ready')">${ICO_CHECK} מוכן</button>`;
+    actions = `<button class="btn-action btn-ready" onclick="setStatus('${order.id}','ready')">${ICO_CHECK} ${TR('מוכן')}</button>`;
   }
 
   return `
@@ -91,7 +94,7 @@ function renderAll() {
     const el = document.getElementById(`col-${status}`);
     el.innerHTML = list.length
       ? list.map(renderCard).join('')
-      : '<div class="empty">אין הזמנות</div>';
+      : `<div class="empty">${TR('אין הזמנות')}</div>`;
     document.getElementById(`badge-${status}`).textContent = list.length;
   }
 }
@@ -106,14 +109,14 @@ async function setStatus(id, status) {
     body: JSON.stringify({ status }),
   });
   if (!data) return;
-  if (data.error) { showToast('שגיאה: ' + data.error); if (btn) btn.disabled = false; return; }
+  if (data.error) { showToast(TR('שגיאה') + ': ' + data.error); if (btn) btn.disabled = false; return; }
 
   // Optimistic update — SSE will confirm
   if (data.order) {
     _orders[id] = data.order;
     renderAll();
   }
-  showToast(status === 'preparing' ? 'הזמנה עברה להכנה' : 'הזמנה מוכנה');
+  showToast(status === 'preparing' ? TR('הזמנה עברה להכנה') : TR('הזמנה מוכנה'));
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -140,10 +143,10 @@ function connectSSE() {
     if (['new','preparing','ready'].includes(order.status)) {
       _orders[order.id] = order;
       renderAll();
-      showToast(`הזמנה חדשה #${order.order_number}`);
+      showToast(`${TR('הזמנה חדשה')} #${order.order_number}`);
       // Push notification if page is hidden
       if (document.hidden && Notification.permission === 'granted') {
-        new Notification('הזמנה חדשה', { body: `#${order.order_number} — ₪${order.total_price}` });
+        new Notification(TR('הזמנה חדשה'), { body: `#${order.order_number} — ₪${order.total_price}` });
       }
     }
   });
@@ -160,12 +163,12 @@ function connectSSE() {
 
   _es.onopen = () => {
     document.getElementById('dot').classList.add('connected');
-    document.getElementById('connLabel').textContent = 'מחובר';
+    document.getElementById('connLabel').textContent = TR('מחובר');
   };
 
   _es.onerror = () => {
     document.getElementById('dot').classList.remove('connected');
-    document.getElementById('connLabel').textContent = 'מתחבר מחדש…';
+    document.getElementById('connLabel').textContent = TR('מתחבר מחדש…');
     clearTimeout(_reconnectTimer);
     _reconnectTimer = setTimeout(connectSSE, 4000);
   };
@@ -198,7 +201,7 @@ async function init() {
       const o  = _orders[id];
       if (!o) return;
       const mins = Math.floor((Date.now() - new Date(o.created_at)) / 60000);
-      el.textContent = mins < 1 ? 'הרגע' : mins < 60 ? `${mins} דק'` : `${Math.floor(mins/60)}ש' ${mins%60}דק'`;
+      el.textContent = elapsedLabel(o.created_at);
       el.classList.toggle('urgent', mins > 20);
     });
   }, 60_000);

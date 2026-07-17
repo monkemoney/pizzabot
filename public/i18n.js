@@ -203,6 +203,10 @@ const HE2EN = {
   // Login page
   'שם משתמש': 'Username', 'סיסמא': 'Password', 'כניסה': 'Sign in', 'מתחבר...': 'Signing in...',
   'שגיאת כניסה': 'Sign-in failed',
+  // Kitchen (standalone KDS)
+  'ממתין להכנה': 'Waiting', 'בתנור': 'In the oven', 'הזמנה חדשה': 'New order',
+  'הזמנה עברה להכנה': 'Order moved to preparing', 'הזמנה מוכנה': 'Order ready',
+  'אין הזמנות': 'No orders', 'הרגע': 'Just now', "ש'": 'h ',
 };
 
 const LANG = localStorage.getItem('lang') === 'en' ? 'en' : 'he';
