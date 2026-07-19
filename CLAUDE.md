@@ -42,6 +42,12 @@ grep "^RENDER_API_KEY=" /Users/apple/pizza-bot/.env.production | cut -d= -f2    
 ```
 The Supabase **Management** API token (`sbp_...`, for schema changes) is NOT in the env file — it lives in Claude's persistent memory ("Supabase Management API Token") and in supabase.com/dashboard/account/tokens.
 
+**File missing? (fresh clone / cloud container / new machine) — bootstrap it:**
+```bash
+node scripts/bootstrap-env.js
+```
+Resolution order: existing file → secrets in process env (cloud environment config) → **RENDER_API_KEY alone reconstructs everything** (Render is the canonical store of all runtime vars). Cloud sessions therefore need exactly two things configured in the environment settings: the `RENDER_API_KEY` env var, and network access to `api.render.com` (+ whichever service APIs the task calls: `api.supabase.com`, `*.supabase.co`, `graph.facebook.com`, `www.jasell.com`). A sandbox with no network at all cannot do production operations — run those tasks in a local session instead.
+
 Variable names (values in `.env.production` / Render dashboard):
 
 ```
