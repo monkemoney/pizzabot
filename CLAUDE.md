@@ -33,7 +33,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Secrets & Environment Variables
 
-**All secret values live in `.env.production` (gitignored) — never in this file, never committed.** The Supabase Management API token and the Render API key are also kept in Claude's persistent memory. If a secret ever lands in a committed file, rotate it — git history is forever.
+**All secret values live in `/Users/apple/pizza-bot/.env.production` (gitignored) — never in this file, never committed.** If a secret ever lands in a committed file, rotate it — git history is forever.
+
+**How to read a secret (any session, no permission needed beyond Read/Bash):**
+```bash
+grep "^SUPABASE_SERVICE_KEY=" /Users/apple/pizza-bot/.env.production | cut -d= -f2   # any var by name
+grep "^RENDER_API_KEY=" /Users/apple/pizza-bot/.env.production | cut -d= -f2         # Render API key
+```
+The Supabase **Management** API token (`sbp_...`, for schema changes) is NOT in the env file — it lives in Claude's persistent memory ("Supabase Management API Token") and in supabase.com/dashboard/account/tokens.
 
 Variable names (values in `.env.production` / Render dashboard):
 
