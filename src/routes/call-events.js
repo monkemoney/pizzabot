@@ -194,6 +194,10 @@ router.post('/calls/:tenantId', async (req, res) => {
     return res.json({ ok: true, skipped: 'disabled' }); // 200 — don't make the provider retry
   }
 
+  if (!req.body || !Object.keys(req.body).length) {
+    console.log(`[calls:${tenantId}] empty body — content-type: ${req.headers['content-type']}, content-encoding: ${req.headers['content-encoding']}`);
+  }
+
   const events = parseCallEvents(req.body);
   res.json({ ok: true, received: events.length }); // ack now, process async
 

@@ -24,7 +24,10 @@ const app  = express();
 const PORT = process.env.PORT || 3000;
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(express.json());
+// type matcher includes application/*+json — DIDWW's Call Events POST
+// application/vnd.api+json (JSON:API), which the default matcher silently
+// skips, leaving req.body = {} (learned from the first real CDR).
+app.use(express.json({ type: ['application/json', 'application/*+json'] }));
 
 // ─── Static dashboard ─────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, '..', 'public')));
