@@ -124,7 +124,8 @@ async function processCallEvents(tenantId, events) {
 
     const caller = greenapi.formatPhone(event.caller || '');
     if (!caller || !/^\d{9,15}$/.test(caller)) {
-      console.log(`[calls:${tenantId}] missed call with unusable caller id (${event.caller}) — skipping`);
+      // Raw attrs logged so an unexpected provider field naming can be calibrated from the logs
+      console.log(`[calls:${tenantId}] missed call with unusable caller id (${event.caller}) — skipping. Raw: ${JSON.stringify(event.raw).slice(0, 600)}`);
       continue;
     }
     if (caller === forwardPhone) continue;              // the owner's own device
