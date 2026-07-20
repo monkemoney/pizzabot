@@ -214,6 +214,7 @@ The tenant's business number lives at a VoIP provider (pilot: DIDWW — number o
 - **CDR parsing** (`parseCallEvents`): DIDWW Voice IN shape `{data:[{type:'inbound-cdr',attributes:{success,duration,time_connect,src_number}}]}`; caller-field probing covers naming variants. Answered = `success===true` | `time_connect` | `duration>0`. Unparsable bodies are logged in full — calibrate against the first real event.
 - **Settings** (per tenant): `missed_call_enabled`, `missed_call_webhook_token` (required — 403 without it), template name/lang/params, text fallback, forward number, throttle hours, when-closed. Dashboard toggle: הגדרות → "שיחות שלא נענו".
 - Master switch off ⇒ webhook returns 200 (not 4xx) so the provider doesn't retry-spam.
+- **Onboarding a client onto this feature: follow `docs/ONBOARDING-PLAYBOOK.md`** — the validated ops checklist (number purchase incl. dirty-number check, WABA wiring, per-WABA template, settings seed, CDR stream config) with every production gotcha indexed.
 
 ### Auth & Tenant Isolation (auth.js)
 
