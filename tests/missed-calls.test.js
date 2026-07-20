@@ -296,6 +296,30 @@ describe('parseCallEvents', () => {
   });
 });
 
+// ── Content-type tolerance: DIDWW posts JSON as text/plain ───────────────────
+describe('text/plain body (DIDWW production behavior)', () => {
+  test('JSON sent as text/plain is parsed and processed', async () => {
+    await request(app)
+      .post(`/webhook/calls/${TENANT}?token=${TOKEN}`)
+      .set('Content-Type', 'text/plain')
+      .send(JSON.stringify(cdrBody('+972501111111')))
+      .expect(200);
+    await flush();
+    expect(mockSendTemplate).toHaveBeenCalledTimes(1);
+    expect(mockSendTemplate.mock.calls[0][0]).toBe('972501111111');
+  });
+
+  test('garbage text body acks 200 without crashing', async () => {
+    await request(app)
+      .post(`/webhook/calls/${TENANT}?token=${TOKEN}`)
+      .set('Content-Type', 'text/plain')
+      .send('not json at all')
+      .expect(200);
+    await flush();
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+});
+
 // ── Wiring: the route is not swallowed by /webhook/:tenantId ─────────────────
 describe('route mounting order', () => {
   test('GET /webhook/calls/:tenantId answers the sanity check (not Meta verify 403)', async () => {

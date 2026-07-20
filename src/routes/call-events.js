@@ -175,8 +175,22 @@ async function processCallEvents(tenantId, events) {
 // Manual sanity check for wiring the provider ("is the URL right?").
 router.get('/calls/:tenantId', (_req, res) => res.json({ ok: true, service: 'call-events' }));
 
-router.post('/calls/:tenantId', async (req, res) => {
+// DIDWW posts the CDR JSON with Content-Type: text/plain (observed in
+// production), which the global express.json() skips. Accept anything on
+// this route: JSON types are already parsed upstream, the rest arrives
+// here as a string and is JSON.parsed manually.
+router.post('/calls/:tenantId', express.text({ type: '*/*', limit: '1mb' }), async (req, res) => {
   const tenantId = req.params.tenantId;
+
+  let body = req.body;
+  if (typeof body === 'string') {
+    try {
+      body = body.trim() ? JSON.parse(body) : {};
+    } catch {
+      console.log(`[calls:${tenantId}] non-JSON body (content-type: ${req.headers['content-type']}): ${String(req.body).slice(0, 300)}`);
+      body = {};
+    }
+  }
 
   let expectedToken;
   try {
@@ -194,15 +208,15 @@ router.post('/calls/:tenantId', async (req, res) => {
     return res.json({ ok: true, skipped: 'disabled' }); // 200 — don't make the provider retry
   }
 
-  if (!req.body || !Object.keys(req.body).length) {
+  if (!body || !Object.keys(body).length) {
     console.log(`[calls:${tenantId}] empty body — content-type: ${req.headers['content-type']}, content-encoding: ${req.headers['content-encoding']}`);
   }
 
-  const events = parseCallEvents(req.body);
+  const events = parseCallEvents(body);
   res.json({ ok: true, received: events.length }); // ack now, process async
 
   if (!events.length) {
-    console.log(`[calls:${tenantId}] webhook with no parsable events:`, JSON.stringify(req.body).slice(0, 500));
+    console.log(`[calls:${tenantId}] webhook with no parsable events:`, JSON.stringify(body).slice(0, 500));
     return;
   }
 
