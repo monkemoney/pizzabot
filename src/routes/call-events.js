@@ -31,6 +31,7 @@ const crypto  = require('crypto');
 const settings         = require('../services/settings');
 const { getAdminUser } = require('../services/supabase');
 const greenapi         = require('../services/greenapi');
+const sms              = require('../services/sms');
 
 const router = express.Router();
 
@@ -153,21 +154,33 @@ async function processCallEvents(tenantId, events) {
     _lastNotified.set(key, Date.now()); // set before send — absorbs provider retries mid-send
     _pruneThrottle(throttleMs);
 
+    // Channel: 'whatsapp' (Meta template, default) | 'sms' (DIDWW — no Meta
+    // approval dependency; the wa.me link hands the reply off to the bot).
+    const channel = all.missed_call_channel === 'sms' ? 'sms' : 'whatsapp';
     try {
-      await greenapi.sendTemplate(
-        caller,
-        {
-          name:   all.missed_call_template || DEFAULT_TEMPLATE,
-          lang:   all.missed_call_template_lang || 'he',
-          params: Array.isArray(all.missed_call_template_params) ? all.missed_call_template_params : [],
-        },
-        tenantId,
-        all.missed_call_text || DEFAULT_TEXT
-      );
-      console.log(`[calls:${tenantId}] missed call from ${caller} → recovery message sent`);
+      if (channel === 'sms') {
+        const waDigits = greenapi.formatPhone(all.bot_whatsapp || '');
+        const waLink   = waDigits ? ` https://wa.me/${waDigits}` : '';
+        const smsText  = all.missed_call_sms_text ||
+          `היי, התקשרתם ${all.business_name ? 'ל' + all.business_name : 'אלינו'} ולא הספקנו לענות. אפשר לכתוב לנו בוואטסאפ ונענה מיד:${waLink}`;
+        const source   = greenapi.formatPhone(all.missed_call_sms_sender || all.bot_whatsapp || '');
+        await sms.sendSms(caller, smsText, source, tenantId);
+      } else {
+        await greenapi.sendTemplate(
+          caller,
+          {
+            name:   all.missed_call_template || DEFAULT_TEMPLATE,
+            lang:   all.missed_call_template_lang || 'he',
+            params: Array.isArray(all.missed_call_template_params) ? all.missed_call_template_params : [],
+          },
+          tenantId,
+          all.missed_call_text || DEFAULT_TEXT
+        );
+      }
+      console.log(`[calls:${tenantId}] missed call from ${caller} → recovery ${channel} sent`);
     } catch (err) {
       _lastNotified.delete(key); // let the next event retry
-      console.error(`[calls:${tenantId}] recovery message to ${caller} failed:`, err.message);
+      console.error(`[calls:${tenantId}] recovery ${channel} to ${caller} failed:`, err.message);
     }
   }
 }

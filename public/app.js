@@ -2227,6 +2227,13 @@ function renderSettingsForm(s) {
     ${sCard(ICONS.phone, 'שיחות שלא נענו', 'לקוח שהתקשר ולא נענה מקבל אוטומטית הזמנה להזמין בוואטסאפ', `
       ${sToggle('missed_call_enabled', 'שלח וואטסאפ אוטומטי למי שהתקשר ולא נענה', s.missed_call_enabled === true)}
       ${sToggle('missed_call_when_closed', 'שלח גם כשהעסק סגור', s.missed_call_when_closed === true)}
+      <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <label style="font-size:.84rem;font-weight:600;color:var(--text);min-width:120px">${TR('ערוץ ההודעה:')}</label>
+        <select id="missedCallChannel" style="flex:1;min-width:160px;cursor:pointer">
+          <option value="whatsapp" ${(s.missed_call_channel||'whatsapp')==='whatsapp'?'selected':''}>${TR('וואטסאפ (תבנית מאושרת)')}</option>
+          <option value="sms"      ${s.missed_call_channel==='sms'?'selected':''}>${TR('SMS עם קישור לוואטסאפ')}</option>
+        </select>
+      </div>
       <div style="margin-top:14px;display:flex;align-items:center;gap:12px">
         <span style="font-size:.88rem;color:var(--text)">${TR('מינימום')}</span>
         <input type="number" id="missedCallThrottle" dir="ltr" value="${s.missed_call_throttle_hours ?? 3}" min="1" max="48"
@@ -2316,10 +2323,12 @@ async function saveMissedCalls() {
   const enabled    = !!document.querySelector('.setting-toggle[data-key="missed_call_enabled"]')?.checked;
   const whenClosed = !!document.querySelector('.setting-toggle[data-key="missed_call_when_closed"]')?.checked;
   const hours      = parseInt(document.getElementById('missedCallThrottle')?.value) || 3;
+  const channel    = document.getElementById('missedCallChannel')?.value === 'sms' ? 'sms' : 'whatsapp';
   await saveSection({
     missed_call_enabled:        enabled,
     missed_call_when_closed:    whenClosed,
     missed_call_throttle_hours: Math.max(1, Math.min(48, hours)),
+    missed_call_channel:        channel,
   });
 }
 

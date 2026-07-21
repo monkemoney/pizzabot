@@ -76,6 +76,21 @@ Webhook URL for the next phase:
 `https://www.jasell.com/webhook/calls/<tenant_id>?token=<webhook_token>`
 Sanity: GET on that URL (no token needed) returns `{"ok":true,"service":"call-events"}`.
 
+## Phase 3b — Optional: SMS channel (no Meta dependency)
+
+`missed_call_channel = sms` sends the recovery as a DIDWW SMS with a `wa.me` link
+instead of a WhatsApp template — useful while a template is pending, and as the
+only channel that reaches callers without WhatsApp. One-time account setup:
+
+1. DIDWW panel → SMS → create an **HTTP OUT trunk** → note username/password →
+   env `DIDWW_SMS_USER` / `DIDWW_SMS_PASSWORD` on Render.
+2. Whitelist Render's outbound IPs in the trunk config (Render dashboard →
+   service → Connect → Outbound IP addresses) — without it every send 403s.
+3. Per tenant: `missed_call_sms_sender` (usually the tenant's DID) and make sure
+   `bot_whatsapp` is set (it feeds the wa.me link).
+4. Keep the SMS text service-toned (Israeli spam law: this is a response to the
+   customer's call, not marketing — no promotional language).
+
 ## Phase 4 — DIDWW CDR streaming
 
 1. Panel → APIs → **Call Events API**. If it says *not activated for your account* —

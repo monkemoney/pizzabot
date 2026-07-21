@@ -138,6 +138,8 @@ const HE2EN = {
   'שלח וואטסאפ אוטומטי למי שהתקשר ולא נענה': 'Auto-send WhatsApp to unanswered callers',
   'שלח גם כשהעסק סגור': 'Send even when the business is closed',
   'מינימום': 'At least', 'שעות בין הודעות לאותו מתקשר': 'hours between messages to the same caller',
+  'ערוץ ההודעה:': 'Message channel:', 'וואטסאפ (תבנית מאושרת)': 'WhatsApp (approved template)',
+  'SMS עם קישור לוואטסאפ': 'SMS with a WhatsApp link',
   "חיבור מספר הטלפון לשירות נעשה על ידי ג'אסל.": 'Connecting the phone number to this service is done by Jasell.',
   'יום ראשון': 'Sunday', 'יום שני': 'Monday', 'יום שלישי': 'Tuesday', 'יום רביעי': 'Wednesday',
   'יום חמישי': 'Thursday', 'יום שישי': 'Friday', 'יום שבת': 'Saturday',

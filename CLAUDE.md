@@ -58,6 +58,7 @@ META_WA_PHONE_NUMBER_ID, META_WA_ACCESS_TOKEN, META_WA_WABA_ID,
 META_WA_VERIFY_TOKEN, META_WA_API_VERSION            # default tenant's Meta creds
 META_APP_ID, META_APP_SECRET                          # Embedded Signup (post Tech Provider approval)
 GREEN_API_INSTANCE_ID, GREEN_API_TOKEN, GREEN_API_BASE_URL   # legacy channel
+DIDWW_SMS_USER, DIDWW_SMS_PASSWORD                    # DIDWW HTTP OUT trunk (missed-call SMS channel)
 CARDCOM_API_URL, CARDCOM_TERMINAL, CARDCOM_USERNAME   # default tenant; per-tenant creds live in settings
 VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_EMAIL
 ADMIN_SECRET, JWT_SECRET,
@@ -209,6 +210,7 @@ Meta specifics:
 The tenant's business number lives at a VoIP provider (pilot: DIDWW — number owned by Jasell, calls forwarded to the owner's mobile). The provider's CDR webhook POSTs every inbound call to `/webhook/calls/:tenantId?token=<missed_call_webhook_token>`; unanswered calls trigger a WhatsApp recovery message to the caller ("we missed your call — order here"), turning missed calls into bot conversations.
 
 - **Business-initiated ⇒ Meta requires an approved template** (`missed_call_template` setting, default `missed_call_recovery`, lang `he`). Sent via `greenapi.sendTemplate()` facade → Meta tenants get the template, Green API tenants get plain text (`missed_call_text`) — no template rule on the unofficial channel. Customer's reply opens a free 24h service window; the normal bot takes over.
+- **Alternative channel: SMS** (`missed_call_channel` setting: `whatsapp` default | `sms`) — DIDWW HTTP OUT (`sms.js`), zero Meta approval dependency; text = `missed_call_sms_text` or default with a `wa.me/<bot_whatsapp>` link that hands the reply to the bot. Sender = `missed_call_sms_sender` (fallback `bot_whatsapp`). Requires env `DIDWW_SMS_USER/PASSWORD` + Render outbound IPs whitelisted in the DIDWW trunk. Adopted as the bridge while template approval is stuck on business verification (2026-07-21); conversion comparison vs template pending.
 - **Filters before sending:** unusable caller id (anonymous), the forward-target phone (`missed_call_forward_number`), couriers, admin_users, business closed (unless `missed_call_when_closed`).
 - **Throttle:** in-memory per `tenant:caller`, `missed_call_throttle_hours` (default 3h) — also absorbs provider webhook retries/duplicates. Resets on deploy (accepted, like login rate limiting). Failed sends release the throttle key.
 - **CDR parsing** (`parseCallEvents`): DIDWW Voice IN shape `{data:[{type:'inbound-cdr',attributes:{success,duration,time_connect,src_number}}]}`; caller-field probing covers naming variants. Answered = `success===true` | `time_connect` | `duration>0`. Unparsable bodies are logged in full — calibrate against the first real event.

@@ -43,6 +43,9 @@ jest.mock('../src/services/greenapi', () => ({
   toChatId: (p) => `${p}@c.us`,
 }));
 
+const mockSendSms = jest.fn(async () => ({ ok: true }));
+jest.mock('../src/services/sms', () => ({ sendSms: mockSendSms }));
+
 jest.mock('../src/services/vendor-alerts',  () => ({ alert: jest.fn(async () => {}), alerts: { serverError: jest.fn(async () => {}), serverRestart: jest.fn(async () => {}), onboardingComplete: jest.fn(async () => {}) } }));
 jest.mock('../src/services/push-notifier',  () => ({ notifyNewOrder: jest.fn(async () => {}), saveSubscription: jest.fn() }));
 jest.mock('../src/services/cardcom',        () => ({
@@ -293,6 +296,54 @@ describe('parseCallEvents', () => {
     expect(parseCallEvents(null)).toEqual([]);
     expect(parseCallEvents('str')).toEqual([]);
     expect(parseCallEvents({ data: [] })).toEqual([]);
+  });
+});
+
+// ── SMS channel ───────────────────────────────────────────────────────────────
+describe('missed_call_channel = sms', () => {
+  test('sends SMS with wa.me link instead of a WhatsApp template', async () => {
+    mockSettingsStore.missed_call_channel = 'sms';
+    mockSettingsStore.bot_whatsapp        = '97233741407';
+    mockSettingsStore.business_name       = 'פיצה דליבריס';
+    await post(cdrBody('+972501111111')).expect(200);
+    await flush();
+
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+    expect(mockSendSms).toHaveBeenCalledTimes(1);
+    const [to, text, source, tenantId] = mockSendSms.mock.calls[0];
+    expect(to).toBe('972501111111');
+    expect(text).toContain('https://wa.me/97233741407');
+    expect(text).toContain('פיצה דליבריס');
+    expect(source).toBe('97233741407');
+    expect(tenantId).toBe(TENANT);
+  });
+
+  test('custom sms text and explicit sender override the defaults', async () => {
+    mockSettingsStore.missed_call_channel    = 'sms';
+    mockSettingsStore.missed_call_sms_text   = 'טקסט מותאם';
+    mockSettingsStore.missed_call_sms_sender = '0521112222';
+    await post(cdrBody('+972501111111')).expect(200);
+    await flush();
+
+    expect(mockSendSms).toHaveBeenCalledWith('972501111111', 'טקסט מותאם', '972521112222', TENANT);
+  });
+
+  test('sms failure releases the throttle for retry', async () => {
+    mockSettingsStore.missed_call_channel = 'sms';
+    mockSettingsStore.bot_whatsapp        = '97233741407';
+    mockSendSms.mockRejectedValueOnce(new Error('didww 403'));
+    await post(cdrBody('+972501111111')).expect(200);
+    await flush();
+    await post(cdrBody('+972501111111')).expect(200);
+    await flush();
+    expect(mockSendSms).toHaveBeenCalledTimes(2);
+  });
+
+  test('default channel stays whatsapp when setting is absent', async () => {
+    await post(cdrBody('+972501111111')).expect(200);
+    await flush();
+    expect(mockSendTemplate).toHaveBeenCalledTimes(1);
+    expect(mockSendSms).not.toHaveBeenCalled();
   });
 });
 
