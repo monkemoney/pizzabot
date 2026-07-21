@@ -35,6 +35,22 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 // ─── Health ───────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ ok: true, time: new Date() }));
 
+// Egress diagnostic — reports the server's outbound IP(s), needed when a
+// provider (e.g. DIDWW SMS trunk) requires whitelisting our source IPs.
+app.get('/health/egress', async (_req, res) => {
+  try {
+    const axios = require('axios');
+    const ips = new Set();
+    for (let i = 0; i < 6; i++) {
+      const r = await axios.get('https://api.ipify.org?format=json', { timeout: 5000 });
+      ips.add(r.data.ip);
+    }
+    res.json({ egress_ips: [...ips] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Vendor admin portal (/admin) ────────────────────────────────────────────
 app.get('/admin', (_req, res) =>
   res.sendFile(path.join(__dirname, '..', 'public', 'admin.html'))
