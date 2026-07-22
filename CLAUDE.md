@@ -93,6 +93,10 @@ curl -s -X POST "https://api.supabase.com/v1/projects/umoftdmutxhrbknowbyh/datab
 # Env var backup/restore (ALWAYS before infra changes)
 node scripts/backup-render-env.js   # pulls from Render → .env.production (merges — local-only keys like RENDER_API_KEY survive)
 node scripts/sync-render-env.js     # pushes .env.production → Render
+# ⚠️ MANDATORY ORDER: ALWAYS run backup-render-env.js immediately before sync-render-env.js.
+# Render is the canonical store and parallel sessions update it — pushing a stale local file
+# silently overwrites their changes (this took the bot down on 2026-07-22 by reverting Meta creds).
+# Pull → edit the one var you're changing → push. Never push without a fresh pull.
 
 # Fetch Render runtime logs
 curl -s "https://api.render.com/v1/logs?resource=srv-d831jc8js32c73ef8mng&ownerId=tea-cuppja5umphs73ea2qe0&limit=200" \
