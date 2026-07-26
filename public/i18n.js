@@ -63,6 +63,8 @@ const HE2EN = {
   'אשר הזמנה': 'Accept order',
   'אשר הזמנה מתוזמנת': 'Confirm pre-order',
   'שיחה עם נציג': 'Human handoff',
+  'הכנסות (שולם)': 'Revenue (paid)',
+  'ממתין לתשלום': 'Awaiting payment',
   'שורת הסרה ("להסרה השב הסר") תתווסף אוטומטית, ולקוחות שביקשו הסרה ידולגו.':
     'An opt-out line is appended automatically, and customers who asked to be removed are skipped.',
   'דילגנו (ביקשו הסרה)': 'Skipped (opted out)',

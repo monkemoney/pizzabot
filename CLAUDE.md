@@ -287,6 +287,14 @@ Sender in `admin_users` → admin bot on the same WhatsApp number (sessions keye
 
 ACTION blocks: `SET_AVAILABLE` (checks ALL occurrences of a name — standalone product + per-pizza topping; limits 500/100 to avoid silent truncation; logs updated row ids), `ORDER_STATUS`, `CANCEL_ORDER`, `DISPUTE`, `SET`, `SET_DELIVERY_HOURS`, `UPDATE_PRICE`, `LIST_ORDERS`, `CONFIRM_PAYMENT` (Bit).
 
+### Stats Correctness (2026-07-27)
+
+Three defects made the stats page answer business questions wrongly:
+
+- **The payment-split donut was permanently empty** — the query never selected `payment_method` while the split filtered on it. Selected now, with a `bit` bucket alongside cash/credit.
+- **Revenue counted money that had not arrived.** It was every non-cancelled order, so orders the business never approved, unpaid Bit orders and refunded ones were all reported as income. `revenue` is now paid-and-not-refunded only, with `revenue_pending` and `revenue_refunded` returned separately; the dashboard shows "הכנסות (שולם)" next to "ממתין לתשלום" instead of one inflated figure.
+- **Days and hours were server-local (UTC on Render)** while the whole product reasons in Asia/Jerusalem, so "today" was off by 2-3 hours at both ends: the 00:00-03:00 rush was filed under the previous day and the peak-hours chart the owner staffs to was shifted by the offset. `src/services/il-time.js` owns the boundaries (`periodRange`, `ilHourOf`, `ilDayKey`), DST included — probing UTC+2/UTC+3 and keeping whichever round-trips.
+
 ### Message Delivery Integrity (2026-07-27)
 
 `reply()` in ai-handler used to swallow every send failure, so a rejected message still had its text written into `conversation_history` as though the customer had read it — the bot's record then disagreed with reality and Claude reasoned from the fiction on the next turn. Now `reply()` returns whether the send landed; **the assistant turn is only appended to history when it was actually delivered**, so the next turn re-states it instead of building on something the customer never saw. A failure raises the `deliveryFailed` vendor alert, and when it is an *order confirmation* that failed, the tenant's admins are WhatsApped directly — the order row exists, the customer does not know it, and only the business can pick up the phone.

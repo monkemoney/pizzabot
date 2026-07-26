@@ -360,34 +360,10 @@ router.post('/orders/:id/item-dispute', requireAdmin, async (req, res) => {
 
 // ─── Stats (admin only) ───────────────────────────────────────────────────────
 
-function periodRange(period, date) {
-  const now = date ? new Date(date) : new Date();
-  let start, end;
-  switch (period) {
-    case 'week': {
-      const day = now.getDay();
-      start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day);
-      end   = new Date(start.getTime() + 7 * 86400000);
-      break;
-    }
-    case 'month':
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-      end   = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      break;
-    case 'year':
-      start = new Date(now.getFullYear(), 0, 1);
-      end   = new Date(now.getFullYear() + 1, 0, 1);
-      break;
-    case 'all':
-      start = new Date(2020, 0, 1);
-      end   = new Date(2100, 0, 1);
-      break;
-    default: // 'today' or specific date
-      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      end   = new Date(start.getTime() + 86400000);
-  }
-  return { start: start.toISOString(), end: end.toISOString() };
-}
+// Period boundaries, hour buckets and day keys are Israel-time — see
+// services/il-time.js for why the server clock cannot be used here.
+const { ilHourOf, ilDayKey, periodRange } = require('../services/il-time');
+
 
 router.get('/stats', requireAdmin, async (req, res) => {
   try {
@@ -396,7 +372,9 @@ router.get('/stats', requireAdmin, async (req, res) => {
 
     const { data: dayOrders } = await supabase
       .from('orders')
-      .select('total_price, items, status, created_at, updated_at, delivery_method, payment_status')
+      // payment_method was missing here while the payment split filtered on it,
+      // so that chart was permanently empty.
+      .select('total_price, items, status, created_at, updated_at, delivery_method, payment_status, payment_method, refund_status, accepted_at')
       .eq('tenant_id', tid(req))
       .gte('created_at', start)
       .lt('created_at', end);
@@ -404,7 +382,18 @@ router.get('/stats', requireAdmin, async (req, res) => {
     const all       = dayOrders || [];
     const cancelled = all.filter((o) => o.status === 'cancelled');
     const completed = all.filter((o) => o.status !== 'cancelled');
-    const revenue   = completed.reduce((s, o) => s + (parseFloat(o.total_price) || 0), 0);
+
+    // Revenue is money actually received. It used to be every non-cancelled
+    // order, which counted orders the business never approved, Bit orders that
+    // were never paid, and refunded ones — all reported as income.
+    const earned  = completed.filter((o) => o.payment_status === 'paid' && o.refund_status !== 'refunded');
+    const revenue = earned.reduce((s, o) => s + (parseFloat(o.total_price) || 0), 0);
+    const revenuePending = completed
+      .filter((o) => o.payment_status !== 'paid')
+      .reduce((s, o) => s + (parseFloat(o.total_price) || 0), 0);
+    const revenueRefunded = completed
+      .filter((o) => o.refund_status === 'refunded')
+      .reduce((s, o) => s + (parseFloat(o.total_price) || 0), 0);
 
     // Top products (with revenue)
     const productMap = {};
@@ -432,15 +421,16 @@ router.get('/stats', requireAdmin, async (req, res) => {
     const paymentSplit = {
       cash:   all.filter(o => o.payment_method === 'cash').length,
       credit: all.filter(o => o.payment_method === 'credit').length,
+      bit:    all.filter(o => o.payment_method === 'bit').length,
     };
 
     // Status breakdown
     const statusBreakdown = {};
     for (const o of all) statusBreakdown[o.status] = (statusBreakdown[o.status] || 0) + 1;
 
-    // Hourly distribution
+    // Hourly distribution — in Israel time, which is what the owner staffs to
     const hourlyOrders = Array(24).fill(0);
-    for (const o of completed) hourlyOrders[new Date(o.created_at).getHours()]++;
+    for (const o of completed) hourlyOrders[ilHourOf(o.created_at)]++;
 
     // Average delivery time (created_at → delivered updated_at)
     const deliveredOrders = completed.filter((o) => o.status === 'delivered' || o.status === 'done');
@@ -470,7 +460,7 @@ router.get('/stats', requireAdmin, async (req, res) => {
     // Orders per day (for chart)
     const ordersByDay = {};
     for (const o of completed) {
-      const day = o.created_at.slice(0, 10);
+      const day = ilDayKey(o.created_at);
       if (!ordersByDay[day]) ordersByDay[day] = { count: 0, revenue: 0 };
       ordersByDay[day].count++;
       ordersByDay[day].revenue += parseFloat(o.total_price) || 0;
@@ -481,6 +471,8 @@ router.get('/stats', requireAdmin, async (req, res) => {
       order_count:           completed.length,
       cancelled_count:       cancelled.length,
       revenue:               Math.round(revenue * 100) / 100,
+      revenue_pending:       Math.round(revenuePending * 100) / 100,
+      revenue_refunded:      Math.round(revenueRefunded * 100) / 100,
       top_products:          topProducts,
       avg_delivery_minutes:  avgDeliveryMin,
       paid_count:            paid,

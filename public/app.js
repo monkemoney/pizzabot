@@ -963,11 +963,14 @@ async function loadStats(period = 'today', date) {
       </div>`;
     cardsEl.innerHTML =
       kpi(`${TR('הזמנות')} — ${periodLabel}`,  s.order_count) +
-      kpi(TR('הכנסות'),                   `₪${(s.revenue||0).toFixed(0)}`) +
+      // Revenue is money received; anything still owed is its own figure rather
+      // than being folded in and overstating the day.
+      kpi(TR('הכנסות (שולם)'),            `₪${(s.revenue||0).toFixed(0)}`) +
+      kpi(TR('ממתין לתשלום'),             `₪${(s.revenue_pending||0).toFixed(0)}`,
+          (s.revenue_pending||0) > 0 ? '#c07000' : 'var(--text)') +
       kpi(TR('ממוצע להזמנה'),             s.order_count ? `₪${((s.revenue||0)/s.order_count).toFixed(0)}` : '—') +
       kpi(TR('זמן מסירה ממוצע'),          s.avg_delivery_minutes != null ? s.avg_delivery_minutes+'′' : '—') +
-      kpi(TR('ביטולים'),                  s.cancelled_count || 0, (s.cancelled_count||0) > 0 ? C_RED : 'var(--text)') +
-      kpi(TR('יחס המרה'),                 s.conversion_rate != null ? s.conversion_rate+'%' : '—');
+      kpi(TR('ביטולים'),                  s.cancelled_count || 0, (s.cancelled_count||0) > 0 ? C_RED : 'var(--text)');
 
     // ── 1. Orders per day — line chart ──
     const byDay = s.orders_by_day || {};
@@ -1071,9 +1074,9 @@ async function loadStats(period = 'today', date) {
 
     // ── 5. Payment pie ──
     const ps = s.payment_split || {};
-    const payLabels = [TR('מזומן'), TR('אשראי')];
-    const payColors = [C_AMBER, C_GREEN];
-    const payData   = [ps.cash || 0, ps.credit || 0];
+    const payLabels = [TR('מזומן'), TR('אשראי'), TR('ביט')];
+    const payColors = [C_AMBER, C_GREEN, '#0ea5e9'];
+    const payData   = [ps.cash || 0, ps.credit || 0, ps.bit || 0];
     mkChart('chartPayment', {
       type: 'doughnut',
       data: { labels: payLabels, datasets: [{ data: payData, backgroundColor: payColors, borderWidth: 2, borderColor: '#fff' }] },
