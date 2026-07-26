@@ -411,17 +411,19 @@ router.get('/stats', requireAdmin, async (req, res) => {
       .slice(0, 8)
       .map(([name, d]) => ({ name, count: d.count, revenue: Math.round(d.revenue) }));
 
-    // Delivery split
+    // Delivery + payment splits describe the SAME set of orders the count and
+    // revenue describe — over `all` they silently included cancelled orders, so
+    // the donut totalled more than the order count next to it.
     const deliverySplit = {
-      delivery: all.filter(o => o.delivery_method === 'delivery').length,
-      pickup:   all.filter(o => o.delivery_method === 'pickup').length,
+      delivery: completed.filter(o => o.delivery_method === 'delivery').length,
+      pickup:   completed.filter(o => o.delivery_method === 'pickup').length,
     };
 
     // Payment method split
     const paymentSplit = {
-      cash:   all.filter(o => o.payment_method === 'cash').length,
-      credit: all.filter(o => o.payment_method === 'credit').length,
-      bit:    all.filter(o => o.payment_method === 'bit').length,
+      cash:   completed.filter(o => o.payment_method === 'cash').length,
+      credit: completed.filter(o => o.payment_method === 'credit').length,
+      bit:    completed.filter(o => o.payment_method === 'bit').length,
     };
 
     // Status breakdown
