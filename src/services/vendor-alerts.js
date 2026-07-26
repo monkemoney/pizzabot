@@ -103,6 +103,8 @@ const alerts = {
   newOrder:      (num, total)  => alert('new_order',   '🍕', `הזמנה #${num} התקבלה`, `סכום: ₪${total}`),
   serverRestart: ()       => alert('restart',      '🔄', 'שרת אותחל', 'pizzabot-jasell.onrender.com'),
   lowBalance:    (bal)    => alert('low_balance',  '⚠️', 'יתרת Green API נמוכה', `${bal} הודעות נותרו`),
+  provisioningFailed: (name, step, reason) => alert(`provisioning_${name}_${step}`, '🔴', 'הקמת לקוח נכשלה',
+    `עסק: ${name || '—'}\nשלב: ${step}\n${String(reason).slice(0, 200)}\n\nהאישור ניתן להרצה מחדש — השלבים שהצליחו לא ירוצו שוב.`),
   onboardingComplete: (name, wa, sessionId) =>
     alert(`onboarding_${sessionId}`, '🟢', 'לקוח השלים אונבורדינג', `עסק: ${name}\nWhatsApp בוט: ${wa}`),
 };

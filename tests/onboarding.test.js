@@ -361,3 +361,55 @@ describe('POST /api/onboarding/:token/whatsapp-signup', () => {
     expect(res.body.error).toMatch(/עדיין לא זמין/);
   });
 });
+
+// ── Vendor side: POST /api/vendor/onboarding/:id/approve — guards ────────────
+// This endpoint provisions settings, a menu copy, admin users, a login and the
+// WhatsApp channel. It used to run with no state check at all: approving twice
+// duplicated the client's whole menu and minted a second working login, and a
+// session the client had never submitted could be provisioned empty.
+describe('POST /api/vendor/onboarding/:id/approve — guards', () => {
+  const withClient = (over = {}) =>
+    makeSession(`appr-${Math.random().toString(36).slice(2)}`, {
+      clients: { id: 'c-1', tenant_id: 'tenant-appr-1', name: 'בדיקה' },
+      ...over,
+    });
+
+  test('refuses a session that is already approved (no duplicate menu / second login)', async () => {
+    const s = withClient({ status: 'approved' });
+
+    const res = await request(app)
+      .post(`/api/vendor/onboarding/${s.id}/approve`)
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .expect(409);
+
+    expect(res.body.error).toContain('כבר אושר');
+  });
+
+  test('refuses a session the client has not submitted yet', async () => {
+    const s = withClient({ status: 'pending_client' });
+
+    const res = await request(app)
+      .post(`/api/vendor/onboarding/${s.id}/approve`)
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .expect(409);
+
+    expect(res.body.error).toContain('עדיין לא שלח');
+  });
+
+  test('refuses an expired session, like every other reader of expires_at', async () => {
+    const s = withClient({
+      status: 'pending_vendor',
+      expires_at: new Date(Date.now() - 86400000).toISOString(),
+    });
+
+    await request(app)
+      .post(`/api/vendor/onboarding/${s.id}/approve`)
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .expect(410);
+  });
+
+  test('requires vendor auth', async () => {
+    const s = withClient({ status: 'pending_vendor' });
+    await request(app).post(`/api/vendor/onboarding/${s.id}/approve`).expect(401);
+  });
+});

@@ -483,9 +483,19 @@ function renderSessionModal() {
     </div>`;
 
   if (isApproved) {
+    // The password is shown once, at approval. When it gets lost — closed modal,
+    // failed WhatsApp — this is the way back in, rather than hand-written SQL.
     body.innerHTML = stepperHtml +
-      `<div style="background:#e0fbef;border-radius:12px;padding:20px;text-align:center;font-size:.9rem;font-weight:700;color:#16a34a">
+      `<div style="background:#e0fbef;border-radius:12px;padding:20px;text-align:center;font-size:.9rem;font-weight:700;color:#16a34a;margin-bottom:16px">
         הלקוח מאושר ופעיל
+       </div>
+       <div style="border:1px solid var(--border);border-radius:12px;padding:16px">
+         <div style="font-weight:700;font-size:.88rem;margin-bottom:4px">פרטי כניסה לדשבורד</div>
+         <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:12px">
+           שם משתמש: <strong style="font-family:monospace">${s.approved_username || '—'}</strong><br>
+           הסיסמא מוצגת פעם אחת בלבד. אם היא אבדה — הנפק סיסמא חדשה והיא תישלח ללקוח בוואטסאפ.
+         </div>
+         <button onclick="resetClientCredentials('${s.id}')" class="btn btn-outline btn-sm">הנפק סיסמא חדשה</button>
        </div>`;
     return;
   }
@@ -692,6 +702,21 @@ async function approveOnboarding(id) {
   }
 }
 
+async function resetClientCredentials(sessionId) {
+  if (!confirm('להנפיק סיסמא חדשה ללקוח? הסיסמא הנוכחית תפסיק לעבוד מיד.')) return;
+  try {
+    const result = await api('POST', `/vendor/onboarding/${sessionId}/reset-credentials`, {});
+    _showCredentialsModal({
+      ...result,
+      title: 'סיסמא חדשה הונפקה',
+      credentialsDelivered: result.delivered,
+      webhookUrl: '', tenantId: '',
+    });
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
 function _showCredentialsModal(result) {
   const existing = document.getElementById('credentialsModal');
   if (existing) existing.remove();
@@ -701,8 +726,12 @@ function _showCredentialsModal(result) {
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
   modal.innerHTML = `
     <div style="background:#fff;border-radius:16px;padding:28px 24px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25)">
-      <div style="font-size:1.1rem;font-weight:800;margin-bottom:4px;color:#16a34a">הלקוח אושר בהצלחה!</div>
-      <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:20px">הפרטים נשלחו ל-WhatsApp. שמור אותם גם כאן:</div>
+      <div style="font-size:1.1rem;font-weight:800;margin-bottom:4px;color:#16a34a">${result.title || 'הלקוח אושר בהצלחה!'}</div>
+      <div style="font-size:.8rem;color:${result.credentialsDelivered === false ? '#b45309' : 'var(--text-muted)'};margin-bottom:20px">
+        ${result.credentialsDelivered === false
+          ? '⚠️ שליחת ההודעה ללקוח נכשלה — העבירו את הפרטים ידנית. הסיסמא לא תוצג שוב.'
+          : 'הפרטים נשלחו ל-WhatsApp. שמור אותם גם כאן — הסיסמא לא תוצג שוב:'}
+      </div>
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
         ${_credRow('שם משתמש', result.username)}
         ${_credRow('סיסמא', result.password)}

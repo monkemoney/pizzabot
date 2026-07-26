@@ -156,6 +156,8 @@ CREATE TABLE IF NOT EXISTS pending_payments (
 -- Expired pendings are marked, never deleted: a customer can pay after the
 -- window closes and order_data is the only record of what they ordered.
 ALTER TABLE pending_payments ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'open';  -- open | expired
+-- Per-step provisioning progress, so approve() is resumable (2026-07-27)
+ALTER TABLE onboarding_sessions ADD COLUMN IF NOT EXISTS provisioning JSONB DEFAULT '{}'::jsonb;
 -- Human handoff needs a clock, otherwise agent mode has no exit (2026-07-27)
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS handoff_at         TIMESTAMPTZ;
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS handoff_alerted_at TIMESTAMPTZ;

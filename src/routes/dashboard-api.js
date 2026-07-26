@@ -1338,13 +1338,19 @@ router.post('/vendor/onboarding', requireVendor, async (req, res) => {
   res.json({ client, session, link: `${process.env.PUBLIC_URL}/onboarding/${session.token}` });
 });
 
-// GET /vendor/onboarding — list active sessions (pending_client + pending_vendor)
-router.get('/vendor/onboarding', requireVendor, async (_req, res) => {
-  const { data, error } = await supabase
+// GET /vendor/onboarding — onboarding sessions
+// Approved ones are included (last 60 days): filtering them out meant that a
+// provisioning failure, or a lost password, left no surface to act from — the
+// session simply vanished from the portal.
+router.get('/vendor/onboarding', requireVendor, async (req, res) => {
+  let query = supabase
     .from('onboarding_sessions')
     .select('*, clients(name, contact_phone, plan, status, tenant_id)')
-    .neq('status', 'approved')
     .order('created_at', { ascending: false });
+
+  if (req.query.include_approved === 'false') query = query.neq('status', 'approved');
+
+  const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
 });
@@ -1389,16 +1395,71 @@ router.patch('/vendor/onboarding/:id/checklist', requireVendor, async (req, res)
 });
 
 // POST /vendor/onboarding/:id/approve — full provisioning + mark client active
+//
+// This is a seven-step, multi-system, side-effectful transaction. It used to
+// run with no state guard, no concurrency guard, no error checking and no way
+// to retry: a double-click duplicated the tenant's whole menu and minted a
+// second working login, and any failed step left a half-provisioned business
+// that still reported success. It is now:
+//
+//   guarded    — only a submitted, unexpired session can be approved, and the
+//                claim is optimistic so two clicks cannot both proceed
+//   resumable  — each step records itself in onboarding_sessions.provisioning,
+//                so a retry after a failure skips what already succeeded
+//   loud       — a failed step aborts with the step name; nothing is reported
+//                as approved until every step has actually run
 router.post('/vendor/onboarding/:id/approve', requireVendor, async (req, res) => {
+  const sessionId = req.params.id;
+
   const { data: ob } = await supabase
     .from('onboarding_sessions')
     .select('*, clients(id, tenant_id, name, contact_phone)')
-    .eq('id', req.params.id).single();
+    .eq('id', sessionId).single();
   if (!ob) return res.status(404).json({ error: 'לא נמצא' });
 
   const tenantId  = ob.clients?.tenant_id;
   const clientId  = ob.clients?.id;
   if (!tenantId) return res.status(400).json({ error: 'tenant_id חסר בלקוח' });
+
+  // ── Guards ────────────────────────────────────────────────────────────────
+  if (ob.status === 'approved') {
+    return res.status(409).json({ error: 'הלקוח כבר אושר. לשליחת פרטי כניסה מחדש השתמשו ב"איפוס סיסמא".' });
+  }
+  if (ob.status === 'pending_client') {
+    return res.status(409).json({ error: 'הלקוח עדיין לא שלח את הפרטים — אין מה לאשר' });
+  }
+  if (ob.expires_at && new Date(ob.expires_at) < new Date()) {
+    return res.status(410).json({ error: 'תוקף הטופס פג — צרו קישור אונבורדינג חדש' });
+  }
+
+  // Optimistic claim: only one caller can move the session into provisioning.
+  const { data: claimed } = await supabase
+    .from('onboarding_sessions')
+    .update({ status: 'provisioning', updated_at: new Date().toISOString(), updated_by: 'vendor' })
+    .eq('id', sessionId)
+    .in('status', ['pending_vendor', 'provisioning'])
+    .select('id');
+  if (!claimed?.length) {
+    return res.status(409).json({ error: 'האישור כבר רץ כרגע (או שהסטטוס השתנה) — רענן ונסה שוב' });
+  }
+
+  const done = (ob.provisioning && typeof ob.provisioning === 'object') ? { ...ob.provisioning } : {};
+  const markStep = async (step, value = true) => {
+    done[step] = value;
+    await supabase.from('onboarding_sessions')
+      .update({ provisioning: done, updated_at: new Date().toISOString() })
+      .eq('id', sessionId);
+  };
+  const fail = async (step, message) => {
+    console.error(`[provision] ${step} failed for tenant ${tenantId}:`, message);
+    await supabase.from('onboarding_sessions')
+      .update({ status: 'pending_vendor', provisioning: { ...done, failed_step: step, failed_reason: String(message).slice(0, 300) },
+                updated_at: new Date().toISOString() })
+      .eq('id', sessionId);
+    require('../services/vendor-alerts').alerts
+      .provisioningFailed(ob.business_name || ob.clients?.name || '', step, message).catch(() => {});
+    return res.status(500).json({ error: `שלב "${step}" נכשל: ${message}`, step, resumable: true });
+  };
 
   const PUBLIC_URL = process.env.PUBLIC_URL || 'https://www.jasell.com';
 
@@ -1428,115 +1489,229 @@ router.post('/vendor/onboarding/:id/approve', requireVendor, async (req, res) =>
     ['cardcom_username',   ob.cardcom_username   || ''],
   ];
 
-  for (const [key, value] of settingsToSeed) {
-    if (value !== null && value !== undefined && value !== '') {
-      await supabase.from('settings').upsert(
-        { tenant_id: tenantId, key, value, updated_at: new Date().toISOString() },
-        { onConflict: 'tenant_id,key' }
-      );
+  if (!done.settings) {
+    for (const [key, value] of settingsToSeed) {
+      if (value !== null && value !== undefined && value !== '') {
+        const { error } = await supabase.from('settings').upsert(
+          { tenant_id: tenantId, key, value, updated_at: new Date().toISOString() },
+          { onConflict: 'tenant_id,key' }
+        );
+        if (error) return fail('settings', `${key}: ${error.message}`);
+      }
     }
+    await markStep('settings');
   }
 
-  const { assignSlug } = require('../services/slug');
-  await assignSlug(tenantId, {
-    businessNameEn: ob.business_name_en,
-    businessNameHe: ob.business_name || ob.clients?.name,
-  });
+  if (!done.slug) {
+    try {
+      const { assignSlug } = require('../services/slug');
+      await assignSlug(tenantId, {
+        businessNameEn: ob.business_name_en,
+        businessNameHe: ob.business_name || ob.clients?.name,
+      });
+    } catch (err) {
+      // A missing slug silently serves the demo tenant's menu on the client's
+      // public link — not something to shrug off.
+      return fail('slug', err.message);
+    }
+    await markStep('slug');
+  }
 
   // ── 2. Copy menu from default tenant ──────────────────────────────────────
-  const { data: srcCats } = await supabase
-    .from('categories').select('*').eq('tenant_id', DEFAULT_TENANT_ID).order('sort_order');
-  const { data: srcProds } = await supabase
-    .from('products').select('*, product_additions(*)').eq('tenant_id', DEFAULT_TENANT_ID).order('sort_order');
+  // Guarded by an existence check as well as the step flag: inserting twice
+  // gave the client a menu where every item appeared two or three times.
+  if (!done.menu) {
+    const { count: existingCats } = await supabase
+      .from('categories').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId);
 
-  const catIdMap = {}; // old id → new id
-  for (const cat of (srcCats || [])) {
-    const { id: _id, ...rest } = cat;
-    const { data: newCat } = await supabase.from('categories')
-      .insert({ ...rest, tenant_id: tenantId }).select('id').single();
-    if (newCat) catIdMap[_id] = newCat.id;
-  }
+    if (existingCats > 0) {
+      console.warn(`[provision] tenant ${tenantId} already has ${existingCats} categories — skipping menu copy`);
+    } else {
+      const { data: srcCats, error: catErr } = await supabase
+        .from('categories').select('*').eq('tenant_id', DEFAULT_TENANT_ID).order('sort_order');
+      if (catErr) return fail('menu', catErr.message);
+      const { data: srcProds, error: prodErr } = await supabase
+        .from('products').select('*, product_additions(*)').eq('tenant_id', DEFAULT_TENANT_ID).order('sort_order');
+      if (prodErr) return fail('menu', prodErr.message);
 
-  for (const prod of (srcProds || [])) {
-    const { id: _pid, category_id, product_additions: additions, ...pRest } = prod;
-    const newCatId = catIdMap[category_id] || null;
-    const { data: newProd } = await supabase.from('products')
-      .insert({ ...pRest, tenant_id: tenantId, category_id: newCatId }).select('id').single();
-    if (newProd && additions?.length) {
-      const addRows = additions.map(({ id: _aid, product_id: _pid2, ...aRest }) =>
-        ({ ...aRest, product_id: newProd.id })
-      );
-      await supabase.from('product_additions').insert(addRows);
+      const catIdMap = {}; // old id → new id
+      for (const cat of (srcCats || [])) {
+        const { id: _id, ...rest } = cat;
+        const { data: newCat, error } = await supabase.from('categories')
+          .insert({ ...rest, tenant_id: tenantId }).select('id').single();
+        if (error) return fail('menu', `category "${cat.name_he}": ${error.message}`);
+        catIdMap[_id] = newCat.id;
+      }
+
+      for (const prod of (srcProds || [])) {
+        const { id: _pid, category_id, product_additions: additions, ...pRest } = prod;
+        const newCatId = catIdMap[category_id] || null;
+        const { data: newProd, error } = await supabase.from('products')
+          .insert({ ...pRest, tenant_id: tenantId, category_id: newCatId }).select('id').single();
+        if (error) return fail('menu', `product "${prod.name_he}": ${error.message}`);
+        if (additions?.length) {
+          const addRows = additions.map(({ id: _aid, product_id: _pid2, ...aRest }) =>
+            ({ ...aRest, product_id: newProd.id })
+          );
+          const { error: addErr } = await supabase.from('product_additions').insert(addRows);
+          if (addErr) return fail('menu', `additions for "${prod.name_he}": ${addErr.message}`);
+        }
+      }
     }
+    await markStep('menu');
   }
 
   // ── 3. Create admin_users from admin_phones ────────────────────────────────
+  // Without at least one admin the business gets no order-approval WhatsApp
+  // and the escalation loop has nobody to escalate to.
   const adminPhones = Array.isArray(ob.admin_phones) ? ob.admin_phones : [];
-  for (const entry of adminPhones) {
-    const phone = (entry.phone || entry).replace(/\D/g, '');
-    if (!phone) continue;
-    await supabase.from('admin_users').upsert(
-      { tenant_id: tenantId, phone, name: entry.name || phone, role: 'admin' },
-      { onConflict: 'tenant_id,phone' }
-    );
+  if (!done.admins) {
+    const usable = adminPhones.filter((e) => String(e.phone || e).replace(/\D/g, ''));
+    if (!usable.length) return fail('admins', 'לא הוגדר אף מספר מנהל — הלקוח לא יקבל התראות על הזמנות');
+    for (const entry of usable) {
+      const phone = String(entry.phone || entry).replace(/\D/g, '');
+      const { error } = await supabase.from('admin_users').upsert(
+        { tenant_id: tenantId, phone, name: entry.name || phone, role: 'admin' },
+        { onConflict: 'tenant_id,phone' }
+      );
+      if (error) return fail('admins', `${phone}: ${error.message}`);
+    }
+    await markStep('admins');
   }
 
-  // ── 4. Generate dashboard credentials ─────────────────────────────────────
+  // ── 4. Dashboard credentials ──────────────────────────────────────────────
+  // Reuse the tenant's existing login on a retry — the old code minted a fresh
+  // random username every run, so a second attempt left two working accounts
+  // and told the client about only one of them.
   const crypto = require('crypto');
-  const username = 'client-' + crypto.randomBytes(3).toString('hex');
-  const password = crypto.randomBytes(5).toString('base64url').slice(0, 8);
-  const passwordHash = await bcrypt.hash(password, 10);
+  let username = done.username || ob.approved_username || null;
+  let password = null;
 
-  await supabase.from('tenant_users').upsert(
-    { tenant_id: tenantId, username, password: passwordHash, role: 'admin' },
-    { onConflict: 'username' }
-  );
+  if (!username) {
+    const { data: existingUser } = await supabase
+      .from('tenant_users').select('username').eq('tenant_id', tenantId).limit(1).maybeSingle();
+    username = existingUser?.username || 'client-' + crypto.randomBytes(3).toString('hex');
+  }
+  if (!done.credentials) {
+    password = crypto.randomBytes(5).toString('base64url').slice(0, 8);
+    const passwordHash = await bcrypt.hash(password, 10);
+    const { error } = await supabase.from('tenant_users').upsert(
+      { tenant_id: tenantId, username, password: passwordHash, role: 'admin' },
+      { onConflict: 'username' }
+    );
+    if (error) return fail('credentials', error.message);
+    await markStep('username', username);
+    await markStep('credentials');
+  }
 
   // ── 5. Wire the WhatsApp channel ───────────────────────────────────────────
-  // Meta Cloud API: subscribe our app to the tenant's WABA so its messages
-  // start flowing to the shared /webhook endpoint (routed by phone_number_id).
+  // A failed subscribe means Meta delivers nothing: the bot is dead while every
+  // screen says the business is live. That is a hard failure, not a log line.
   const webhookUrl = `${PUBLIC_URL}/webhook/${tenantId}`;
-  if (ob.meta_waba_id && ob.meta_access_token) {
-    const { subscribeWaba } = require('../services/meta-whatsapp');
-    await subscribeWaba(ob.meta_waba_id, ob.meta_access_token).catch((err) =>
-      console.error('[provision] subscribeWaba error:', err.response ? JSON.stringify(err.response.data) : err.message)
-    );
-  }
-  // Green API (legacy/fallback): point the instance at the per-tenant webhook.
-  if (ob.green_api_instance && ob.green_api_token) {
-    const { setWebhook } = require('../services/greenapi');
-    await setWebhook(ob.green_api_instance, ob.green_api_token, webhookUrl).catch((err) =>
-      console.error('[provision] setWebhook error:', err.message)
-    );
+  if (!done.channel) {
+    if (ob.meta_waba_id && ob.meta_access_token) {
+      const { subscribeWaba } = require('../services/meta-whatsapp');
+      try {
+        await subscribeWaba(ob.meta_waba_id, ob.meta_access_token);
+      } catch (err) {
+        return fail('channel', err.response ? JSON.stringify(err.response.data) : err.message);
+      }
+    }
+    // Green API (legacy/fallback): point the instance at the per-tenant webhook.
+    if (ob.green_api_instance && ob.green_api_token) {
+      const { setWebhook } = require('../services/greenapi');
+      try {
+        await setWebhook(ob.green_api_instance, ob.green_api_token, webhookUrl);
+      } catch (err) {
+        return fail('channel', err.message);
+      }
+    }
+    await markStep('channel');
   }
 
   // ── 6. Send WhatsApp credentials to first admin phone ─────────────────────
+  // Best-effort by nature (business-initiated free text is rejected by Meta
+  // outside the 24h window), so the outcome is REPORTED rather than swallowed:
+  // the vendor has to know whether to pass the password on by hand.
+  let credentialsDelivered = false;
   const firstAdminPhone = adminPhones[0]?.phone || adminPhones[0];
-  if (firstAdminPhone) {
+  if (password && firstAdminPhone) {
     const credMsg =
       `🎉 *הבוט שלך מוכן!*\n\n` +
       `כניסה לדשבורד: ${PUBLIC_URL}\n` +
       `שם משתמש: *${username}*\n` +
       `סיסמא: *${password}*\n\n` +
-      `שנה סיסמא בהגדרות לאחר הכניסה הראשונה.`;
+      `שמרו את ההודעה — הסיסמא לא מוצגת שוב.`;
     const { sendMessage: sm } = require('../services/greenapi');
-    await sm(firstAdminPhone.replace(/\D/g, ''), credMsg).catch(() => {});
+    try {
+      await sm(String(firstAdminPhone).replace(/\D/g, ''), credMsg, tenantId);
+      credentialsDelivered = true;
+    } catch (err) {
+      console.warn('[provision] credentials WhatsApp failed:', err.message);
+    }
   }
 
   // ── 7. Mark session approved + client active ───────────────────────────────
-  await Promise.all([
-    supabase.from('onboarding_sessions').update({
-      status:            'approved',
-      approved_username: username,
-      approved_password: passwordHash,
-      webhook_url:       webhookUrl,
-      updated_at:        new Date().toISOString(),
-      updated_by:        'vendor',
-    }).eq('id', req.params.id),
-    supabase.from('clients').update({ status: 'active' }).eq('id', clientId),
-  ]);
+  const { error: sessErr } = await supabase.from('onboarding_sessions').update({
+    status:            'approved',
+    approved_username: username,
+    webhook_url:       webhookUrl,
+    provisioning:      { ...done, completed_at: new Date().toISOString() },
+    updated_at:        new Date().toISOString(),
+    updated_by:        'vendor',
+  }).eq('id', sessionId);
+  if (sessErr) return fail('finalize', sessErr.message);
 
-  res.json({ success: true, username, password, webhookUrl, tenantId });
+  const { error: clientErr } = await supabase.from('clients').update({ status: 'active' }).eq('id', clientId);
+  if (clientErr) return fail('finalize', clientErr.message);
+
+  res.json({ success: true, username, password, credentialsDelivered, webhookUrl, tenantId });
+});
+
+// POST /vendor/onboarding/:id/reset-credentials — issue a new dashboard password
+// The plaintext password exists only in the approve response, so closing that
+// modal used to lose it forever with no way to recover: nothing stores it and
+// there is no password-change screen. This mints a new one instead.
+router.post('/vendor/onboarding/:id/reset-credentials', requireVendor, async (req, res) => {
+  const { data: ob } = await supabase
+    .from('onboarding_sessions')
+    .select('id, approved_username, admin_phones, business_name, clients(tenant_id, name)')
+    .eq('id', req.params.id).single();
+  if (!ob) return res.status(404).json({ error: 'לא נמצא' });
+
+  const tenantId = ob.clients?.tenant_id;
+  if (!tenantId) return res.status(400).json({ error: 'tenant_id חסר בלקוח' });
+
+  const { data: user } = await supabase
+    .from('tenant_users').select('username').eq('tenant_id', tenantId).limit(1).maybeSingle();
+  const username = user?.username || ob.approved_username;
+  if (!username) return res.status(400).json({ error: 'לא קיים משתמש לעסק הזה — יש להריץ אישור מחדש' });
+
+  const crypto   = require('crypto');
+  const password = crypto.randomBytes(5).toString('base64url').slice(0, 8);
+  const { error } = await supabase.from('tenant_users')
+    .update({ password: await bcrypt.hash(password, 10) })
+    .eq('tenant_id', tenantId).eq('username', username);
+  if (error) return res.status(500).json({ error: error.message });
+
+  let delivered = false;
+  const phones = Array.isArray(ob.admin_phones) ? ob.admin_phones : [];
+  const target = phones[0]?.phone || phones[0];
+  if (req.body?.send !== false && target) {
+    const PUBLIC_URL = process.env.PUBLIC_URL || 'https://www.jasell.com';
+    try {
+      const { sendMessage: sm } = require('../services/greenapi');
+      await sm(String(target).replace(/\D/g, ''),
+        `🔑 *פרטי כניסה מעודכנים*\n\nכניסה: ${PUBLIC_URL}\nשם משתמש: *${username}*\nסיסמא: *${password}*`,
+        tenantId);
+      delivered = true;
+    } catch (err) {
+      console.warn('[provision] credentials resend failed:', err.message);
+    }
+  }
+
+  console.log(`[provision] credentials reset for tenant ${tenantId} (delivered=${delivered})`);
+  res.json({ success: true, username, password, delivered });
 });
 
 // PATCH /vendor/settings — update vendor_phone and alert preferences
