@@ -1,226 +1,188 @@
--- ============================================================
--- Pizza Bot — Full Schema  (safe to re-run: IF NOT EXISTS + IF COLUMN NOT EXISTS)
--- Run in Supabase SQL editor: https://supabase.com/dashboard/project/umoftdmutxhrbknowbyh/sql
--- ============================================================
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Jasell — multi-tenant WhatsApp ordering platform
+-- Full schema, regenerated from the live database on 2026-07-27.
+--
+-- This file is DOCUMENTATION AND A REBUILD SCRIPT. Nothing applies it
+-- automatically: schema changes go through the Supabase Management API (see
+-- CLAUDE.md → Commands). It is written to be safe to re-run.
+--
+-- It had drifted badly enough to be dangerous: it described a SINGLE-TENANT
+-- schema (settings keyed by `key` alone, sessions by `phone` alone, no
+-- tenant_id on products/categories/pending_payments, no tenant_users table at
+-- all). Applying it to a fresh or restored environment would have produced a
+-- system where one business's settings silently overwrite another's. Every
+-- statement below now matches what production actually has.
+--
+-- ⚠️  Every tenant-scoped table carries `tenant_id`, and the code filters on it
+--    in EVERY query — Supabase runs with the service role and no RLS, so a
+--    missing filter returns other tenants' rows silently.
+-- ═══════════════════════════════════════════════════════════════════════════
 
--- ── Categories ────────────────────────────────────────────
+CREATE EXTENSION IF NOT EXISTS pgcrypto;   -- gen_random_uuid, gen_random_bytes
+
+-- Default/demo tenant. Also the fallback in every service signature.
+-- aaaaaaaa-0000-0000-0000-000000000001
+
+-- ═══ Menu ══════════════════════════════════════════════════════════════════
+
 CREATE TABLE IF NOT EXISTS categories (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name_he         TEXT NOT NULL,
-  name_en         TEXT NOT NULL,
-  emoji           TEXT DEFAULT '🍽️',
-  sort_order      INTEGER DEFAULT 0,
-  has_toppings    BOOLEAN DEFAULT false,
-  is_topping_addon BOOLEAN DEFAULT false,
-  is_active       BOOLEAN DEFAULT true,
-  created_at      TIMESTAMPTZ DEFAULT NOW()
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        UUID NOT NULL DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001',
+  name_he          TEXT NOT NULL,
+  name_en          TEXT NOT NULL,
+  emoji            TEXT DEFAULT '🍽️',
+  sort_order       INTEGER DEFAULT 0,
+  has_toppings     BOOLEAN DEFAULT FALSE,
+  is_topping_addon BOOLEAN DEFAULT FALSE,   -- the toppings pseudo-category
+  is_active        BOOLEAN DEFAULT TRUE,
+  created_at       TIMESTAMPTZ DEFAULT NOW()
 );
-ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_topping_addon BOOLEAN DEFAULT false;
+CREATE INDEX IF NOT EXISTS idx_categories_tenant ON categories(tenant_id);
 
-INSERT INTO categories (id, name_he, name_en, emoji, sort_order, has_toppings, is_topping_addon) VALUES
-  ('11111111-cafe-cafe-cafe-000000000001', 'פיצות',         'Pizzas',         '🍕', 1,  true,  false),
-  ('11111111-cafe-cafe-cafe-000000000002', 'פסטות',         'Pastas',         '🍝', 2,  false, false),
-  ('11111111-cafe-cafe-cafe-000000000003', 'מנות נוספות',   'More Items',     '🥗', 3,  false, false),
-  ('11111111-cafe-cafe-cafe-000000000004', 'משהו לשתות',    'Drinks',         '🥤', 4,  false, false),
-  ('22222222-cafe-cafe-cafe-000000000001', 'תוספות לפיצה', 'Pizza Toppings', '🧀', 99, false, true)
-ON CONFLICT (id) DO NOTHING;
-
--- ── Products ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS products (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id    UUID NOT NULL DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001',
+  category_id  UUID REFERENCES categories(id),
+  category     TEXT NOT NULL DEFAULT 'main',   -- legacy free-text category
   name_he      TEXT NOT NULL,
   name_en      TEXT NOT NULL,
-  price        NUMERIC(8,2) NOT NULL,
-  category     TEXT DEFAULT 'main',
-  category_id  UUID REFERENCES categories(id),
-  is_available BOOLEAN DEFAULT true,
-  sort_order   INTEGER DEFAULT 0,
+  description  TEXT,
+  price        NUMERIC NOT NULL,
+  is_available BOOLEAN DEFAULT TRUE,           -- the 86'ing flag
   image_url    TEXT,
+  sort_order   INTEGER DEFAULT 0,
   created_at   TIMESTAMPTZ DEFAULT NOW(),
   updated_at   TIMESTAMPTZ DEFAULT NOW()
 );
-ALTER TABLE products ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES categories(id);
-ALTER TABLE products ADD COLUMN IF NOT EXISTS description TEXT;
+CREATE INDEX IF NOT EXISTS idx_products_tenant ON products(tenant_id);
 
--- ── Product additions (תוספות per product) ────────────────
+-- Per-product toppings. NOTE: no tenant_id — scope via product_id IN (tenant's
+-- product ids), which is what every query in the codebase does.
 CREATE TABLE IF NOT EXISTS product_additions (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   product_id   UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   name_he      TEXT NOT NULL,
   name_en      TEXT NOT NULL,
-  price        NUMERIC(8,2) NOT NULL,
-  is_available BOOLEAN DEFAULT true,
+  price        NUMERIC NOT NULL,
+  is_available BOOLEAN DEFAULT TRUE,
   image_url    TEXT,
   sort_order   INTEGER DEFAULT 0,
   created_at   TIMESTAMPTZ DEFAULT NOW(),
   updated_at   TIMESTAMPTZ DEFAULT NOW()
 );
-
 CREATE INDEX IF NOT EXISTS idx_additions_product ON product_additions(product_id);
 
--- ── Push notification subscriptions ───────────────────────────
-CREATE TABLE IF NOT EXISTS push_subscriptions (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  endpoint   TEXT NOT NULL UNIQUE,
-  p256dh     TEXT NOT NULL,
-  auth       TEXT NOT NULL,
-  user_agent TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- ═══ Settings ══════════════════════════════════════════════════════════════
+-- Key/value per tenant. The composite PK is load-bearing: the code upserts with
+-- onConflict 'tenant_id,key', and a PK on `key` alone would make tenant B's
+-- save overwrite tenant A's.
 
--- ── Seed products (skip if already exist) ─────────────────
-INSERT INTO products (id, name_he, name_en, price, category, sort_order) VALUES
-  ('11111111-0001-0001-0001-000000000001', 'פיצה משפחתית',    'Family Pizza',            58,   'main',   1),
-  ('11111111-0001-0001-0001-000000000002', 'פיצה זוגית',      'Couple Pizza',            50,   'main',   2),
-  ('11111111-0001-0001-0001-000000000003', 'פסטה אלפרדו',     'Pasta Alfredo',           42.9, 'main',   3),
-  ('11111111-0001-0001-0001-000000000004', 'פוקצ''ה',         'Focaccia',                19.9, 'main',   4),
-  ('11111111-0001-0001-0001-000000000005', 'פסטה בולונז',     'Pasta Bolognese',         39.9, 'main',   5),
-  ('11111111-0001-0001-0001-000000000006', 'סלט יווני',       'Greek Salad',             32.9, 'main',   6),
-  ('11111111-0001-0001-0001-000000000007', 'סלט טבולה',       'Tabbouleh Salad',         50,   'main',   7),
-  ('11111111-0001-0001-0001-000000000008', 'פיצה נפוליטנה',   'Neapolitan Pizza',        70,   'main',   10),
-  ('11111111-0001-0001-0001-000000000009', 'פיצה ארבע גבינות','Four Cheese Pizza',       68,   'main',   11),
-  ('11111111-0001-0001-0001-000000000010', 'פיצה איטליה',     'Italia Pizza',            89,   'main',   12),
-  ('11111111-0001-0001-0001-000000000011', 'קולה',            'Cola',                    17,   'drinks', 1),
-  ('11111111-0001-0001-0001-000000000012', 'זירו',            'Zero',                    17,   'drinks', 2),
-  ('11111111-0001-0001-0001-000000000013', 'ספרייט',          'Sprite',                  17,   'drinks', 3),
-  ('11111111-0001-0001-0001-000000000014', 'ענבים',           'Grape',                   17,   'drinks', 4),
-  ('11111111-0001-0001-0001-000000000015', 'מים בטעם אפרסק',  'Peach Flavored Water',    17,   'drinks', 5),
-  ('11111111-0001-0001-0001-000000000016', 'שוואפס אבטיח',    'Schweppes Watermelon',    17,   'drinks', 6)
-ON CONFLICT (id) DO NOTHING;
-
--- ── Seed additions for the two pizza types ────────────────
-INSERT INTO product_additions (product_id, name_he, name_en, price, sort_order) VALUES
-  ('11111111-0001-0001-0001-000000000001', 'בולגרית',     'Bulgarian Cheese', 16, 1),
-  ('11111111-0001-0001-0001-000000000001', 'גבינה נוספת', 'Extra Cheese',      7, 2),
-  ('11111111-0001-0001-0001-000000000001', 'בצל',         'Onion',             3, 3),
-  ('11111111-0001-0001-0001-000000000001', 'זיתים',       'Olives',           15, 4),
-  ('11111111-0001-0001-0001-000000000002', 'בולגרית',     'Bulgarian Cheese', 16, 1),
-  ('11111111-0001-0001-0001-000000000002', 'גבינה נוספת', 'Extra Cheese',      7, 2),
-  ('11111111-0001-0001-0001-000000000002', 'בצל',         'Onion',             3, 3),
-  ('11111111-0001-0001-0001-000000000002', 'זיתים',       'Olives',           15, 4)
-ON CONFLICT DO NOTHING;
-
--- ── Settings ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS settings (
-  key        TEXT PRIMARY KEY,
+  tenant_id  UUID NOT NULL DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001',
+  key        TEXT NOT NULL,
   value      JSONB NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (tenant_id, key)
 );
+CREATE INDEX IF NOT EXISTS idx_settings_tenant ON settings(tenant_id);
 
-INSERT INTO settings (key, value) VALUES
-  ('delivery_cities',    '["תל אביב"]'),
-  ('delivery_price',     '30'),
-  ('min_order_delivery', '0'),
-  ('delivery_enabled',   'true'),
-  ('pickup_enabled',     'true'),
-  ('payment_cash',       'true'),
-  ('payment_credit',     'true'),
-  ('is_open',            'true'),
-  ('business_hours', '{
-    "sun": {"open":"10:00","close":"23:00"},
-    "mon": {"open":"10:00","close":"23:00"},
-    "tue": {"open":"10:00","close":"23:00"},
-    "wed": {"open":"10:00","close":"23:00"},
-    "thu": {"open":"10:00","close":"23:00"},
-    "fri": {"open":"10:00","close":"22:00"},
-    "sat": {"open":"20:00","close":"23:30"}
-  }')
-ON CONFLICT DO NOTHING;
+-- ═══ Conversations ═════════════════════════════════════════════════════════
+-- One row per (tenant, phone). Admin-bot sessions use phone = 'admin:<phone>'.
+-- Composite PK for the same reason as settings (onConflict 'tenant_id,phone').
 
--- ── Sessions ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS sessions (
-  phone                TEXT PRIMARY KEY,
-  state                TEXT NOT NULL DEFAULT 'IDLE',
-  language             TEXT DEFAULT 'he',
-  cart                 JSONB DEFAULT '[]'::jsonb,
-  current_item         JSONB DEFAULT '{}'::jsonb,
-  data                 JSONB DEFAULT '{}'::jsonb,
-  conversation_history JSONB DEFAULT '[]'::jsonb,
-  pending_order        JSONB DEFAULT '{}'::jsonb,
-  updated_at           TIMESTAMPTZ DEFAULT NOW()
+  tenant_id             UUID NOT NULL DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001',
+  phone                 TEXT NOT NULL,
+  state                 TEXT NOT NULL DEFAULT 'IDLE',
+  language              TEXT DEFAULT 'he',
+  cart                  JSONB DEFAULT '[]',
+  current_item          JSONB DEFAULT '{}',
+  data                  JSONB DEFAULT '{}',
+  conversation_history  JSONB DEFAULT '[]',   -- last 40 turns
+  pending_order         JSONB DEFAULT '{}',
+  customer_profile      JSONB DEFAULT '{}',   -- survives clearSession
+  pending_dispute       JSONB,
+  -- Human-agent handoff
+  is_bot_active         BOOLEAN NOT NULL DEFAULT TRUE,
+  unread_count          INTEGER NOT NULL DEFAULT 0,
+  last_customer_message TEXT,
+  last_message_at       TIMESTAMPTZ,
+  handoff_at            TIMESTAMPTZ,          -- set on takeover; the watchdog's clock
+  handoff_alerted_at    TIMESTAMPTZ,          -- waiting-customer alert sent once
+  -- Marketing opt-out (suppresses broadcasts + missed-call recovery only)
+  opted_out             BOOLEAN DEFAULT FALSE,
+  opted_out_at          TIMESTAMPTZ,
+  updated_at            TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (tenant_id, phone)
 );
-ALTER TABLE sessions ADD COLUMN IF NOT EXISTS conversation_history JSONB DEFAULT '[]'::jsonb;
-ALTER TABLE sessions ADD COLUMN IF NOT EXISTS pending_order        JSONB DEFAULT '{}'::jsonb;
-ALTER TABLE sessions ADD COLUMN IF NOT EXISTS customer_profile     JSONB DEFAULT '{}'::jsonb;
+CREATE INDEX IF NOT EXISTS idx_sessions_tenant ON sessions(tenant_id);
 
--- ── Pending payments ──────────────────────────────────────
-CREATE TABLE IF NOT EXISTS pending_payments (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  phone        TEXT NOT NULL,
-  cardcom_code TEXT UNIQUE,
-  return_value TEXT UNIQUE,
-  order_data   JSONB NOT NULL,
-  expires_at   TIMESTAMPTZ NOT NULL,
-  created_at   TIMESTAMPTZ DEFAULT NOW()
-);
--- Expired pendings are marked, never deleted: a customer can pay after the
--- window closes and order_data is the only record of what they ordered.
-ALTER TABLE pending_payments ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'open';  -- open | expired
--- Per-step provisioning progress, so approve() is resumable (2026-07-27)
-ALTER TABLE onboarding_sessions ADD COLUMN IF NOT EXISTS provisioning JSONB DEFAULT '{}'::jsonb;
--- Push subscriptions need an owner to be revocable, and a health signal (2026-07-27)
-ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS username   TEXT;
-ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS last_ok_at TIMESTAMPTZ;
--- Marketing opt-out (2026-07-27) — suppresses broadcasts + missed-call recovery,
--- never transactional order updates
-ALTER TABLE sessions ADD COLUMN IF NOT EXISTS opted_out    BOOLEAN DEFAULT FALSE;
-ALTER TABLE sessions ADD COLUMN IF NOT EXISTS opted_out_at TIMESTAMPTZ;
--- Human handoff needs a clock, otherwise agent mode has no exit (2026-07-27)
-ALTER TABLE sessions ADD COLUMN IF NOT EXISTS handoff_at         TIMESTAMPTZ;
-ALTER TABLE sessions ADD COLUMN IF NOT EXISTS handoff_alerted_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_pending_cardcom ON pending_payments(cardcom_code);
-CREATE INDEX IF NOT EXISTS idx_pending_return  ON pending_payments(return_value);
+-- ═══ Orders ════════════════════════════════════════════════════════════════
 
--- ── Orders ────────────────────────────────────────────────
 CREATE SEQUENCE IF NOT EXISTS order_number_seq START WITH 1000 INCREMENT BY 1;
 
 CREATE TABLE IF NOT EXISTS orders (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_number    INTEGER UNIQUE DEFAULT nextval('order_number_seq'),
-  phone           TEXT NOT NULL,
-  customer_name   TEXT,
-  customer_phone  TEXT,
-  items           JSONB NOT NULL,
-  delivery_method TEXT NOT NULL CHECK (delivery_method IN ('pickup','delivery')),
-  address         TEXT,
-  notes           TEXT,
-  payment_method  TEXT NOT NULL CHECK (payment_method IN ('cash','credit')),
-  payment_status  TEXT DEFAULT 'paid',
-  cardcom_code    TEXT,
-  total_price     NUMERIC(10,2),
-  status          TEXT DEFAULT 'new'
-    CHECK (status IN ('new','preparing','out_for_delivery','delivered','done','cancelled')),
-  created_at      TIMESTAMPTZ DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ DEFAULT NOW()
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id           UUID DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001',
+  order_number        INTEGER UNIQUE DEFAULT nextval('order_number_seq'),
+  phone               TEXT NOT NULL,            -- conversation phone
+  customer_name       TEXT,
+  customer_phone      TEXT,                     -- contact phone, may differ
+  items               JSONB NOT NULL,
+  delivery_method     TEXT NOT NULL CHECK (delivery_method IN ('pickup','delivery')),
+  address             TEXT,
+  destination_type    TEXT,
+  courier_notes       TEXT,
+  notes               TEXT,
+  total_price         NUMERIC(10,2),
+
+  -- Payment
+  payment_method      TEXT NOT NULL CHECK (payment_method IN ('cash','credit','bit','paybox')),
+  payment_status      TEXT DEFAULT 'paid',      -- paid | pending
+  payment_verified_at TIMESTAMPTZ,              -- set only by a verified Cardcom callback
+  cardcom_code        TEXT,
+  cardcom_deal_number TEXT,                     -- only the IndicatorUrl webhook carries it
+  refund_status       TEXT,                     -- null | refunded | manual
+
+  -- Lifecycle. Every transition goes through services/order-state.js.
+  status              TEXT DEFAULT 'new'
+    CHECK (status IN ('new','scheduled','preparing','ready','out_for_delivery','delivered','done','cancelled')),
+  status_history      JSONB DEFAULT '[]',       -- [{status, at, by}]
+  scheduled_for       TIMESTAMPTZ,              -- pre-orders
+  accepted_at         TIMESTAMPTZ,              -- business approval; null = awaiting
+  prep_minutes        INTEGER,                  -- ETA promised to the customer
+  escalation_level    INTEGER DEFAULT 0,        -- unaccepted-order reminders sent (0-2)
+  cancelled_by        TEXT,                     -- customer | business
+  cancel_reason       TEXT,
+
+  -- Item disputes ("we ran out of X")
+  dispute_status      TEXT,                     -- null | pending | resolved
+  dispute_item        TEXT,
+  dispute_resolution  TEXT,                     -- replaced | cancelled | removed
+
+  created_at          TIMESTAMPTZ DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ DEFAULT NOW()
 );
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_number      INTEGER DEFAULT nextval('order_number_seq');
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_phone    TEXT;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_status    TEXT DEFAULT 'paid';
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS cardcom_code      TEXT;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at        TIMESTAMPTZ DEFAULT NOW();
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS destination_type  TEXT;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS courier_notes     TEXT;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS status_history    JSONB;        -- [{status, at, by}] appended by order-state.js
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS scheduled_for     TIMESTAMPTZ;  -- scheduled orders target time
--- Acceptance flow (2026-07-26): 'new' = awaiting business approval
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS accepted_at       TIMESTAMPTZ;  -- when the business accepted
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS prep_minutes      INTEGER;      -- ETA given to the customer at accept
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS escalation_level  INTEGER DEFAULT 0;  -- unaccepted-order reminders sent (0-2)
--- Payment trust (2026-07-27): only a verified Cardcom callback sets this
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_verified_at TIMESTAMPTZ;
--- Idempotency key for payment confirmation — webhook and success-redirect race
-CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_cardcom_code_uniq ON orders (cardcom_code) WHERE cardcom_code IS NOT NULL;
--- NOTE: live DB CHECK includes 'scheduled' and 'ready' as well:
--- CHECK (status IN ('new','scheduled','preparing','ready','out_for_delivery','delivered','done','cancelled'))
 
-CREATE INDEX IF NOT EXISTS idx_orders_phone      ON orders(phone);
-CREATE INDEX IF NOT EXISTS idx_orders_status     ON orders(status);
-CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_orders_number     ON orders(order_number);
+CREATE INDEX IF NOT EXISTS idx_orders_phone          ON orders(phone);
+CREATE INDEX IF NOT EXISTS idx_orders_status         ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_number         ON orders(order_number);
+CREATE INDEX IF NOT EXISTS idx_orders_created_at     ON orders(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_tenant         ON orders(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_orders_tenant_status  ON orders(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_orders_tenant_created ON orders(tenant_id, created_at DESC);
 
--- ── Customers view ────────────────────────────────────────
--- NOTE: column set changed 2026-07-12 (added tenant_id) — requires DROP VIEW before CREATE
-CREATE OR REPLACE VIEW customers AS
+-- The payment idempotency key. Webhook and success-redirect race by design;
+-- without this they both insert and the customer gets two identical orders.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_cardcom_code_uniq
+  ON orders(cardcom_code) WHERE cardcom_code IS NOT NULL;
+
+-- ═══ Customers (view over orders) ══════════════════════════════════════════
+-- Column-set changes require DROP VIEW first — CREATE OR REPLACE cannot add or
+-- rename columns.
+
+DROP VIEW IF EXISTS customers;
+CREATE VIEW customers AS
 SELECT
   tenant_id,
   phone,
@@ -231,110 +193,145 @@ SELECT
   MAX(address)        AS last_address,
   MAX(created_at)     AS last_order_at
 FROM orders
-WHERE status NOT IN ('cancelled')
+WHERE status <> 'cancelled'
 GROUP BY tenant_id, phone;
 
--- ── Refund / dispute columns ──────────────────────────────────────────────────
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS cardcom_deal_number TEXT;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_status       TEXT;  -- null | pending | refunded | manual
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_by        TEXT;  -- 'customer' | 'business'
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancel_reason       TEXT;
+-- ═══ Payments in flight ════════════════════════════════════════════════════
+-- A row means a payment LINK was generated — never that money moved. Rows are
+-- marked 'expired' rather than deleted: a customer can pay after the window
+-- closes and order_data is the only record of what they ordered.
 
--- ── Item dispute columns ───────────────────────────────────────────────────────
-ALTER TABLE sessions ADD COLUMN IF NOT EXISTS pending_dispute   JSONB;  -- {order_id,order_number,item_name,item_price,created_at}
-ALTER TABLE orders   ADD COLUMN IF NOT EXISTS dispute_status    TEXT;   -- null | 'pending' | 'resolved'
-ALTER TABLE orders   ADD COLUMN IF NOT EXISTS dispute_item      TEXT;
-ALTER TABLE orders   ADD COLUMN IF NOT EXISTS dispute_resolution TEXT;  -- 'cancelled' | 'removed_item' | 'continued'
+CREATE TABLE IF NOT EXISTS pending_payments (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id    UUID DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001',
+  phone        TEXT NOT NULL,
+  cardcom_code TEXT UNIQUE,
+  return_value TEXT UNIQUE,
+  order_data   JSONB NOT NULL,
+  status       TEXT DEFAULT 'open',      -- open | expired
+  expires_at   TIMESTAMPTZ NOT NULL,
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pending_cardcom        ON pending_payments(cardcom_code);
+CREATE INDEX IF NOT EXISTS idx_pending_return         ON pending_payments(return_value);
+CREATE INDEX IF NOT EXISTS idx_pending_payments_tenant ON pending_payments(tenant_id);
 
--- ── Admin users (WhatsApp bot managers) ───────────────────────────────────────
+-- ═══ People ════════════════════════════════════════════════════════════════
+
+-- Phones routed to the admin bot instead of the customer bot.
+-- UNIQUE on (tenant_id, phone), NOT on phone alone — one owner can run more
+-- than one business on the platform.
 CREATE TABLE IF NOT EXISTS admin_users (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  phone      TEXT NOT NULL UNIQUE,   -- international format, e.g. 972501234567
+  tenant_id  UUID NOT NULL DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001',
+  phone      TEXT NOT NULL,
   name       TEXT NOT NULL,
-  role       TEXT NOT NULL DEFAULT 'admin',  -- 'admin' | 'manager'
+  role       TEXT NOT NULL DEFAULT 'admin',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_users_tenant_phone ON admin_users(tenant_id, phone);
+CREATE INDEX IF NOT EXISTS idx_admin_users_tenant ON admin_users(tenant_id);
+
+-- Dashboard logins, per tenant (bcrypt). Username is globally unique because
+-- login resolves a user by username before it knows the tenant.
+CREATE TABLE IF NOT EXISTS tenant_users (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id  UUID NOT NULL,
+  username   TEXT NOT NULL UNIQUE,
+  password   TEXT NOT NULL,          -- bcrypt hash
+  role       TEXT NOT NULL DEFAULT 'admin',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_tenant_users_tenant   ON tenant_users(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tenant_users_username ON tenant_users(username);
+
+-- Browser push targets. `username` is what makes one revocable: order
+-- notifications carry the customer's name and total, so a device that once
+-- logged in must not keep receiving them forever.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id  UUID DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001',
+  endpoint   TEXT NOT NULL UNIQUE,
+  p256dh     TEXT NOT NULL,
+  auth       TEXT NOT NULL,
+  username   TEXT,                    -- who subscribed this device
+  user_agent TEXT,
+  last_ok_at TIMESTAMPTZ,             -- last successful delivery
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ── Tenant isolation ─────────────────────────────────────────────────────────
--- Single-tenant default; future multi-tenant: each business gets its own UUID
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS tenant_id UUID DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001';
-UPDATE orders SET tenant_id = 'aaaaaaaa-0000-0000-0000-000000000001' WHERE tenant_id IS NULL;
-CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id);
+-- ═══ Platform (vendor-facing) ══════════════════════════════════════════════
 
--- ── Clients (businesses using Jasell platform) ────────────────────────────────
--- Run once via Supabase SQL Editor
 CREATE TABLE IF NOT EXISTS clients (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id     UUID DEFAULT gen_random_uuid(),   -- links every tenant-scoped table
   name          TEXT NOT NULL,
   contact_phone TEXT,
-  plan          TEXT NOT NULL DEFAULT 'basic',  -- 'basic' | 'pro' | 'enterprise'
-  status        TEXT NOT NULL DEFAULT 'active', -- 'active' | 'inactive' | 'trial'
+  plan          TEXT NOT NULL DEFAULT 'basic',
+  status        TEXT NOT NULL DEFAULT 'active',   -- active | inactive | trial
   notes         TEXT,
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   updated_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ── API Usage tracking ────────────────────────────────────────────────────────
--- Logs every Claude API call with token counts for cost analysis.
--- Cost (claude-opus-4-7): input=$15/MTok, output=$75/MTok, cache_read=$1.50/MTok
-CREATE TABLE IF NOT EXISTS api_usage (
-  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id           UUID NOT NULL DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001',
-  created_at          TIMESTAMPTZ DEFAULT NOW(),
-  input_tokens        INT NOT NULL DEFAULT 0,
-  output_tokens       INT NOT NULL DEFAULT 0,
-  cache_read_tokens   INT NOT NULL DEFAULT 0,
-  cache_write_tokens  INT NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS idx_api_usage_tenant  ON api_usage(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_api_usage_created ON api_usage(created_at);
-
--- ── Onboarding sessions ───────────────────────────────────────────────────────
--- Tracks client onboarding flow. Token is a public one-time link sent to client.
--- status: pending_client → pending_vendor → approved
+-- Client onboarding: pending_client → pending_vendor → provisioning → approved
 CREATE TABLE IF NOT EXISTS onboarding_sessions (
-  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  client_id          UUID REFERENCES clients(id) ON DELETE CASCADE,
-  token              TEXT UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(24), 'hex'),
-  status             TEXT NOT NULL DEFAULT 'pending_client',
-  -- Client-filled (via /onboarding/:token)
-  business_name      TEXT,
-  bot_whatsapp       TEXT,
-  business_hours     JSONB,
-  delivery_zones     JSONB DEFAULT '[]',
-  payment_cash       BOOLEAN DEFAULT true,
-  payment_credit     BOOLEAN DEFAULT false,
-  pickup_address     TEXT,
-  admin_phones       JSONB DEFAULT '[]',
-  -- Vendor-filled (technical credentials)
-  cardcom_terminal   TEXT,
-  cardcom_username   TEXT,
-  green_api_instance TEXT,
-  green_api_token    TEXT,
-  -- Meta Cloud API (official) — preferred channel; Green API is fallback
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id            UUID REFERENCES clients(id) ON DELETE CASCADE,
+  token                TEXT NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(24), 'hex'),
+  status               TEXT NOT NULL DEFAULT 'pending_client',
+
+  -- Filled by the client
+  business_name        TEXT,
+  business_address     TEXT,
+  bot_whatsapp         TEXT,
+  business_hours       JSONB,
+  delivery_zones       JSONB DEFAULT '[]',
+  delivery_enabled     BOOLEAN DEFAULT TRUE,
+  pickup_enabled       BOOLEAN DEFAULT TRUE,
+  pickup_address       TEXT,
+  payment_cash         BOOLEAN DEFAULT TRUE,
+  payment_credit       BOOLEAN DEFAULT FALSE,
+  payment_bit          BOOLEAN DEFAULT FALSE,
+  payment_paybox       BOOLEAN DEFAULT FALSE,
+  bit_phone            TEXT DEFAULT '',
+  admin_phones         JSONB DEFAULT '[]',
+  menu_notes           TEXT,
+
+  -- Filled by the vendor
   meta_phone_number_id TEXT,
   meta_access_token    TEXT,
   meta_waba_id         TEXT,
-  -- Free-text menu the client pastes during onboarding (vendor sets it up)
-  menu_notes           TEXT,
-  -- Vendor checklist (key/label/done array)
-  checklist JSONB DEFAULT '[
-    {"key":"client_info","label":"פרטי עסק מהלקוח","done":false},
-    {"key":"whatsapp","label":"חיבור WhatsApp","done":false},
-    {"key":"cardcom","label":"Cardcom (אם נבחר אשראי)","done":false},
-    {"key":"menu","label":"הגדרת תפריט","done":false},
-    {"key":"test","label":"בדיקת בוט","done":false}
-  ]',
-  created_at  TIMESTAMPTZ DEFAULT NOW(),
-  expires_at  TIMESTAMPTZ DEFAULT NOW() + INTERVAL '30 days'
-);
+  green_api_instance   TEXT,
+  green_api_token      TEXT,
+  cardcom_terminal     TEXT,
+  cardcom_username     TEXT,
 
--- Extra columns added in second pass (safe to re-run)
-ALTER TABLE onboarding_sessions ADD COLUMN IF NOT EXISTS business_address  TEXT;
-ALTER TABLE onboarding_sessions ADD COLUMN IF NOT EXISTS delivery_enabled  BOOLEAN DEFAULT true;
-ALTER TABLE onboarding_sessions ADD COLUMN IF NOT EXISTS pickup_enabled    BOOLEAN DEFAULT true;
-ALTER TABLE onboarding_sessions ADD COLUMN IF NOT EXISTS payment_bit       BOOLEAN DEFAULT false;
-ALTER TABLE onboarding_sessions ADD COLUMN IF NOT EXISTS payment_paybox    BOOLEAN DEFAULT false;
-CREATE INDEX IF NOT EXISTS idx_onboarding_token  ON onboarding_sessions(token);
+  -- Provisioning
+  checklist            JSONB DEFAULT '[{"key":"client_info","done":false,"label":"פרטי עסק מהלקוח"},{"key":"whatsapp","done":false,"label":"חיבור WhatsApp"},{"key":"cardcom","done":false,"label":"Cardcom (אם נבחר אשראי)"},{"key":"menu","done":false,"label":"הגדרת תפריט"},{"key":"test","done":false,"label":"בדיקת בוט"}]'::jsonb,
+  provisioning         JSONB DEFAULT '{}',   -- per-step progress; makes approve resumable
+  approved_username    TEXT,
+  approved_password    TEXT,                 -- legacy; plaintext is never stored
+  webhook_url          TEXT,
+
+  expires_at           TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '30 days'),
+  created_at           TIMESTAMPTZ DEFAULT NOW(),
+  updated_at           TIMESTAMPTZ DEFAULT NOW(),
+  updated_by           TEXT                  -- 'client' | 'vendor'
+);
 CREATE INDEX IF NOT EXISTS idx_onboarding_client ON onboarding_sessions(client_id);
 CREATE INDEX IF NOT EXISTS idx_onboarding_status ON onboarding_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_onboarding_token  ON onboarding_sessions(token);
+
+-- Claude token spend per call, for per-client cost reporting.
+CREATE TABLE IF NOT EXISTS api_usage (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id          UUID NOT NULL DEFAULT 'aaaaaaaa-0000-0000-0000-000000000001',
+  input_tokens       INTEGER NOT NULL DEFAULT 0,
+  output_tokens      INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
+  cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+  created_at         TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_api_usage_tenant  ON api_usage(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_api_usage_created ON api_usage(created_at);

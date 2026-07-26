@@ -439,7 +439,11 @@ Order status flow: `new (awaiting approval) → preparing → ready → out_for_
 ## Operational Rules
 
 1. **Backup before infra change:** `node scripts/backup-render-env.js`
-2. **Schema changes only via Supabase Management API** (or SQL editor from desktop). Never direct `pg` — see DB access lesson. **After adding columns to schema.sql, verify they exist in the real DB** (`information_schema.columns`) — schema.sql is documentation, drift means silent feature failure (9 columns once existed only on paper).
+2. **Schema changes only via Supabase Management API** (or SQL editor from desktop). Never direct `pg` — see DB access lesson. **After changing schema.sql, run the drift check** — it is no longer a manual habit:
+   ```bash
+   SUPABASE_MGMT_TOKEN=sbp_... node scripts/check-schema.js
+   ```
+   It compares every documented column against `information_schema`, both directions, and asserts the composite primary keys that carry multi-tenancy (`settings(tenant_id,key)`, `sessions(tenant_id,phone)`). Exits non-zero on drift. schema.sql is the rebuild script for a fresh or restored environment — when it drifts, applying it produces a system where one business's settings silently overwrite another's. It was regenerated from the live DB on 2026-07-27 after exactly that had happened on paper (it still described a single-tenant schema, with `tenant_users` missing entirely).
 3. **Before every commit:** `node --check public/app.js && node --check public/admin.js` (a missing backtick silently blanks the whole SPA) + `npm test -- --forceExit` (168 tests)
 4. **Every desktop UI change must include mobile** — media queries + `window.innerWidth <= 768` branches
 5. **delivery_zones** is authoritative (5 fields: city, area, fee, min_order, eta_minutes); `saveZones()` syncs legacy `delivery_cities`; bot reads zones first
