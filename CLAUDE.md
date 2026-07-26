@@ -290,9 +290,25 @@ ACTION blocks: `SET_AVAILABLE` (checks ALL occurrences of a name — standalone 
 `sessions` columns: `is_bot_active` (default true), `unread_count`, `last_customer_message`, `last_message_at`.
 Dashboard "הודעות" tab lists all customer sessions (avatars/initials, names, timestamps, unread badges, amber dot = agent mode; mobile: list ↔ full-screen thread with back). Actions (`/api/inbox/...`): handoff (silences bot), reply (sent via tenant's channel; stored in history as `[נציג]: ...`), return-to-bot, read. Incoming messages while in agent mode stream live via SSE `inbox_message`. Escalation trigger is currently manual (dashboard button) — a bot-initiated HANDOFF action is a future step.
 
+### Order Acceptance Flow (2026-07-26)
+
+**`new` = awaiting business approval.** Orders are no longer born "accepted" — the customer gets "התקבלה ונשלחה למסעדה לאישור", and only an explicit accept sends the approval message (with prep-time ETA) and moves the order to the kitchen.
+
+- **State machine — `src/services/order-state.js` is the ONLY path for status changes.** Allowed-transitions table; `transition(orderId, to, {force, by, notify, extra})` with an optimistic `.eq('status', from)` guard (CONFLICT on concurrent write), atomic `status_history` append, and a single exit point for SSE + customer/courier WhatsApp. `force:true` = explicit staff override (dashboard status select, cancellations); programmatic callers stay strict. Never write `orders.status` directly.
+- **Accept:** `POST /api/orders/:id/accept {prep_minutes}` (any dashboard/kitchen role) → `accept()` — new/scheduled → preparing, stamps `accepted_at`+`prep_minutes`, customer gets approval+ETA message. Reject = the existing cancel-refund flow.
+- **Per-tenant mode:** `order_acceptance` setting — `manual` (DEFAULT for every tenant) | `auto` (accept immediately on creation with `default_prep_minutes`; Bit orders defer auto-accept until payment confirmation). Configured in dashboard settings ("אישור הזמנות") with an explicit warning on auto. `orderState.afterCreate(order, {notifyAdmins})` runs after every order insert (ai-handler, payment.js, confirm-payment).
+- **Admin WhatsApp approval:** manual-mode new order → WhatsApp to all `admin_users` with summary + Meta interactive buttons (אשר / אשר עם זמן אחר / בעיה בהזמנה). Button ids (`accept:<id>`, `acceptt:<id>:<mins>`, `accepttime:<id>`, `orderissue:<id>`) are intercepted deterministically in `admin-handler.handleOrderShortcut` — no Claude round-trip; text fallback "אשר <מספר> [דקות]" works on Green API. Free text goes through the `ACCEPT_ORDER` action.
+- **Escalation:** `escalateUnacceptedOrders()` (index.js, every 60s) — unaccepted `new` orders older than `accept_reminder_minutes` (default 3) → level 1: re-push + WhatsApp admins; ×3 → level 2: urgent admin ping + reassurance message to the customer. `escalation_level` is persisted (no re-alert on restart). **Gated to Render** (`process.env.RENDER`) — a local dev server against the prod DB must never fire it (`ENABLE_ESCALATION=1` to override).
+- **Refunds on cancel:** every cancel path (dashboard, admin bot, customer keyword, dispute option 1) now attempts `cancelDeal` for paid credit orders and stamps `refund_status`.
+- Cardcom creds resolve per tenant (settings `cardcom_terminal`/`cardcom_username`, env for default tenant). The pending-payments poller no longer fabricates orders — it only alerts the vendor about stale pendings and prunes expired rows.
+
 ### Kitchen (KDS)
 
-Dashboard tab + standalone `/kitchen` (kitchen role). Shows `preparing`+`ready` only (`new` stays in dashboard). KDS-scale type (items 1.5rem+, order number 2.2rem), full-width "מוכן" button, per-card elapsed-time badge (green <10m / orange <20m / red — measured from the `preparing` transition in `status_history`, refreshed every minute). SSE push for new orders. `ready` → WhatsApp only for pickup orders.
+Dashboard tab + standalone `/kitchen` (kitchen role; token key = `token`, same as login). `/api/kitchen/orders` returns `new`+`preparing`+`ready`: the standalone board has a "ממתינות לאישור" column whose button calls the real accept endpoint; the dashboard tab filters to `preparing`+`ready` (approval lives in the orders tab). KDS-scale type, full-width "מוכן" button, per-card elapsed-time badge — both surfaces measure from the `preparing` transition in `status_history` (`new` counts from creation, urgent at 5m). SSE push works for new orders (saveOrder returns the full row since 2026-07-26). `ready` → WhatsApp only for pickup orders.
+
+### Dashboard order intake (orders tab)
+
+Incoming-orders card zone above the list (`renderIncomingOrders` in app.js): full item visibility, aging timer (green<3m/amber<6m/red), per-item out-of-stock tags (from `/products` availability), one-tap "אשר הזמנה" with prep-time quick picks (15/30/45/60; default from `default_prep_minutes`), "פריט חסר" (dispute modal) and "דחה" (cancel modal). Orders SSE connection at boot (`_ordersConnectSSE`) + WebAudio chime + tab-title flash; 30s polling is fallback. Push opt-in nudge banner; push clicks deep-link to `/dashboard.html?tab=orders` (login page redirects authenticated users).
 
 ### Payments (Cardcom v11)
 
@@ -326,6 +342,23 @@ vendor-alerts.js: WhatsApp to `vendor_phone` setting; 5-min in-memory throttle p
 - Dark mode is NOT calibrated to v2 — treat `[data-theme=dark]` as legacy until reworked.
 - Full direction docs: `.design/jasell-dashboard/`.
 
+### Bot Training Network (`training/`)
+
+A self-improvement loop that trains the customer bot offline. 12 simulated-customer personas (`training/personas.js`) hold full **in-memory** conversations against the REAL bot brain (`buildSystemPrompt` + live menu/settings from Supabase + prod Opus model) — no WhatsApp, no orders, no customer writes. A judge LLM scores each conversation on a rubric (order/pricing correctness, rule-following, no-hallucination, tone, edge-case handling); an improver LLM synthesizes batch-level **bugs** (stress-test), **lessons** (accumulated "seniority"), and a **fine-tuning dataset**.
+
+- **Run:** `node training/run.js --n 12 --apply` (grow store) · `--with-lessons` (A/B inject accumulated lessons) · `--dry` (report only) · `--persona <id>`. Reports land in `training/reports/run-<ts>.md`.
+- **The "seniority" store** = `training/knowledge/`: `lessons.md` (reviewable rules), `examples.jsonl` (few-shot), `dataset.jsonl` (fine-tune candidates, score ≥85).
+- **Feedback into prod is opt-in:** `prompts.js` injects `lessons.md` into the real system prompt ONLY when `BOT_LESSONS_ENABLED=true` (off by default — prod unchanged). Otherwise adopt lessons by editing `prompts.js` manually.
+- **Env:** `run.js` loads `.env.production` (override) then `.env` — the local `.env` has an empty `ANTHROPIC_API_KEY` + disabled legacy Supabase key. Models in `training/config.js`: bot=`claude-opus-4-7` (matches prod), customer+judge=`claude-sonnet-5`, improver=`claude-opus-4-8`. `sonnet-5` rejects the `temperature` param (omitted in `lib/llm.js`).
+- Consistent with the "code-level guarantees beat prompt instructions" lesson: this validates prompt changes empirically before they ship.
+
+**Bootcamp (`training/` — real-data + concurrency).** Extends the network with two production-readiness axes and a graduation report card:
+- **A. Ingest** (`training/ingest/`) — parses real WhatsApp exports (`~/Downloads/יצוא שיחות בוט פיצה/`, override `WA_EXPORTS_DIR`) into `real-cases.jsonl` + `insights.md`. `parse-exports.js` → `data/sessions.jsonl` (anonymized), `mine.js` LLM-extracts cases/edge-cases. Output is gitignored (real customer content).
+- **B. Replay** (`training/eval/replay.js`) — feeds real customer turns to the current bot and judges. The honest competence metric; on real data the bot scores much lower than on synthetic personas (~68 vs ~94) — real phrasing/typos/loops are the gap.
+- **C. Concurrency** (`training/concurrency/`) — `load.js` runs K concurrent conversations against the REAL `handleMessage()` on a throwaway **test tenant** (`test-tenant.js`, cloned from default menu, marked `__test_tenant`, torn down after; teardown refuses unmarked/default tenants). `driver.js` intercepts outbound: patches `greenapi`/`cardcom`/`push-notifier`/`supabase.saveOrder`/`savePendingPayment` **before requiring ai-handler** (it destructures deps at require time) + blocks `axios.post`. Measures autonomy rate, tracer-based state isolation, same-phone race (found: **100% loss under true concurrency** — the known last-write-wins race), cache coherence, p95 latency (fails <8s gate — the per-message `createClient` churn), and fault injection.
+- **D. Bootcamp** (`training/bootcamp.js`) — spawns A-competence + B-replay + C-concurrency each in its own process (load.js monkeypatches globally), reads their JSON summaries, emits a GO/NO-GO report card vs graduation gates.
+- **Zero production footprint:** only writes to isolated test tenants and cleans up; never sends real WhatsApp/payments. Plan: `~/.claude/plans/steady-snuggling-emerson.md`.
+
 ---
 
 ## Database Schema (see supabase/schema.sql)
@@ -353,7 +386,7 @@ onboarding_sessions state machine: pending_client → pending_vendor → approve
 api_usage           Claude token log per call (tenant_id, in/out/cache tokens)
 ```
 
-Order status flow: `new → preparing → ready → out_for_delivery → delivered → done` (auto after 1h) | `cancelled`; scheduled orders: `scheduled → preparing` directly. When adding a status, update the `orders_status_check` constraint via Management API or PATCHes fail on the CHECK.
+Order status flow: `new (awaiting approval) → preparing → ready → out_for_delivery → delivered → done` (auto after 1h) | `cancelled`; scheduled orders: `scheduled → preparing` directly. Acceptance columns (2026-07-26): `accepted_at`, `prep_minutes`, `escalation_level`. All transitions go through `order-state.js` (see Order Acceptance Flow). When adding a status, update the `orders_status_check` constraint via Management API or PATCHes fail on the CHECK.
 
 ---
 

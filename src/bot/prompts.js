@@ -1,7 +1,34 @@
 'use strict';
 
+const fs                = require('fs');
+const path              = require('path');
 const settings          = require('../services/settings');
 const { buildMenuText } = require('../services/menu-service');
+
+// Optional "seniority" injection: lessons accumulated by the training network
+// (training/knowledge/lessons.md). OFF by default — production behavior is
+// unchanged unless BOT_LESSONS_ENABLED=true is set in the environment.
+let _lessonsCache = null;
+function loadLessons() {
+  if (process.env.BOT_LESSONS_ENABLED !== 'true') return '';
+  if (_lessonsCache !== null) return _lessonsCache;
+  try {
+    const file = path.join(__dirname, '../../training/knowledge/lessons.md');
+    _lessonsCache = fs.readFileSync(file, 'utf8').trim();
+  } catch (_) {
+    _lessonsCache = '';
+  }
+  return _lessonsCache;
+}
+
+function injectLessons(prompt) {
+  const lessons = loadLessons();
+  if (!lessons) return prompt;
+  return prompt +
+    `\n\n══════════════════════════════════════════\n` +
+    `לקחים שנצברו מאימון (עדיפות גבוהה — פעל לפיהם)\n` +
+    `══════════════════════════════════════════\n${lessons}\n`;
+}
 
 async function buildSystemPrompt(customerProfile = null, tenantId = null) {
   const tid = tenantId || settings.DEFAULT_TENANT_ID;
@@ -125,7 +152,7 @@ ${parts.join('\n')}
 
   const businessName = allSettings.business_name || 'פיצה דליבריס';
 
-  return `אתה ג׳אסל, מלצר-בוט של ${businessName}.${returningBlock}
+  const __base = `אתה ג׳אסל, מלצר-בוט של ${businessName}.${returningBlock}
 אתה מנהל שיחות ב-WhatsApp בדיוק כמו מלצר מקצועי במסעדה — חם, קצר, יעיל.
 
 ══════════════════════════════════════════
@@ -282,7 +309,7 @@ ACTION blocks
 תוספות: <!--ACTION:SHOW_TOPPINGS-->
 
 אחרי CREATE_PAYMENT: "הקישור לתשלום ישלח עוד רגע"
-אחרי SAVE_ORDER (מזומן): "ההזמנה התקבלה! מכינים עכשיו ונעדכן אותך"
+אחרי SAVE_ORDER (מזומן): "ההזמנה התקבלה!" — ותו לא. אל תבטיח שההכנה התחילה — המערכת שולחת ללקוח הודעת סטטוס מדויקת (ממתינה לאישור המסעדה / אושרה) מיד אחרי ההודעה שלך.
 אחרי SAVE_ORDER (Bit): "ההזמנה נשמרה! לסיום התשלום — שלח *${bitEnabled && bitPhone ? bitPhone : '<מספר Bit>'}* סכום ₪[סכום] בBit. לאחר התשלום שלח *שילמתי*"
 אחרי SAVE_ORDER (מתוזמן): "ההזמנה נשמרה לשעה [שעה]! נתחיל להכין ${prepLeadTime} דקות לפני"
 
@@ -297,6 +324,7 @@ ACTION blocks
 • אל תוסיף scheduled_for אם הלקוח רוצה "עכשיו" / "מוקדם ככל האפשר" / לא ציין שעה
 • אם השעה המבוקשת קרובה מדי (פחות מ-${prepLeadTime} דקות מ-${nowStr}) — אמור ללקוח שהשעה המוקדמת ביותר לתזמון היא ${nowStr} + ${prepLeadTime} דקות, ואל תפלוט SAVE_ORDER עם scheduled_for
 `;
+  return injectLessons(__base);
 }
 
 module.exports = { buildSystemPrompt };
