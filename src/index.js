@@ -415,6 +415,81 @@ if (process.env.RENDER || process.env.ENABLE_ESCALATION) {
   console.log('[escalation] disabled (not on Render; set ENABLE_ESCALATION=1 to enable locally)');
 }
 
+// ─── Human-handoff watchdog (every minute) ───────────────────────────────────
+// Handing a conversation to a human had no exit: nothing but the 90-day session
+// prune ever set is_bot_active back, so an agent who got pulled away left that
+// customer permanently unable to order — silently, because the only signal was
+// an SSE event to a dashboard nobody had open.
+//
+// Two stages, both per tenant:
+//   waiting  — a customer has been unanswered for handoff_alert_minutes → ping
+//              the admins on WhatsApp (once per handoff, persisted).
+//   timeout  — no agent activity for handoff_timeout_minutes → give the
+//              conversation back to the bot and tell the customer.
+async function superviseHandoffs() {
+  try {
+    const { getHandedOffSessions, setBotActive, getAdminUsers } = require('./services/supabase');
+    const { sendMessage } = require('./services/greenapi');
+    const sessions = await getHandedOffSessions();
+    if (!sessions.length) return;
+
+    const sb = createSB(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+    for (const s of sessions) {
+      const tenantId = s.tenant_id || DEFAULT_TENANT_ID;
+      const cfg = await settings.loadAll(tenantId).catch(() => ({}));
+      const timeoutMin = Number(cfg.handoff_timeout_minutes) || 30;
+      const alertMin   = Number(cfg.handoff_alert_minutes)   || 5;
+
+      // No handoff_at means the row predates this feature — stamp it so the
+      // clock starts now rather than timing out an active conversation.
+      if (!s.handoff_at) {
+        await sb.from('sessions').update({ handoff_at: new Date().toISOString() })
+          .eq('tenant_id', tenantId).eq('phone', s.phone);
+        continue;
+      }
+
+      const since   = Date.now() - new Date(s.handoff_at).getTime();
+      const idleMin = since / 60000;
+
+      if (idleMin >= timeoutMin) {
+        await setBotActive(s.phone, true, tenantId);
+        sse.broadcast(tenantId, 'inbox_update', { phone: s.phone, is_bot_active: true });
+        await sendMessage(s.phone,
+          'מצטערים על ההמתנה! חזרנו — אפשר להמשיך להזמין כאן כרגיל 🍕',
+          tenantId).catch(() => {});
+        console.log(`[handoff] ${s.phone} returned to the bot after ${Math.round(idleMin)}m with no agent activity`);
+        continue;
+      }
+
+      // Waiting customer → tell the admins once, if anyone is actually waiting
+      if (idleMin >= alertMin && !s.handoff_alerted_at && (s.unread_count || 0) > 0) {
+        const { data: claimed } = await sb.from('sessions')
+          .update({ handoff_alerted_at: new Date().toISOString() })
+          .eq('tenant_id', tenantId).eq('phone', s.phone).is('handoff_alerted_at', null)
+          .select('phone');
+        if (!claimed?.length) continue;
+
+        const name = s.customer_profile?.name || s.phone;
+        const admins = await getAdminUsers(tenantId);
+        for (const admin of admins) {
+          await sendMessage(admin.phone,
+            `💬 *לקוח ממתין לנציג — ${name}*\n${s.unread_count} הודעות שלא נענו, כבר ${Math.round(idleMin)} דקות.\nהיכנסו לטאב "הודעות" בדשבורד כדי להשיב.`,
+            tenantId).catch(() => {});
+        }
+        console.log(`[handoff] waiting-customer alert for ${s.phone} → ${admins.length} admin(s)`);
+      }
+    }
+  } catch (err) {
+    console.error('[handoff] watchdog error:', err.message);
+  }
+}
+// Same production-only gate as the escalation loop — a local dev server against
+// the prod DB must never message real customers.
+if (process.env.RENDER || process.env.ENABLE_ESCALATION) {
+  setInterval(superviseHandoffs, 60 * 1000);
+}
+
 // ─── Pending payment watchdog (every 2 min) ──────────────────────────────────
 // A pending_payments row only proves a payment LINK was generated — not that the
 // customer paid. Order creation happens exclusively in Cardcom's callbacks

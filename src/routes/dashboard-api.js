@@ -1551,10 +1551,16 @@ router.get('/inbox', requireAdmin, async (req, res) => {
   }
 });
 
+// Taking over and handing back are both visible to the customer: without a word
+// from us the bot simply goes mute mid-conversation and, later, starts
+// answering again — with no explanation for either.
 router.post('/inbox/:phone/handoff', requireAdmin, async (req, res) => {
   try {
     await setBotActive(req.params.phone, false, tid(req));
     sse.broadcast(tid(req), 'inbox_update', { phone: req.params.phone, is_bot_active: false });
+    if (req.body?.notify_customer !== false) {
+      await sendMessage(req.params.phone, 'רגע, נציג/ה מהעסק מצטרף/ת לשיחה ויענה לך כאן 👋', tid(req)).catch(() => {});
+    }
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1565,6 +1571,9 @@ router.post('/inbox/:phone/return', requireAdmin, async (req, res) => {
   try {
     await setBotActive(req.params.phone, true, tid(req));
     sse.broadcast(tid(req), 'inbox_update', { phone: req.params.phone, is_bot_active: true });
+    if (req.body?.notify_customer !== false) {
+      await sendMessage(req.params.phone, 'תודה על הסבלנות! אפשר להמשיך להזמין כאן כרגיל 🍕', tid(req)).catch(() => {});
+    }
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1581,7 +1590,20 @@ router.post('/inbox/:phone/reply', requireAdmin, async (req, res) => {
     const session = await getSession(req.params.phone, tid(req));
     const history = Array.isArray(session.conversation_history) ? session.conversation_history : [];
     history.push({ role: 'assistant', content: `[נציג]: ${message}` });
-    await updateSession(req.params.phone, { conversation_history: history.slice(-40) }, tid(req));
+    // An agent reply is agent activity: restart the handoff clock so the
+    // watchdog doesn't hand a live conversation back to the bot mid-sentence,
+    // and re-arm the waiting-customer alert for the next silence.
+    await updateSession(req.params.phone, {
+      conversation_history: history.slice(-40),
+      handoff_at: new Date().toISOString(),
+      handoff_alerted_at: null,
+      unread_count: 0,
+    }, tid(req));
+    // Two agents on two browsers were invisible to each other — neither
+    // /reply nor its optimistic local append broadcast anything.
+    sse.broadcast(tid(req), 'inbox_message', {
+      phone: req.params.phone, from: 'agent', message, at: new Date().toISOString(),
+    });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

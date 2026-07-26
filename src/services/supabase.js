@@ -337,11 +337,36 @@ async function getInboxSessions(tenantId = DEFAULT_TENANT_ID) {
   return data || [];
 }
 
+/**
+ * Hand a conversation to a human (isActive=false) or give it back to the bot.
+ *
+ * handoff_at is what makes the handoff exitable — without a timestamp there is
+ * no way to tell a conversation an agent is working from one they abandoned.
+ * Returning to the bot no longer zeroes unread_count: doing so hid still-unread
+ * customer messages from the inbox list at the exact moment the agent stepped
+ * away from them.
+ */
 async function setBotActive(phone, isActive, tenantId = DEFAULT_TENANT_ID) {
-  await updateSession(phone, {
-    is_bot_active: isActive,
-    unread_count: 0,
-  }, tenantId);
+  const patch = { is_bot_active: isActive };
+  if (isActive) {
+    patch.handoff_at = null;
+    patch.handoff_alerted_at = null;
+  } else {
+    patch.handoff_at = new Date().toISOString();
+    patch.unread_count = 0;   // the agent is looking at it right now
+  }
+  await updateSession(phone, patch, tenantId);
+}
+
+/** Conversations sitting in agent mode — the input to the handoff watchdog. */
+async function getHandedOffSessions() {
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('phone, tenant_id, handoff_at, handoff_alerted_at, unread_count, last_message_at, customer_profile')
+    .eq('is_bot_active', false)
+    .not('phone', 'like', 'admin:%');
+  if (error) { console.error('[supabase] getHandedOffSessions error:', error.message); return []; }
+  return data || [];
 }
 
 async function markInboxRead(phone, tenantId = DEFAULT_TENANT_ID) {
@@ -397,6 +422,7 @@ module.exports = {
   getScheduledOrdersDue,
   getInboxSessions,
   setBotActive,
+  getHandedOffSessions,
   markInboxRead,
   resolveTenantByMetaPhoneId,
 };

@@ -156,6 +156,9 @@ CREATE TABLE IF NOT EXISTS pending_payments (
 -- Expired pendings are marked, never deleted: a customer can pay after the
 -- window closes and order_data is the only record of what they ordered.
 ALTER TABLE pending_payments ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'open';  -- open | expired
+-- Human handoff needs a clock, otherwise agent mode has no exit (2026-07-27)
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS handoff_at         TIMESTAMPTZ;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS handoff_alerted_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_pending_cardcom ON pending_payments(cardcom_code);
 CREATE INDEX IF NOT EXISTS idx_pending_return  ON pending_payments(return_value);
 

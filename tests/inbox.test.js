@@ -175,3 +175,48 @@ describe('inbox API', () => {
     expect(mockMarkRead).toHaveBeenCalledWith('972501111111', TID);
   });
 });
+
+// ── The handoff must be visible to the customer and must have an exit ────────
+// Before this, the bot simply went mute mid-conversation and, if the agent
+// never came back, stayed mute until the 90-day session prune.
+describe('handoff is explained to the customer', () => {
+  test('taking over tells the customer a human is joining', async () => {
+    await request(app).post('/api/inbox/972501111111/handoff')
+      .set('Authorization', `Bearer ${adminToken()}`).expect(200);
+
+    const msg = mockSendMessage.mock.calls.find(c => c[0] === '972501111111');
+    expect(msg).toBeDefined();
+    expect(msg[1]).toContain('נציג');
+    expect(msg[2]).toBe(TID);
+  });
+
+  test('handing back tells the customer the bot is available again', async () => {
+    await request(app).post('/api/inbox/972501111111/return')
+      .set('Authorization', `Bearer ${adminToken()}`).expect(200);
+
+    const msg = mockSendMessage.mock.calls.find(c => c[0] === '972501111111');
+    expect(msg[1]).toContain('להזמין');
+  });
+
+  test('notify_customer:false stays silent (bot already spoke, agent takes over quietly)', async () => {
+    await request(app).post('/api/inbox/972501111111/handoff')
+      .set('Authorization', `Bearer ${adminToken()}`)
+      .send({ notify_customer: false }).expect(200);
+
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  test('an agent reply restarts the handoff clock so the watchdog cannot cut in', async () => {
+    mockGetSession.mockResolvedValue({ phone: '972501111111', conversation_history: [] });
+    await request(app).post('/api/inbox/972501111111/reply')
+      .set('Authorization', `Bearer ${adminToken()}`)
+      .send({ message: 'כבר בודק' }).expect(200);
+
+    const updates = mockUpdateSession.mock.calls[0][1];
+    expect(updates.handoff_at).toBeTruthy();
+    expect(updates.handoff_alerted_at).toBeNull();
+    // and other agents see it
+    expect(mockBroadcast).toHaveBeenCalledWith(TID, 'inbox_message',
+      expect.objectContaining({ from: 'agent' }));
+  });
+});

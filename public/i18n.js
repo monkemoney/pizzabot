@@ -62,6 +62,12 @@ const HE2EN = {
   'הזמנות ממתינות': 'Orders waiting',
   'אשר הזמנה': 'Accept order',
   'אשר הזמנה מתוזמנת': 'Confirm pre-order',
+  'שיחה עם נציג': 'Human handoff',
+  'כשמעבירים שיחה לנציג הבוט מפסיק לענות ללקוח. אם אף אחד לא ממשיך את השיחה, הלקוח נשאר תקוע — לכן היא חוזרת לבוט אוטומטית.':
+    'Handing a chat to an agent stops the bot from answering that customer. If nobody picks it up they are stuck, so it returns to the bot automatically.',
+  'התראה למנהלים אם לקוח ממתין': 'Alert admins if a customer waits',
+  'החזרה אוטומטית לבוט אחרי': 'Return to the bot after',
+  'דקות ללא מענה נציג': 'minutes with no agent reply',
   'מתוזמנת': 'Pre-order',
   'אישור מתחייב להכנה בשעה זו; ההזמנה תיכנס למטבח אוטומטית לפני המועד':
     'Confirming commits you to that time; the order enters the kitchen automatically before it',

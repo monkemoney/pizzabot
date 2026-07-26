@@ -2429,7 +2429,7 @@ function renderSettingsForm(s) {
     phone: ico('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>'),
   };
 
-  const NAV_LABELS = ['פרטי העסק','תשלום','סוגי הזמנה','אישור הזמנות','מתוזמנות','שינויי הזמנות','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים','שיחות שלא נענו'];
+  const NAV_LABELS = ['פרטי העסק','תשלום','סוגי הזמנה','אישור הזמנות','מתוזמנות','שינויי הזמנות','שיחה עם נציג','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים','שיחות שלא נענו'];
 
   _sCardSeq = 0;
   document.getElementById('settingsForm').innerHTML = `
@@ -2507,6 +2507,23 @@ function renderSettingsForm(s) {
       ${sToggle('allow_order_edits', 'אפשר ללקוח לשנות/לבטל הזמנה', s.allow_order_edits !== false, '',
         'זמין כל עוד ההזמנה לא עברה למצב "בהכנה" — מרגע שההכנה מתחילה ההזמנה ננעלת')}
       ${saveBtn('saveEditSettings')}
+    `)}
+
+    ${sCard(ICONS.phone, 'שיחה עם נציג', 'מה קורה כשמעבירים שיחה מהבוט לנציג אנושי', `
+      <div style="font-size:.82rem;color:var(--text-muted);margin-bottom:14px">
+        ${TR('כשמעבירים שיחה לנציג הבוט מפסיק לענות ללקוח. אם אף אחד לא ממשיך את השיחה, הלקוח נשאר תקוע — לכן היא חוזרת לבוט אוטומטית.')}
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+        <label style="font-size:.84rem;font-weight:600;min-width:210px">${TR('התראה למנהלים אם לקוח ממתין')}</label>
+        <input type="number" id="handoffAlertMinutes" value="${s.handoff_alert_minutes ?? 5}" min="1" max="60" style="width:90px;font-weight:700;text-align:center">
+        <span style="font-size:.84rem;color:var(--text-muted)">${TR('דקות')}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <label style="font-size:.84rem;font-weight:600;min-width:210px">${TR('החזרה אוטומטית לבוט אחרי')}</label>
+        <input type="number" id="handoffTimeoutMinutes" value="${s.handoff_timeout_minutes ?? 30}" min="5" max="240" style="width:90px;font-weight:700;text-align:center">
+        <span style="font-size:.84rem;color:var(--text-muted)">${TR('דקות ללא מענה נציג')}</span>
+      </div>
+      ${saveBtn('saveHandoffSettings')}
     `)}
 
     ${sCard(ICONS.clock, 'שעות פעילות', 'מתי הבוט מקבל הזמנות; מחוץ לשעות אלה לקוחות יקבלו הודעת סגור', `
@@ -2634,6 +2651,15 @@ async function saveAcceptance() {
   });
   _defaultPrep = Math.max(5, Math.min(120, prep));
   renderSettingsForm(_currentSettings = { ..._currentSettings, order_acceptance: mode, default_prep_minutes: prep, accept_reminder_minutes: remind });
+}
+
+async function saveHandoffSettings() {
+  const alertMin   = parseInt(document.getElementById('handoffAlertMinutes')?.value) || 5;
+  const timeoutMin = parseInt(document.getElementById('handoffTimeoutMinutes')?.value) || 30;
+  await saveSection({
+    handoff_alert_minutes:   Math.max(1, Math.min(60, alertMin)),
+    handoff_timeout_minutes: Math.max(5, Math.min(240, timeoutMin)),
+  });
 }
 
 async function savePrepLeadTime() {
