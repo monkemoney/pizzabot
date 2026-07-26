@@ -441,7 +441,7 @@ async function handleMessage(phone, userMessage, tenantId = null) {
         // approval; auto — afterCreate() accepts immediately and sends the
         // approval + ETA message itself, so no extra message is needed here.
         const orderState = require('../services/order-state');
-        const mode = await orderState.afterCreate(savedOrder, { lang });
+        const mode = await orderState.afterCreate(savedOrder, { lang, notifyAdmins: true });
         if (mode === 'manual') {
           const confirmMsg = lang === 'en'
             ? `Order *#${orderNumber}* received and sent to the restaurant for approval ✅\nWe'll update you the moment it's confirmed.`

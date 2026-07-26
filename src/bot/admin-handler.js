@@ -150,6 +150,9 @@ ${orderList}
 **זמינות מוצר/תוספת:**
 <!--ADMIN:SET_AVAILABLE:{"type":"product|topping","name":"<שם>","available":true|false}-->
 
+**אישור הזמנה חדשה (הזמנה בסטטוס "חדשה" — מעביר להכנה ומודיע ללקוח עם זמן הכנה):**
+<!--ADMIN:ACCEPT_ORDER:{"order_number":<מספר>,"prep_minutes":<דקות — אופציונלי>}-->
+
 **סטטוס הזמנה:**
 <!--ADMIN:ORDER_STATUS:{"order_number":<מספר>,"status":"preparing|out_for_delivery|delivered|cancelled"}-->
 סטטוסים אפשריים: ${Object.entries(STATUS_MAP).map(([k,v])=>`${k}=${v}`).join(', ')}
@@ -191,6 +194,7 @@ ${orderList}
 • "סגור" / "צאו" = SET is_open:false
 • "פתח" = SET is_open:true
 • "קיבלתי Bit" / "שילמו" / "אשר תשלום" + מספר הזמנה = CONFIRM_PAYMENT
+• "אשר הזמנה 1026" / "קבל את 1026" / "תתחילו להכין את 1026" = ACCEPT_ORDER (להזמנה שממתינה לאישור)
 • "משלוח עד 22:00" / "פתח משלוח מ-12:00" = SET_DELIVERY_HOURS עם day:today
 • "סגור משלוח היום" = SET_DELIVERY_HOURS day:today is_open:false
 • "שנה שעות פתיחה ביום ראשון ל-11:00 עד 23:00" = SET_BUSINESS_HOURS
@@ -240,6 +244,23 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
           }
           invalidateCache(tenantId);
           results.push(`${available ? '✅' : '❌'} *${name}* — ${available ? 'מוחזר לתפריט' : 'סומן כאזל'} (${type === 'topping' ? 'בכל המוצרים הרלוונטיים' : ''})`);
+          break;
+        }
+
+        case 'ACCEPT_ORDER': {
+          const { order_number, prep_minutes } = payload;
+          const { data: ord } = await supabase
+            .from('orders').select('id,order_number')
+            .eq('order_number', order_number).eq('tenant_id', tenantId).single();
+          if (!ord) { results.push(`❌ הזמנה #${order_number} לא נמצאה`); break; }
+          const orderStateAccept = require('../services/order-state');
+          const prep = parseInt(prep_minutes, 10) || await orderStateAccept.getDefaultPrepMinutes(tenantId);
+          try {
+            await orderStateAccept.accept(ord.id, { prepMinutes: prep, by: 'admin-bot' });
+            results.push(`✅ הזמנה #${order_number} אושרה (${prep} דק') — הלקוח עודכן`);
+          } catch (err) {
+            results.push(`⚠️ הזמנה #${order_number}: ${err.message}`);
+          }
           break;
         }
 
@@ -430,8 +451,66 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
 }
 
 // ── Main admin handler ────────────────────────────────────────────────────────
-async function handleAdminMessage(phone, userMessage, adminUser, tenantId = DEFAULT_TENANT_ID) {
-  console.log(`[admin-bot] phone=${phone} tenant=${tenantId} name="${adminUser.name}" msg="${userMessage.slice(0,60)}"`);
+// ── Order-approval shortcuts — deterministic, no Claude round-trip ───────────
+// Sources: Meta interactive ids from the approval message buttons
+// (accept:<id> / acceptt:<id>:<mins> / accepttime:<id> / orderissue:<id>)
+// and the text fallback for Green API tenants ("אשר 1026", "אשר 1026 45 דק").
+async function handleOrderShortcut(interactiveId, textMessage, tenantId, phone) {
+  const orderState = require('../services/order-state');
+  const { sendInteractiveList } = require('../services/greenapi');
+  const id = interactiveId || '';
+  let m;
+
+  const acceptWith = async (orderId, mins) => {
+    try {
+      const order = await orderState.accept(orderId, { prepMinutes: mins, by: 'admin-whatsapp' });
+      await reply(phone, `✅ הזמנה #${order.order_number} אושרה (${mins} דק') — הלקוח עודכן וההזמנה במטבח 👨‍🍳`, tenantId);
+    } catch (err) {
+      if (err.code === 'INVALID_TRANSITION' || err.code === 'CONFLICT') {
+        await reply(phone, `⚠️ ההזמנה כבר טופלה — ${err.message}`, tenantId);
+      } else if (err.code === 'ORDER_NOT_FOUND') {
+        await reply(phone, '❌ הזמנה לא נמצאה', tenantId);
+      } else {
+        await reply(phone, `⚠️ שגיאה באישור: ${err.message}`, tenantId);
+      }
+    }
+  };
+
+  if ((m = id.match(/^accept:([\w-]+)$/))) {
+    await acceptWith(m[1], await orderState.getDefaultPrepMinutes(tenantId));
+    return true;
+  }
+  if ((m = id.match(/^acceptt:([\w-]+):(\d+)$/))) {
+    await acceptWith(m[1], parseInt(m[2], 10));
+    return true;
+  }
+  if ((m = id.match(/^accepttime:([\w-]+)$/))) {
+    const rows = [15, 30, 45, 60, 90].map((min) => ({ id: `acceptt:${m[1]}:${min}`, title: `${min} דקות` }));
+    await sendInteractiveList(phone,
+      { header: 'זמן הכנה', body: 'בחר זמן הכנה משוער — ההזמנה תאושר מיד עם הבחירה', buttonText: 'בחר זמן', rows },
+      tenantId, 'השב: אשר <מספר הזמנה> <דקות> דק');
+    return true;
+  }
+  if (id.match(/^orderissue:[\w-]+$/)) {
+    await reply(phone,
+      'כתוב מה הבעיה ואני אטפל:\n• "אין <פריט> בהזמנה <מספר>" — נודיע ללקוח ונציע חלופות\n• "בטל הזמנה <מספר>" — ביטול מלא (כולל זיכוי אם שולם)',
+      tenantId);
+    return true;
+  }
+
+  // Text fallback: "אשר 1026" / "אשר 1026 45" / "אשר 1026 45 דק"
+  if ((m = (textMessage || '').trim().match(/^אשר\s+(\d{3,6})(?:\s+(\d{1,3})\s*(?:דק.{0,3})?)?$/))) {
+    const { data: ord } = await supabase.from('orders').select('id')
+      .eq('order_number', parseInt(m[1], 10)).eq('tenant_id', tenantId).single();
+    if (!ord) { await reply(phone, `❌ הזמנה #${m[1]} לא נמצאה`, tenantId); return true; }
+    await acceptWith(ord.id, m[2] ? parseInt(m[2], 10) : await orderState.getDefaultPrepMinutes(tenantId));
+    return true;
+  }
+  return false;
+}
+
+async function handleAdminMessage(phone, userMessage, adminUser, tenantId = DEFAULT_TENANT_ID, interactiveId = null) {
+  console.log(`[admin-bot] phone=${phone} tenant=${tenantId} name="${adminUser.name}" msg="${userMessage.slice(0,60)}"${interactiveId ? ` btn=${interactiveId}` : ''}`);
 
   const session = await getSession(`admin:${phone}`, tenantId);
   const history = Array.isArray(session.conversation_history) ? session.conversation_history : [];
@@ -441,6 +520,9 @@ async function handleAdminMessage(phone, userMessage, adminUser, tenantId = DEFA
     await reply(phone, '✅ היסטוריית שיחת הניהול נוקתה.', tenantId);
     return;
   }
+
+  // Approval-button replies and quick accept commands skip Claude entirely
+  if (await handleOrderShortcut(interactiveId, userMessage, tenantId, phone)) return;
 
   let systemPrompt;
   try { systemPrompt = await buildAdminPrompt(adminUser, tenantId); }

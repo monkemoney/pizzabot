@@ -33,7 +33,7 @@ describe('parseIncoming', () => {
     const out = metaWA.parseIncoming(metaBody({
       from: '972501234567', type: 'text', text: { body: 'שלום' },
     }));
-    expect(out).toEqual({ phone: '972501234567', textMessage: 'שלום', phoneNumberId: 'PNID-1' });
+    expect(out).toEqual({ phone: '972501234567', textMessage: 'שלום', phoneNumberId: 'PNID-1', interactiveId: null });
   });
 
   test('list_reply (topping pick) → "בחרתי: X"', () => {

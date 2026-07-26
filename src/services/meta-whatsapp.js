@@ -142,6 +142,40 @@ async function sendToppingsList(phone, lang = 'he', toppingOptions = [], creds =
 }
 
 /**
+ * Send interactive reply buttons (max 3, titles ≤20 chars).
+ * buttons: [{ id, title }]
+ */
+async function sendButtons(phone, { body, buttons }, creds = ENV_CREDS) {
+  const to = formatPhone(phone);
+  try {
+    const r = await axios.post(
+      apiUrl(`${creds.phoneNumberId}/messages`),
+      {
+        messaging_product: 'whatsapp',
+        to,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: { text: body.slice(0, 1024) },
+          action: {
+            buttons: buttons.slice(0, 3).map((b) => ({
+              type: 'reply',
+              reply: { id: b.id.slice(0, 256), title: b.title.slice(0, 20) },
+            })),
+          },
+        },
+      },
+      { headers: authHeaders(creds) }
+    );
+    return r.data;
+  } catch (err) {
+    const detail = err.response ? JSON.stringify(err.response.data) : err.message;
+    console.error(`[meta-wa] sendButtons failed for ${to}:`, detail);
+    throw err;
+  }
+}
+
+/**
  * Subscribe our app to a tenant's WABA so Meta starts delivering its
  * webhooks. Idempotent — safe to call again on re-provision.
  */
@@ -174,26 +208,29 @@ function parseIncoming(body) {
   const phoneNumberId = value.metadata?.phone_number_id;
   const phone = formatPhone(msg.from);
 
-  let textMessage = null;
+  let textMessage   = null;
+  let interactiveId = null; // raw button/list row id — used by admin action shortcuts
   if (msg.type === 'text') {
     textMessage = msg.text?.body;
   } else if (msg.type === 'interactive') {
     if (msg.interactive?.type === 'list_reply') {
       const reply = msg.interactive.list_reply;
+      interactiveId = reply.id || null;
       textMessage = reply.id === 'topping_done'
         ? (reply.title || 'בחרתי הכל')
         : `בחרתי: ${reply.title}`;
     } else if (msg.interactive?.type === 'button_reply') {
+      interactiveId = msg.interactive.button_reply?.id || null;
       textMessage = msg.interactive.button_reply?.title;
     }
   }
 
   if (!textMessage) return null;
-  return { phone, textMessage, phoneNumberId };
+  return { phone, textMessage, phoneNumberId, interactiveId };
 }
 
 module.exports = {
-  sendMessage, sendTemplate, sendList, sendToppingsList, subscribeWaba,
+  sendMessage, sendTemplate, sendList, sendButtons, sendToppingsList, subscribeWaba,
   verifyWebhook, parseIncoming, formatPhone,
   PHONE_NUMBER_ID, WABA_ID, ENV_CREDS,
 };

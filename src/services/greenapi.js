@@ -301,6 +301,28 @@ async function resolveCategoryVote(vote) {
 }
 
 /**
+ * Interactive reply buttons through the tenant's channel.
+ * Meta tenants get native buttons; Green API tenants get the plain-text
+ * fallback (fallbackText should tell the admin what to type instead).
+ * buttons: [{ id, title }]
+ */
+async function sendInteractiveButtons(phone, body, buttons, tenantId = null, fallbackText = null) {
+  const meta = await _metaCreds(tenantId);
+  if (meta) return metaWA.sendButtons(phone, { body, buttons }, meta);
+  return sendMessage(phone, fallbackText || body, tenantId);
+}
+
+/**
+ * Interactive single-select list through the tenant's channel (same fallback rule).
+ * rows: [{ id, title, description }]
+ */
+async function sendInteractiveList(phone, { header, body, buttonText, rows }, tenantId = null, fallbackText = null) {
+  const meta = await _metaCreds(tenantId);
+  if (meta) return metaWA.sendList(phone, { header, body, buttonText, rows }, meta);
+  return sendMessage(phone, fallbackText || body, tenantId);
+}
+
+/**
  * Send interactive buttons (max 3).
  */
 async function sendButtons(phone, message, buttons) {
@@ -327,5 +349,5 @@ module.exports = {
   sendMessage, sendTemplate, sendListMessage, sendMenuList, sendCategoryPoll,
   sendToppingsPoll, sendPoll, resolveCategoryVote,
   isControlOption, CTRL_CONFIRM, CTRL_BACK, CTRL_NO_TOP,
-  sendButtons, formatPhone, toChatId, setWebhook,
+  sendButtons, sendInteractiveButtons, sendInteractiveList, formatPhone, toChatId, setWebhook,
 };

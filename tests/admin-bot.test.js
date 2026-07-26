@@ -132,8 +132,14 @@ jest.mock('../src/services/order-state', () => ({
     updateLog.push({ table: 'orders', vals: { status: to, ...(opts.extra || {}) }, filter: { id } });
     return { order, changed: true };
   }),
-  accept: jest.fn(async () => ({})),
+  accept: jest.fn(async (id, opts = {}) => {
+    const order = dbRows.orders.find(o => o.id === id);
+    if (!order) { const e = new Error('הזמנה לא נמצאה'); e.code = 'ORDER_NOT_FOUND'; throw e; }
+    order.status = 'preparing';
+    return { ...order, prep_minutes: opts.prepMinutes };
+  }),
   afterCreate: jest.fn(async () => 'manual'),
+  notifyAdminsNewOrder: jest.fn(async () => {}),
   getAcceptanceMode: jest.fn(async () => 'manual'),
   getDefaultPrepMinutes: jest.fn(async () => 30),
 }));
@@ -246,6 +252,55 @@ describe('ORDER_STATUS', () => {
 
     const msg = sendLog.find(s => s.text.includes('לא נמצאה'));
     expect(msg).toBeDefined();
+  });
+});
+
+// ── Approval shortcuts (button replies / quick text) ─────────────────────────
+describe('order approval shortcuts', () => {
+  test('accept:<id> button reply accepts without calling Claude', async () => {
+    const order = seedOrder({ order_number: 1010, id: 'ord-10', status: 'new' });
+    const orderState = require('../src/services/order-state');
+    const { callClaude } = require('../src/services/claude');
+    callClaude.mockClear();
+
+    await handleAdminMessage(PHONE, '✅ אשר (30 דק\')', ADMIN_USER, TENANT, 'accept:ord-10');
+
+    expect(orderState.accept).toHaveBeenCalledWith('ord-10',
+      expect.objectContaining({ prepMinutes: 30, by: 'admin-whatsapp' }));
+    expect(callClaude).not.toHaveBeenCalled();
+    const msg = sendLog.find(s => s.text.includes('אושרה'));
+    expect(msg).toBeDefined();
+  });
+
+  test('acceptt:<id>:<mins> list reply accepts with the chosen prep time', async () => {
+    seedOrder({ order_number: 1011, id: 'ord-11', status: 'new' });
+    const orderState = require('../src/services/order-state');
+
+    await handleAdminMessage(PHONE, '45 דקות', ADMIN_USER, TENANT, 'acceptt:ord-11:45');
+
+    expect(orderState.accept).toHaveBeenCalledWith('ord-11',
+      expect.objectContaining({ prepMinutes: 45 }));
+  });
+
+  test('text "אשר 1012 20 דק" accepts by order number', async () => {
+    seedOrder({ order_number: 1012, id: 'ord-12', status: 'new' });
+    const orderState = require('../src/services/order-state');
+
+    await handleAdminMessage(PHONE, 'אשר 1012 20 דק', ADMIN_USER, TENANT);
+
+    expect(orderState.accept).toHaveBeenCalledWith('ord-12',
+      expect.objectContaining({ prepMinutes: 20 }));
+  });
+
+  test('ACCEPT_ORDER action via Claude free text', async () => {
+    seedOrder({ order_number: 1013, id: 'ord-13', status: 'new' });
+    mockClaudeReturn = '<!--ADMIN:ACCEPT_ORDER:{"order_number":1013,"prep_minutes":25}-->';
+    const orderState = require('../src/services/order-state');
+
+    await handleAdminMessage(PHONE, 'תתחילו להכין את 1013, רבע שעה ועשר דקות', ADMIN_USER, TENANT);
+
+    expect(orderState.accept).toHaveBeenCalledWith('ord-13',
+      expect.objectContaining({ prepMinutes: 25, by: 'admin-bot' }));
   });
 });
 

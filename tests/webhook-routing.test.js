@@ -223,7 +223,7 @@ describe('POST /webhook — Meta multi-tenant routing', () => {
 
     expect(mockHandleAdminMessage).toHaveBeenCalledWith(
       '972504444444', 'נגמרה בולגרית',
-      expect.objectContaining({ role: 'admin' }), 'tenant-pilot-1'
+      expect.objectContaining({ role: 'admin' }), 'tenant-pilot-1', null
     );
   });
 });

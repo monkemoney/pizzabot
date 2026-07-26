@@ -97,7 +97,7 @@ function handleMetaWebhook(req, res) {
 
   const parsed = metaWA.parseIncoming(req.body);
   if (!parsed) return;
-  const { phone, textMessage, phoneNumberId } = parsed;
+  const { phone, textMessage, phoneNumberId, interactiveId } = parsed;
 
   const resolveAndHandle = async () => {
     let tenantId = null;
@@ -113,7 +113,7 @@ function handleMetaWebhook(req, res) {
     }
 
     const adminUser = await getAdminUser(phone, tenantId);
-    if (adminUser) return handleAdminMessage(phone, textMessage, adminUser, tenantId);
+    if (adminUser) return handleAdminMessage(phone, textMessage, adminUser, tenantId, interactiveId);
     return handleMessage(phone, textMessage, tenantId);
   };
 

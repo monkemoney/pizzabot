@@ -56,7 +56,7 @@ async function confirmPending(pending, source = 'webhook', dealNumber = null) {
     // Acceptance flow: auto → afterCreate accepts + sends the approval/ETA
     // message; manual → tell the customer the order awaits approval.
     const orderState = require('../services/order-state');
-    const mode = await orderState.afterCreate(savedOrder).catch(() => 'manual');
+    const mode = await orderState.afterCreate(savedOrder, { notifyAdmins: true }).catch(() => 'manual');
     const msg = mode === 'manual'
       ? `✅ התשלום התקבל! הזמנה מספר *${orderNumber}* נשלחה למסעדה לאישור 🍕\nנעדכן אותך ברגע שההזמנה תאושר ותיכנס להכנה.`
       : `✅ התשלום התקבל! (הזמנה מספר *${orderNumber}*)`;

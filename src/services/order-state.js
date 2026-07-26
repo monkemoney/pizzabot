@@ -158,12 +158,62 @@ async function getDefaultPrepMinutes(tenantId = DEFAULT_TENANT_ID) {
 }
 
 /**
+ * WhatsApp the tenant's admins about an order awaiting approval, with
+ * interactive accept buttons (Meta) or text commands (Green API fallback).
+ */
+async function notifyAdminsNewOrder(order) {
+  const tenantId = order.tenant_id || DEFAULT_TENANT_ID;
+  const { getAdminUsers } = require('./supabase');
+  const { sendInteractiveButtons } = require('./greenapi');
+
+  const admins = await getAdminUsers(tenantId);
+  if (!admins.length) return;
+
+  const prep = await getDefaultPrepMinutes(tenantId);
+  const items = (order.items || []).map((it) => {
+    const qty  = it.quantity || it.qty || 1;
+    const tops = (it.toppings || []).map((t) => t.name || t.name_he).filter(Boolean);
+    return `• ${it.name || it.name_he}${qty > 1 ? ` ×${qty}` : ''}${tops.length ? ` (${tops.join(', ')})` : ''}`;
+  }).join('\n');
+
+  const payLine = order.payment_status === 'pending'
+    ? '💳 *ממתין לתשלום Bit*'
+    : order.payment_method === 'cash' ? `💵 מזומן — ₪${order.total_price}` : `💳 שולם — ₪${order.total_price}`;
+
+  const body = [
+    `🔔 *הזמנה חדשה #${order.order_number} — ממתינה לאישור*`,
+    `👤 ${order.customer_name || 'לקוח'}`,
+    order.delivery_method === 'pickup' ? '🏠 איסוף עצמי' : `🛵 משלוח — ${order.address || ''}`,
+    '',
+    items || '—',
+    order.notes ? `📝 ${order.notes}` : null,
+    '',
+    payLine,
+  ].filter((l) => l !== null).join('\n');
+
+  const buttons = [
+    { id: `accept:${order.id}`,     title: `✅ אשר (${prep} דק')` },
+    { id: `accepttime:${order.id}`, title: '⏱️ אשר עם זמן אחר' },
+    { id: `orderissue:${order.id}`, title: '⚠️ בעיה בהזמנה' },
+  ];
+  const fallback = body + `\n\nלאישור השב: *אשר ${order.order_number}*\nלאישור עם זמן: *אשר ${order.order_number} 45 דק*\nלבעיה/ביטול — כתוב חופשי.`;
+
+  for (const admin of admins) {
+    await sendInteractiveButtons(admin.phone, body, buttons, tenantId, fallback)
+      .catch((err) => console.error(`[order-state] admin notify failed (${admin.phone}):`, err.message));
+  }
+  console.log(`[order-state] #${order.order_number} approval request sent to ${admins.length} admin(s)`);
+}
+
+/**
  * Called right after an order row is created. In 'auto' mode the order is
  * accepted immediately (straight to the kitchen, customer gets the approval
- * message). In 'manual' mode nothing happens — the order waits in 'new'.
+ * message). In 'manual' mode the tenant's admins get a WhatsApp approval
+ * request (when notifyAdmins is set — creation paths pass true; the
+ * confirm-payment path passes false to avoid a duplicate ping).
  * Returns 'auto' | 'manual' so the caller can word its confirmation message.
  */
-async function afterCreate(order, { lang = 'he' } = {}) {
+async function afterCreate(order, { lang = 'he', notifyAdmins = false } = {}) {
   const tenantId = order.tenant_id || DEFAULT_TENANT_ID;
   const mode = await getAcceptanceMode(tenantId);
 
@@ -173,8 +223,11 @@ async function afterCreate(order, { lang = 'he' } = {}) {
     const prep = await getDefaultPrepMinutes(tenantId);
     await accept(order.id, { prepMinutes: prep, by: 'auto-accept', lang })
       .catch((err) => console.error('[order-state] auto-accept error:', err.message));
+  } else if (mode === 'manual' && order.status === 'new' && notifyAdmins) {
+    await notifyAdminsNewOrder(order)
+      .catch((err) => console.error('[order-state] notifyAdminsNewOrder error:', err.message));
   }
   return mode;
 }
 
-module.exports = { TRANSITIONS, STATUSES, transition, accept, afterCreate, getAcceptanceMode, getDefaultPrepMinutes };
+module.exports = { TRANSITIONS, STATUSES, transition, accept, afterCreate, notifyAdminsNewOrder, getAcceptanceMode, getDefaultPrepMinutes };
