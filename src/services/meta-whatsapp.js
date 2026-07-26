@@ -1,13 +1,15 @@
 'use strict';
 
 require('dotenv').config();
-const axios = require('axios');
+const axios  = require('axios');
+const crypto = require('crypto');
 
 const API_VERSION     = process.env.META_WA_API_VERSION || 'v21.0';
 const PHONE_NUMBER_ID = process.env.META_WA_PHONE_NUMBER_ID;
 const ACCESS_TOKEN    = process.env.META_WA_ACCESS_TOKEN;
 const WABA_ID         = process.env.META_WA_WABA_ID;
 const VERIFY_TOKEN    = process.env.META_WA_VERIFY_TOKEN;
+const APP_SECRET      = process.env.META_APP_SECRET;   // app-level, signs every webhook
 
 // Env creds = the default tenant. Other tenants pass their own creds
 // (read from the settings table by greenapi.js's dispatch layer).
@@ -186,6 +188,28 @@ async function subscribeWaba(wabaId, accessToken) {
   return r.data;
 }
 
+/**
+ * Verify Meta's X-Hub-Signature-256 over the RAW request body.
+ *
+ * Without this, POST /webhook accepts anything: a forged payload naming an
+ * admin's phone drives the admin bot (cancel orders with refunds, mark orders
+ * paid, change prices, close the business).
+ *
+ * Returns 'ok' | 'invalid' | 'missing' | 'unconfigured'. Callers enforce when
+ * APP_SECRET is set; when it isn't there is nothing to verify against, so the
+ * server logs a loud warning at startup instead of silently trusting.
+ */
+function verifySignature(rawBody, headerValue) {
+  if (!APP_SECRET) return 'unconfigured';
+  if (!headerValue || !rawBody) return 'missing';
+
+  const expected = 'sha256=' + crypto.createHmac('sha256', APP_SECRET).update(rawBody).digest('hex');
+  const a = Buffer.from(String(headerValue));
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return 'invalid';
+  return crypto.timingSafeEqual(a, b) ? 'ok' : 'invalid';
+}
+
 /** Meta's GET webhook verification handshake (app-level, one token for all tenants). */
 function verifyWebhook(query) {
   if (query['hub.mode'] === 'subscribe' && query['hub.verify_token'] === VERIFY_TOKEN) {
@@ -231,6 +255,6 @@ function parseIncoming(body) {
 
 module.exports = {
   sendMessage, sendTemplate, sendList, sendButtons, sendToppingsList, subscribeWaba,
-  verifyWebhook, parseIncoming, formatPhone,
-  PHONE_NUMBER_ID, WABA_ID, ENV_CREDS,
+  verifyWebhook, verifySignature, parseIncoming, formatPhone,
+  PHONE_NUMBER_ID, WABA_ID, APP_SECRET, ENV_CREDS,
 };

@@ -9,6 +9,11 @@
  * 5. tenant_id is passed correctly from the URL segment
  */
 
+// Green API's only authentication is the instance id in the payload, so the
+// routing tests need one configured to be accepted at all.
+process.env.GREEN_API_INSTANCE_ID = 'test-instance-1';
+const TEST_INSTANCE = process.env.GREEN_API_INSTANCE_ID;
+
 // ── Service mocks (must be before require) ────────────────────────────────────
 const mockHandleAdminMessage = jest.fn(async () => {});
 const mockHandleMessage      = jest.fn(async () => {});
@@ -32,12 +37,12 @@ jest.mock('../src/services/greenapi',       () => ({ sendMessage: jest.fn(async 
 jest.mock('../src/services/vendor-alerts',  () => ({ alert: jest.fn(async () => {}), alerts: { serverError: jest.fn(async () => {}), serverRestart: jest.fn(async () => {}), onboardingComplete: jest.fn(async () => {}) } }));
 jest.mock('../src/services/push-notifier',  () => ({ notifyNewOrder: jest.fn(async () => {}), saveSubscription: jest.fn() }));
 jest.mock('../src/services/cardcom',        () => ({
-  verifyPayment: jest.fn(async () => ({ success: false })),
-  cancelDeal:    jest.fn(async () => ({ success: false })),
+  readCallbackOutcome: jest.fn(() => ({ success: false, hasCode: false })),
+  cancelDeal:          jest.fn(async () => ({ success: false })),
 }));
 jest.mock('../src/services/settings', () => ({
   loadAll:          jest.fn(async () => ({})),
-  get:              jest.fn(async () => null),
+  get:              jest.fn(async (key) => (key === 'green_api_instance' ? 'test-instance-1' : null)),
   isOpen:           jest.fn(async () => true),
   set:              jest.fn(async () => {}),
   _clearCache:      jest.fn(),
@@ -71,9 +76,12 @@ beforeEach(() => {
 });
 
 // ── Helper: build a minimal Green API webhook body ────────────────────────────
-function webhookBody(phone, text, type = 'incoming') {
+// instanceData is the only authentication Green API offers, so a payload
+// without it is rejected — see the "unauthenticated payloads" tests below.
+function webhookBody(phone, text, instanceId = process.env.GREEN_API_INSTANCE_ID) {
   return {
     typeWebhook:     'incomingMessageReceived',
+    instanceData:    instanceId ? { idInstance: instanceId } : undefined,
     senderData:      { sender: `${phone}@c.us`, chatId: `${phone}@c.us`, senderName: 'Test' },
     messageData:     { typeMessage: 'textMessage', textMessageData: { textMessage: text } },
   };
@@ -225,5 +233,54 @@ describe('POST /webhook — Meta multi-tenant routing', () => {
       '972504444444', 'נגמרה בולגרית',
       expect.objectContaining({ role: 'admin' }), 'tenant-pilot-1', null
     );
+  });
+});
+
+// ── Webhook authentication ────────────────────────────────────────────────────
+// These are regression tests for a live hole: the Green API check was written
+// as `if (instanceId && ...)`, so omitting instanceData skipped verification
+// entirely and any sender — including one claiming to be an admin — was handled.
+describe('unauthenticated payloads are rejected', () => {
+  test('Green payload with no instanceData is dropped', async () => {
+    await request(app)
+      .post('/webhook')
+      .send(webhookBody('972501111111', 'שלום', null))
+      .expect(200);
+    await new Promise(r => setImmediate(r));
+
+    expect(mockHandleMessage).not.toHaveBeenCalled();
+    expect(mockHandleAdminMessage).not.toHaveBeenCalled();
+  });
+
+  test('forged admin message with no instanceData never reaches the admin bot', async () => {
+    mockGetAdminUser.mockResolvedValue({ phone: '972504444444', name: 'מנהל', role: 'admin' });
+
+    await request(app)
+      .post('/webhook')
+      .send(webhookBody('972504444444', 'בטל הזמנה 1042', null))
+      .expect(200);
+    await new Promise(r => setImmediate(r));
+
+    expect(mockHandleAdminMessage).not.toHaveBeenCalled();
+  });
+
+  test('Green payload from a different instance is dropped', async () => {
+    await request(app)
+      .post('/webhook')
+      .send(webhookBody('972501111111', 'שלום', 'someone-elses-instance'))
+      .expect(200);
+    await new Promise(r => setImmediate(r));
+
+    expect(mockHandleMessage).not.toHaveBeenCalled();
+  });
+
+  test('per-tenant route drops a payload whose instance is not that tenant', async () => {
+    await request(app)
+      .post('/webhook/tenant-xyz')
+      .send(webhookBody('972501111111', 'שלום', 'not-the-tenant-instance'))
+      .expect(200);
+    await new Promise(r => setImmediate(r));
+
+    expect(mockHandleMessage).not.toHaveBeenCalled();
   });
 });

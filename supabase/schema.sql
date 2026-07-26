@@ -153,6 +153,9 @@ CREATE TABLE IF NOT EXISTS pending_payments (
   expires_at   TIMESTAMPTZ NOT NULL,
   created_at   TIMESTAMPTZ DEFAULT NOW()
 );
+-- Expired pendings are marked, never deleted: a customer can pay after the
+-- window closes and order_data is the only record of what they ordered.
+ALTER TABLE pending_payments ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'open';  -- open | expired
 CREATE INDEX IF NOT EXISTS idx_pending_cardcom ON pending_payments(cardcom_code);
 CREATE INDEX IF NOT EXISTS idx_pending_return  ON pending_payments(return_value);
 
@@ -191,6 +194,10 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS scheduled_for     TIMESTAMPTZ;  -- s
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS accepted_at       TIMESTAMPTZ;  -- when the business accepted
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS prep_minutes      INTEGER;      -- ETA given to the customer at accept
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS escalation_level  INTEGER DEFAULT 0;  -- unaccepted-order reminders sent (0-2)
+-- Payment trust (2026-07-27): only a verified Cardcom callback sets this
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_verified_at TIMESTAMPTZ;
+-- Idempotency key for payment confirmation — webhook and success-redirect race
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_cardcom_code_uniq ON orders (cardcom_code) WHERE cardcom_code IS NOT NULL;
 -- NOTE: live DB CHECK includes 'scheduled' and 'ready' as well:
 -- CHECK (status IN ('new','scheduled','preparing','ready','out_for_delivery','delivered','done','cancelled'))
 

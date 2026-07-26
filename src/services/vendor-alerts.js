@@ -40,17 +40,29 @@ function invalidateVendorPhone() { _vendorPhone = null; }
  * @param {string} title  short title
  * @param {string} detail optional detail text
  */
-// Map alert type → settings key (undefined = always send)
+// Map alert type → settings key (undefined = always send). Types may carry a
+// unique suffix (e.g. payment_stale_<phone>) so that each incident gets its own
+// throttle slot instead of the second one being swallowed by the cooldown —
+// matched here by prefix.
 const ALERT_SETTING = {
-  server_error:   'vendor_alert_error',
-  bot_error:      'vendor_alert_error',
-  payment_failed: 'vendor_alert_payment',
-  restart:        'vendor_alert_restart',
+  server_error:    'vendor_alert_error',
+  bot_error:       'vendor_alert_error',
+  payment_failed:  'vendor_alert_payment',
+  payment_stale:   'vendor_alert_payment',
+  payment_mismatch:'vendor_alert_payment',
+  payment_orphan:  'vendor_alert_payment',
+  restart:         'vendor_alert_restart',
 };
 
+function settingKeyFor(type) {
+  if (ALERT_SETTING[type]) return ALERT_SETTING[type];
+  const prefix = Object.keys(ALERT_SETTING).find((k) => type.startsWith(`${k}_`));
+  return prefix ? ALERT_SETTING[prefix] : undefined;
+}
+
 async function alert(type, emoji, title, detail = '') {
-  // Check if this alert type is enabled in settings
-  const settingKey = ALERT_SETTING[type];
+  // Check if this alert category is enabled in settings
+  const settingKey = settingKeyFor(type);
   if (settingKey) {
     const enabled = await settings.get(settingKey, DEFAULT_TENANT_ID).catch(() => true);
     if (enabled === false || enabled === 'false') return;
@@ -81,7 +93,11 @@ async function alert(type, emoji, title, detail = '') {
 const alerts = {
   serverError:   (err)     => alert('server_error',   '🔴', 'שגיאת שרת', err?.message || String(err)),
   paymentFailed: (phone, code) => alert('payment_failed', '💳', 'תשלום נכשל', `לקוח: ${phone} | קוד: ${code}`),
-  stalePayment:  (phone, total) => alert('payment_failed', '💳', 'תשלום ממתין ללא אישור',
+  paymentMismatch: (phone, charged, expected) => alert(`payment_mismatch_${phone}`, '🚨', 'אי-התאמה בסכום החיוב',
+    `לקוח: ${phone}\nכרטקום חייב: ₪${charged} | ההזמנה: ₪${expected}\nההזמנה נרשמה כ"ממתינה לאימות" — בדקו בפורטל כרטקום לפני שמאשרים.`),
+  orphanPayment: (ids, amount) => alert(`payment_orphan_${ids}`, '🚨', 'התקבל אישור תשלום ללא הזמנה תואמת',
+    `${ids}${amount ? ` | סכום: ₪${amount}` : ''}\nייתכן שהלקוח שילם אחרי שפג תוקף הלינק. בדקו בפורטל כרטקום — ייתכן שנגבה כסף ללא הזמנה.`),
+  stalePayment:  (phone, total) => alert(`payment_stale_${phone}`, '💳', 'תשלום ממתין ללא אישור',
     `לקוח: ${phone}${total ? ` | סכום: ₪${total}` : ''}\nלינק תשלום נוצר אך לא התקבל אישור מכרטקום. אם התשלום מופיע בפורטל כרטקום — ההזמנה לא נקלטה אוטומטית וצריך ליצור אותה ידנית.`),
   botError:      (phone, err)  => alert('bot_error',   '🤖', 'שגיאת בוט', `לקוח: ${phone}\n${err?.message || err}`),
   newOrder:      (num, total)  => alert('new_order',   '🍕', `הזמנה #${num} התקבלה`, `סכום: ₪${total}`),

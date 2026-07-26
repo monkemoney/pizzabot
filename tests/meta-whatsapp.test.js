@@ -106,3 +106,48 @@ describe('formatPhone (Meta E.164, no + / suffix)', () => {
     expect(metaWA.formatPhone(input)).toBe(expected);
   });
 });
+
+// ── X-Hub-Signature-256 ───────────────────────────────────────────────────────
+// Without this check anyone can POST a payload naming an admin's phone and
+// drive the admin bot (cancel orders with refunds, mark them paid, close the
+// business). The module reads META_APP_SECRET at load time, so this suite
+// re-requires it in isolation with the secret set.
+describe('verifySignature', () => {
+  const crypto = require('crypto');
+  const SECRET = 'test-app-secret';
+  const body   = Buffer.from(JSON.stringify({ object: 'whatsapp_business_account', entry: [] }));
+  const sign   = (buf, secret = SECRET) =>
+    'sha256=' + crypto.createHmac('sha256', secret).update(buf).digest('hex');
+
+  let signed;
+  beforeAll(() => {
+    jest.resetModules();
+    process.env.META_APP_SECRET = SECRET;
+    signed = require('../src/services/meta-whatsapp');
+  });
+  afterAll(() => {
+    delete process.env.META_APP_SECRET;
+    jest.resetModules();
+  });
+
+  test('accepts a correctly signed body', () => {
+    expect(signed.verifySignature(body, sign(body))).toBe('ok');
+  });
+
+  test('rejects a body signed with the wrong secret', () => {
+    expect(signed.verifySignature(body, sign(body, 'attacker-secret'))).toBe('invalid');
+  });
+
+  test('rejects a tampered body', () => {
+    const tampered = Buffer.from(JSON.stringify({ object: 'whatsapp_business_account', entry: ['forged'] }));
+    expect(signed.verifySignature(tampered, sign(body))).toBe('invalid');
+  });
+
+  test('rejects a missing signature header', () => {
+    expect(signed.verifySignature(body, undefined)).toBe('missing');
+  });
+
+  test('reports unconfigured when no app secret is set, so the caller can warn instead of trusting', () => {
+    expect(metaWA.verifySignature(body, sign(body))).toBe('unconfigured');
+  });
+});

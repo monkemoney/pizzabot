@@ -27,7 +27,12 @@ const PORT = process.env.PORT || 3000;
 // type matcher includes application/*+json — DIDWW's Call Events POST
 // application/vnd.api+json (JSON:API), which the default matcher silently
 // skips, leaving req.body = {} (learned from the first real CDR).
-app.use(express.json({ type: ['application/json', 'application/*+json'] }));
+// rawBody is kept so Meta's X-Hub-Signature-256 can be verified over the exact
+// bytes that were signed — re-serialising the parsed object would not match.
+app.use(express.json({
+  type: ['application/json', 'application/*+json'],
+  verify: (req, _res, buf) => { req.rawBody = buf; },
+}));
 
 // ─── Static dashboard ─────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -93,6 +98,14 @@ if (process.env.GREEN_API_BUSINESS_INSTANCE_ID) {
 // Routed to the right tenant by the phone_number_id in the payload:
 // env PHONE_NUMBER_ID → default tenant; otherwise settings lookup.
 function handleMetaWebhook(req, res) {
+  // Authenticate BEFORE acting: an unsigned payload can name any phone, and a
+  // phone in admin_users routes straight into the admin bot.
+  const sigStatus = metaWA.verifySignature(req.rawBody, req.get('x-hub-signature-256'));
+  if (sigStatus === 'invalid' || sigStatus === 'missing') {
+    console.warn(`[webhook:meta] rejected — signature ${sigStatus}`);
+    return res.sendStatus(403);
+  }
+
   res.sendStatus(200); // ack immediately
 
   const parsed = metaWA.parseIncoming(req.body);
@@ -139,15 +152,22 @@ function handleWebhook(req, res, tenantId) {
   const rawSender = body.senderData?.sender;
   if (!rawSender) return;
 
-  // Verify the request came from the expected Green API instance for this tenant
+  // Verify the request came from the expected Green API instance for this tenant.
+  // Green API has no HMAC, so idInstance is all we have — which means an ABSENT
+  // idInstance must be rejected too. It used to pass straight through: omit the
+  // field and the check was skipped entirely, so anyone could post as an admin.
   const instanceId = body.instanceData?.idInstance?.toString();
-  if (instanceId && instanceId === process.env.GREEN_API_BUSINESS_INSTANCE_ID) return;
+  if (!instanceId) {
+    console.warn(`[webhook:${tenantId}] payload has no instanceData.idInstance — dropping (unauthenticated)`);
+    return;
+  }
+  if (instanceId === process.env.GREEN_API_BUSINESS_INSTANCE_ID) return;
 
   const expectedInstance = tenantId === DEFAULT_TENANT_ID
     ? process.env.GREEN_API_INSTANCE_ID
     : null; // resolved async below
 
-  if (expectedInstance && instanceId && instanceId !== expectedInstance) {
+  if (expectedInstance && instanceId !== expectedInstance) {
     console.warn(`[webhook:${tenantId}] instanceId mismatch — got ${instanceId}, expected ${expectedInstance}. Dropping.`);
     return;
   }
@@ -190,11 +210,13 @@ function handleWebhook(req, res, tenantId) {
   if (!textMessage) return;
 
   const verifyAndHandle = async () => {
-    // For per-tenant routes, verify instanceId against the tenant's configured instance
-    if (tenantId !== DEFAULT_TENANT_ID && instanceId) {
+    // For per-tenant routes, verify instanceId against the tenant's configured
+    // instance. A tenant with no Green instance configured cannot legitimately
+    // receive Green payloads at all, so that is a drop, not a pass.
+    if (tenantId !== DEFAULT_TENANT_ID) {
       const tenantInstance = await settings.get('green_api_instance', tenantId).catch(() => null);
-      if (tenantInstance && instanceId !== tenantInstance.toString()) {
-        console.warn(`[webhook:${tenantId}] instanceId mismatch — got ${instanceId}, expected ${tenantInstance}. Dropping.`);
+      if (!tenantInstance || instanceId !== tenantInstance.toString()) {
+        console.warn(`[webhook:${tenantId}] instanceId ${instanceId} does not match this tenant (${tenantInstance || 'none configured'}). Dropping.`);
         return;
       }
     }
@@ -441,6 +463,14 @@ if (require.main === module) app.listen(PORT, async () => {
       console.log('[server] admin_users table ✅');
     }
   } catch {}
+
+  // Webhook authentication status — the single loudest thing to get wrong
+  if (metaWA.APP_SECRET) {
+    console.log('[server] Meta webhook signature verification: ENABLED ✅');
+  } else {
+    console.warn('[server] ⚠️  META_APP_SECRET is not set — Meta webhook payloads CANNOT be verified.');
+    console.warn('[server] ⚠️  Anyone who knows an admin phone number can drive the admin bot. Set it in Render.');
+  }
 
   // Notify vendor on restart
   vendorAlerts.alerts.serverRestart().catch(() => {});

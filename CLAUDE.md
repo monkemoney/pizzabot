@@ -313,18 +313,37 @@ Dashboard tab + standalone `/kitchen` (kitchen role; token key = `token`, same a
 
 Incoming-orders card zone above the list (`renderIncomingOrders` in app.js): full item visibility, aging timer (green<3m/amber<6m/red), per-item out-of-stock tags (from `/products` availability), one-tap "אשר הזמנה" with prep-time quick picks (15/30/45/60; default from `default_prep_minutes`), "פריט חסר" (dispute modal) and "דחה" (cancel modal). Orders SSE connection at boot (`_ordersConnectSSE`) + WebAudio chime + tab-title flash; 30s polling is fallback. Push opt-in nudge banner; push clicks deep-link to `/dashboard.html?tab=orders` (login page redirects authenticated users).
 
+### Webhook Authentication (2026-07-27)
+
+**Meta:** every POST to `/webhook` is verified against `X-Hub-Signature-256` (HMAC-SHA256 of the **raw** body with `META_APP_SECRET`; `express.json`'s `verify` hook keeps `req.rawBody` because re-serialising the parsed object would not match). Enforced whenever `META_APP_SECRET` is set — invalid/missing signature → 403 before any handler runs. When the secret is unset there is nothing to verify against, so the server prints a loud startup warning instead of silently trusting. **Setting `META_APP_SECRET` in Render is what turns this on** (App Dashboard → Settings → Basic → App Secret).
+
+**Green API** has no HMAC — `instanceData.idInstance` is the only signal, so an **absent** instance id is now a drop, not a pass (it used to be `if (instanceId && …)`, i.e. omit the field and verification was skipped entirely). A per-tenant route also drops payloads whose instance doesn't match that tenant's `green_api_instance`, including when the tenant has none configured.
+
+Why this matters: a forged payload naming a phone that exists in `admin_users` reaches `admin-handler` — which can cancel orders **with automatic Cardcom refunds**, mark orders paid, change prices and close the business.
+
 ### Payments (Cardcom v11)
 
 ```
 CREATE_PAYMENT → LowProfile/Create (SuccessRedirectUrl embeds ?rv=PB-XXXX — test terminal drops params)
-Confirmation, first wins: IndicatorUrl webhook (only path carrying DealNumber → enables auto-refund)
-  | success-redirect ?rv= | 5-min polling fallback.
-GetLowProfileIndicatorData does not exist (404) — verifyPayment() is a no-op; we trust callbacks.
-No DealNumber (redirect/poll confirmations) → refund_status='manual' on cancellation → red indicator
-  in dashboard (4 locations). cancelDeal() posts CancelDeal.aspx (form-encoded, not JSON v11).
-Bit: SAVE_ORDER payment_status='pending' → teal badge + confirm button / admin-bot CONFIRM_PAYMENT.
+```
+
+**Only the IndicatorUrl webhook can mark an order paid (2026-07-27).** It is server-to-server and carries the response code and the deal number. `readCallbackOutcome()` (cardcom.js) reads `ResponseCode`/`Amount`/`DealNumber` across Cardcom's naming variants; **an absent or non-zero code is a failure**, because Cardcom fires the callback for declined deals too — the old `verifyPayment()` stub returned `{success:true}` unconditionally, so a declined card produced a paid order. The charged amount is cross-checked against the pending's total; a mismatch records the order but refuses to call it paid and alerts the vendor.
+
+**The success-redirect is the customer's own browser** hitting a URL they already hold — it proves nothing about payment (visiting it was previously enough to mint a paid order without paying). It now records the order as `payment_status='pending'` + notifies the admins, so nothing is lost, and a later verified webhook **upgrades** it via `orderState.confirmPayment`.
+
+**Idempotency:** partial `UNIQUE` index on `orders.cardcom_code` (`idx_orders_cardcom_code_uniq`). `confirmPending` looks the order up by code first and treats a duplicate-key error as success — webhook and redirect racing produce one order, not two. `payment_verified_at` records when Cardcom confirmed.
+
+**Pay-after-expiry:** pending rows are **never deleted on expiry** (they are marked `status='expired'`) — `order_data` is the only record of what the customer ordered, and deleting it left money taken with nothing to rebuild from. A callback with no matching pending raises the `orphanPayment` vendor alert instead of a `console.warn`.
+
+```
+No DealNumber → refund_status='manual' on cancellation → red indicator in dashboard (4 locations).
+cancelDeal() posts CancelDeal.aspx (form-encoded, not JSON v11); creds resolve per tenant.
+Bit: SAVE_ORDER payment_status='pending' → admins pinged with a 💰 confirm button; the customer's
+  "שילמתי" only relays a verification request — orderState.confirmPayment is the only writer.
 tenant_id flows through every payment path (pending.tenant_id primary; passing it to sendMessage is
   what routes the confirmation through the right channel).
+Vendor alerts use per-incident throttle keys (payment_stale_<phone> etc.) — a shared key meant the
+  second simultaneous incident was silently swallowed by the 5-min cooldown.
 ```
 
 ### Vendor Portal & Alerts

@@ -156,13 +156,24 @@ async function deletePendingPayment(id) {
   await supabase.from('pending_payments').delete().eq('id', id);
 }
 
-/** Delete pending payments past their expiry (no callback ever arrived) */
+/**
+ * Retire pending payments past their expiry.
+ *
+ * These rows are NOT deleted: a customer can pay after the window closes, and
+ * order_data is the only record of what they ordered — deleting it left money
+ * taken with nothing to rebuild the order from. Marking them keeps the lookup
+ * working (a late callback still resolves) while taking them out of the
+ * open-pendings watchdog.
+ */
 async function deleteExpiredPendingPayments() {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('pending_payments')
-    .delete()
-    .lt('expires_at', new Date().toISOString());
-  if (error) console.error('[supabase] deleteExpiredPendingPayments error:', error.message);
+    .update({ status: 'expired' })
+    .lt('expires_at', new Date().toISOString())
+    .neq('status', 'expired')
+    .select('id');
+  if (error) console.error('[supabase] expire pending payments error:', error.message);
+  else if (data?.length) console.log(`[supabase] ${data.length} pending payment(s) marked expired`);
 }
 
 /** Get all pending payments that haven't expired yet */
@@ -174,6 +185,18 @@ async function getAllPendingPayments() {
     .order('created_at', { ascending: true });
   if (error) return [];
   return data || [];
+}
+
+/** Look up an order by its Cardcom low-profile code (the payment idempotency key) */
+async function getOrderByCardcomCode(cardcomCode) {
+  if (!cardcomCode) return null;
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('cardcom_code', cardcomCode)
+    .maybeSingle();
+  if (error) { console.error('[supabase] getOrderByCardcomCode error:', error.message); return null; }
+  return data || null;
 }
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
@@ -362,6 +385,7 @@ module.exports = {
   getPendingByReturnValue,
   deletePendingPayment,
   getAllPendingPayments,
+  getOrderByCardcomCode,
   deleteExpiredPendingPayments,
   saveOrder,
   getOrders,

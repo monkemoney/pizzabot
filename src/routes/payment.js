@@ -1,111 +1,179 @@
 'use strict';
 
 const express = require('express');
-const { verifyPayment }           = require('../services/cardcom');
 const { getPendingByCardcomCode, getPendingByReturnValue,
-        getAllPendingPayments,
+        getAllPendingPayments, getOrderByCardcomCode, updateOrder,
         deletePendingPayment, saveOrder } = require('../services/supabase');
 const { sendMessage }             = require('../services/greenapi');
+const { readCallbackOutcome }     = require('../services/cardcom');
+const vendorAlerts                = require('../services/vendor-alerts');
 
 const router = express.Router();
 
-// ─── Shared: verify pending payment and save order ────────────────────────────
-// Called from webhook, success-redirect, and polling.
-// Returns true if order was created, false otherwise.
-// Guards against double-processing via optimistic delete.
-async function confirmPending(pending, source = 'webhook', dealNumber = null) {
+// ─── Confirming a Cardcom payment ─────────────────────────────────────────────
+//
+// Two callers with very different trust levels:
+//
+//   webhook (IndicatorUrl)  — server-to-server, carries the response code and
+//                             the deal number. This is the ONLY thing that can
+//                             mark an order paid.
+//   success-redirect        — the customer's own browser hitting a URL they
+//                             hold. It proves nothing about payment (anyone
+//                             holding the link can open it without paying), so
+//                             it records the order as awaiting verification.
+//
+// Order creation is idempotent on orders.cardcom_code (partial UNIQUE index):
+// whichever path arrives first creates the row, and a later verified webhook
+// upgrades it to paid instead of creating a second one.
+
+function orderPayloadFrom(pending, { verified, dealNumber }) {
+  const orderData = pending.order_data || {};
+  return {
+    phone:                pending.phone,
+    customer_name:        orderData.customer_name   || null,
+    customer_phone:       orderData.customer_phone  || null,
+    items:                orderData.items           || [],
+    delivery_method:      orderData.delivery_method,
+    address:              orderData.address         || null,
+    notes:                orderData.notes           || null,
+    payment_method:       'credit',
+    payment_status:       verified ? 'paid' : 'pending',
+    payment_verified_at:  verified ? new Date().toISOString() : null,
+    cardcom_code:         pending.cardcom_code,
+    cardcom_deal_number:  dealNumber || null,
+    total_price:          orderData.total,
+    status:               'new',
+    tenant_id:            pending.tenant_id || orderData.tenant_id || process.env.TENANT_ID,
+  };
+}
+
+/**
+ * @param {object}  pending      pending_payments row
+ * @param {string}  source       'webhook' | 'webhook-get' | 'success-redirect'
+ * @param {object}  outcome      readCallbackOutcome() result; null for the redirect
+ * @returns {Promise<boolean>}   true when an order exists at the end
+ */
+async function confirmPending(pending, source = 'webhook', outcome = null) {
   if (!pending) return false;
 
-  let verification;
-  try {
-    verification = await verifyPayment(pending.cardcom_code);
-  } catch (err) {
-    console.error(`[payment:${source}] Verify error for ${pending.cardcom_code}:`, err.message);
+  const tenantId   = pending.tenant_id || pending.order_data?.tenant_id || null;
+  const expected   = parseFloat(pending.order_data?.total);
+  const dealNumber = outcome?.dealNumber || null;
+
+  // ── A callback that reports failure must never produce a paid order ────────
+  if (outcome && outcome.hasCode && !outcome.success) {
+    console.warn(`[payment:${source}] declined (code=${outcome.responseCode} ${outcome.description}) for ${pending.cardcom_code}`);
+    await deletePendingPayment(pending.id).catch(() => {});
+    await sendMessage(pending.phone, '❌ התשלום לא אושר על ידי חברת האשראי. אפשר לנסות שוב או לבחור אמצעי תשלום אחר.', tenantId).catch(() => {});
     return false;
   }
 
-  if (!verification.success) {
-    console.warn(`[payment:${source}] Verification failed (code=${verification.responseCode}) for ${pending.cardcom_code}`);
-    if (verification.responseCode > 0) await deletePendingPayment(pending.id);
-    return false;
+  // ── Charged amount must match what we asked for ───────────────────────────
+  let verified = !!(outcome && outcome.success);
+  if (verified && outcome.amount !== null && Number.isFinite(expected)
+      && Math.abs(outcome.amount - expected) > 0.01) {
+    console.error(`[payment:${source}] AMOUNT MISMATCH for ${pending.cardcom_code}: charged ${outcome.amount}, expected ${expected}`);
+    vendorAlerts.alerts.paymentMismatch(pending.phone, outcome.amount, expected).catch(() => {});
+    verified = false; // record it, but do not call it paid
   }
 
-  const orderData = pending.order_data;
+  // ── Already have an order for this payment? Upgrade, never duplicate ───────
+  const existing = await getOrderByCardcomCode(pending.cardcom_code).catch(() => null);
+  if (existing) {
+    if (verified && existing.payment_status !== 'paid') {
+      const { confirmPayment } = require('../services/order-state');
+      await updateOrder(existing.id, {
+        cardcom_deal_number: dealNumber || existing.cardcom_deal_number || null,
+        payment_verified_at: new Date().toISOString(),
+      }).catch(() => {});
+      await confirmPayment(existing.id, { by: `cardcom-${source}` }).catch((err) =>
+        console.error(`[payment:${source}] upgrade error:`, err.message));
+      console.log(`[payment:${source}] order #${existing.order_number} verified as paid`);
+    } else {
+      console.log(`[payment:${source}] order #${existing.order_number} already recorded — ignoring duplicate callback`);
+    }
+    await deletePendingPayment(pending.id).catch(() => {});
+    return true;
+  }
+
+  // ── Create the order ──────────────────────────────────────────────────────
   try {
-    const { id, orderNumber, order: savedOrder } = await saveOrder({
-      phone:                pending.phone,
-      customer_name:        orderData.customer_name   || null,
-      customer_phone:       orderData.customer_phone  || null,
-      items:                orderData.items           || [],
-      delivery_method:      orderData.delivery_method,
-      address:              orderData.address         || null,
-      notes:                orderData.notes           || null,
-      payment_method:       'credit',
-      payment_status:       'paid',
-      cardcom_code:         pending.cardcom_code,
-      cardcom_deal_number:  dealNumber || null,
-      total_price:          orderData.total,
-      status:               'new',
-      tenant_id:            pending.tenant_id || orderData.tenant_id || process.env.TENANT_ID,
-    });
+    const { orderNumber, order: savedOrder } =
+      await saveOrder(orderPayloadFrom(pending, { verified, dealNumber }));
 
     await deletePendingPayment(pending.id);
 
-    const tenantId = pending.tenant_id || orderData.tenant_id || null;
-
-    // Acceptance flow: auto → afterCreate accepts + sends the approval/ETA
-    // message; manual → tell the customer the order awaits approval.
     const orderState = require('../services/order-state');
-    const mode = await orderState.afterCreate(savedOrder, { notifyAdmins: true }).catch(() => 'manual');
-    const msg = mode === 'manual'
-      ? `✅ התשלום התקבל! הזמנה מספר *${orderNumber}* נשלחה למסעדה לאישור 🍕\nנעדכן אותך ברגע שההזמנה תאושר ותיכנס להכנה.`
-      : `✅ התשלום התקבל! (הזמנה מספר *${orderNumber}*)`;
+    let msg;
+    if (verified) {
+      // Acceptance flow: auto → afterCreate accepts and sends the approval/ETA
+      // message itself; manual → tell the customer it awaits approval.
+      const mode = await orderState.afterCreate(savedOrder, { notifyAdmins: true }).catch(() => 'manual');
+      msg = mode === 'manual'
+        ? `✅ התשלום התקבל! הזמנה מספר *${orderNumber}* נשלחה למסעדה לאישור 🍕\nנעדכן אותך ברגע שההזמנה תאושר ותיכנס להכנה.`
+        : `✅ התשלום התקבל! (הזמנה מספר *${orderNumber}*)`;
+    } else {
+      // Unverified: the order is recorded so nothing is lost, but it is not
+      // paid until Cardcom confirms — the business sees it as awaiting payment.
+      await orderState.notifyAdminsNewOrder(savedOrder).catch(() => {});
+      msg = `📝 הזמנה מספר *${orderNumber}* התקבלה!\nאנחנו מאמתים את התשלום מול חברת האשראי ונעדכן אותך מיד כשיאושר.`;
+    }
+
     await sendMessage(pending.phone, msg, tenantId).catch((err) =>
       console.error(`[payment:${source}] WhatsApp notify error:`, err.message)
     );
 
-    console.log(`[payment:${source}] ✅ Order #${orderNumber} created for ${pending.phone}`);
+    console.log(`[payment:${source}] order #${orderNumber} created (${verified ? 'paid' : 'awaiting verification'}) for ${pending.phone}`);
     return true;
   } catch (err) {
-    // Duplicate order_number or other DB error — likely already processed
-    if (err.message && err.message.includes('duplicate')) {
-      console.warn(`[payment:${source}] Duplicate — already processed for ${pending.phone}`);
+    // The partial UNIQUE index on cardcom_code is the idempotency key: a
+    // concurrent caller won the race, which is a success, not an error.
+    if (/duplicate|unique/i.test(err.message || '')) {
+      console.warn(`[payment:${source}] concurrent confirmation for ${pending.cardcom_code} — order already exists`);
       await deletePendingPayment(pending.id).catch(() => {});
-    } else {
-      console.error(`[payment:${source}] saveOrder error:`, err.message);
+      return true;
     }
+    console.error(`[payment:${source}] saveOrder error:`, err.message);
     return false;
   }
 }
 
 // ─── Cardcom IndicatorUrl webhook (POST) ──────────────────────────────────────
+// A callback with no matching pending is the pay-after-expiry case (money may
+// have moved with nothing to attach it to) — never a silent console.warn.
+async function reportOrphanCallback(source, ids, outcome) {
+  const paid = !outcome || outcome.success;
+  console.warn(`[payment:${source}] no pending found for`, ids, outcome ? `code=${outcome.responseCode}` : '');
+  if (!paid) return;
+  await vendorAlerts.alerts.orphanPayment(JSON.stringify(ids), outcome?.amount ?? null).catch(() => {});
+}
+
+async function findPending({ LowProfileCode, ReturnValue }) {
+  let pending = null;
+  if (LowProfileCode) pending = await getPendingByCardcomCode(LowProfileCode).catch(() => null);
+  if (!pending && ReturnValue) pending = await getPendingByReturnValue(ReturnValue).catch(() => null);
+  return pending;
+}
+
 router.post('/payment', express.urlencoded({ extended: false }), async (req, res) => {
   res.sendStatus(200); // ack immediately
 
-  // Cardcom may also send JSON — support both
-  const body = (req.headers['content-type'] || '').includes('json') ? req.body : req.body;
+  const body = req.body || {};
   const LowProfileCode = body.LowProfileCode || body.LowProfileId;
   const ReturnValue    = body.ReturnValue;
-  const Operation      = body.Operation;
-  const dealNumber     = body.DealNumber || body.InternalDealNumber || body.CardcomDealNumber || null;
+  const outcome        = readCallbackOutcome(body);
 
-  console.log('[payment] Webhook received:', { LowProfileCode, ReturnValue, Operation, dealNumber });
+  console.log('[payment] webhook:', { LowProfileCode, ReturnValue, code: outcome.responseCode, amount: outcome.amount, deal: outcome.dealNumber });
 
   if (!LowProfileCode && !ReturnValue) {
-    console.warn('[payment] Missing LowProfileCode and ReturnValue — ignoring');
+    console.warn('[payment] missing LowProfileCode and ReturnValue — ignoring');
     return;
   }
 
-  let pending = null;
-  if (LowProfileCode) pending = await getPendingByCardcomCode(LowProfileCode);
-  if (!pending && ReturnValue) pending = await getPendingByReturnValue(ReturnValue);
+  const pending = await findPending({ LowProfileCode, ReturnValue });
+  if (!pending) return reportOrphanCallback('webhook', { LowProfileCode, ReturnValue }, outcome);
 
-  if (!pending) {
-    console.warn('[payment] No pending found for', { LowProfileCode, ReturnValue });
-    return;
-  }
-
-  await confirmPending(pending, 'webhook', dealNumber);
+  await confirmPending(pending, 'webhook', outcome);
 });
 
 // ─── Cardcom IndicatorUrl webhook (GET) ───────────────────────────────────────
@@ -115,15 +183,15 @@ router.get('/payment', async (req, res) => {
 
   const LowProfileCode = req.query.LowProfileCode || req.query.LowProfileId;
   const ReturnValue    = req.query.ReturnValue;
+  const outcome        = readCallbackOutcome(req.query);
 
-  console.log('[payment] GET Webhook received:', { LowProfileCode, ReturnValue });
+  console.log('[payment] GET webhook:', { LowProfileCode, ReturnValue, code: outcome.responseCode });
   if (!LowProfileCode && !ReturnValue) return;
 
-  let pending = null;
-  if (LowProfileCode) pending = await getPendingByCardcomCode(LowProfileCode);
-  if (!pending && ReturnValue) pending = await getPendingByReturnValue(ReturnValue);
+  const pending = await findPending({ LowProfileCode, ReturnValue });
+  if (!pending) return reportOrphanCallback('webhook-get', { LowProfileCode, ReturnValue }, outcome);
 
-  await confirmPending(pending, 'webhook-get');
+  await confirmPending(pending, 'webhook-get', outcome);
 });
 
 // ─── Success redirect ─────────────────────────────────────────────────────────
@@ -139,8 +207,8 @@ h1{color:#16a34a;font-size:2rem}p{color:#374151;font-size:1.1rem}
 .spin{display:inline-block;width:20px;height:20px;border:3px solid #bbf7d0;
 border-top-color:#16a34a;border-radius:50%;animation:s .7s linear infinite;vertical-align:middle}
 @keyframes s{to{transform:rotate(360deg)}}</style></head>
-<body><h1>✅ התשלום בוצע בהצלחה!</h1>
-<p>ההזמנה שלך התקבלה.<br>תקבל אישור ב-WhatsApp עוד רגע 🍕</p>
+<body><h1>✅ ההזמנה התקבלה!</h1>
+<p>אנחנו מאמתים את התשלום מול חברת האשראי.<br>אישור סופי יגיע אליך ב-WhatsApp 🍕</p>
 <p id="st" style="margin-top:24px;color:#6b7280;font-size:.9rem"><span class="spin"></span> מעבד הזמנה...</p>
 <script>setTimeout(()=>{document.getElementById('st').textContent='✅ ניתן לסגור חלון זה.'},4000)</script>
 </body></html>`);
@@ -151,17 +219,16 @@ border-top-color:#16a34a;border-radius:50%;animation:s .7s linear infinite;verti
   const ReturnValue    = req.query.ReturnValue || req.query.returnValue || rv;
   const LowProfileCode = req.query.LowProfileCode || req.query.LowProfileId;
 
-  console.log('[payment] Success redirect — query:', JSON.stringify(req.query));
+  console.log('[payment] success redirect — query:', JSON.stringify(req.query));
 
-  let pending = null;
-  if (LowProfileCode) pending = await getPendingByCardcomCode(LowProfileCode).catch(() => null);
-  if (!pending && ReturnValue) pending = await getPendingByReturnValue(ReturnValue).catch(() => null);
-
+  // This is the customer's browser, not Cardcom: reaching this URL proves only
+  // that they hold the link. It records the order so nothing is lost, marked
+  // awaiting verification — only the IndicatorUrl webhook can mark it paid.
+  const pending = await findPending({ LowProfileCode, ReturnValue });
   if (pending) {
-    console.log(`[payment] Success redirect — confirming pending for ${pending.phone}`);
-    await confirmPending(pending, 'success-redirect');
+    await confirmPending(pending, 'success-redirect', null);
   } else {
-    console.log('[payment] Success redirect — no pending found (may already be confirmed by webhook)');
+    console.log('[payment] success redirect — no pending (already confirmed by webhook, or expired)');
   }
 });
 
@@ -175,12 +242,5 @@ h1{color:#dc2626;font-size:2rem}p{color:#374151;font-size:1.1rem}</style></head>
 <p style="margin-top:40px;color:#6b7280;font-size:.9rem">ניתן לסגור חלון זה.</p>
 </body></html>`);
 });
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-async function notifyPaymentFailed(pending) {
-  const msg = '❌ התשלום לא הצליח. אנא נסה שוב דרך WhatsApp.';
-  await sendMessage(pending.phone, msg).catch(() => {});
-}
 
 module.exports = router;

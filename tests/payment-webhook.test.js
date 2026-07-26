@@ -13,9 +13,21 @@ let mockVerifyResult  = { success: true };
 
 // ── Service mocks ─────────────────────────────────────────────────────────────
 jest.mock('../src/services/cardcom', () => ({
-  verifyPayment:     jest.fn(async () => mockVerifyResult),
-  cancelDeal:        jest.fn(async () => ({ success: false })),
-  createPaymentPage: jest.fn(async () => ({ url: 'https://cardcom.test', code: 'CODE123' })),
+  // Real parser: these tests are about how we read Cardcom's callback, so
+  // stubbing it would test the stub.
+  readCallbackOutcome: jest.requireActual('../src/services/cardcom').readCallbackOutcome,
+  cancelDeal:          jest.fn(async () => ({ success: false })),
+  createPaymentPage:   jest.fn(async () => ({ url: 'https://cardcom.test', code: 'CODE123' })),
+}));
+
+jest.mock('../src/services/order-state', () => ({
+  afterCreate:          jest.fn(async () => 'manual'),
+  notifyAdminsNewOrder: jest.fn(async () => {}),
+  confirmPayment:       jest.fn(async (id) => {
+    const o = mockSavedOrders.find(x => x.id === id);
+    if (o) { o.payment_status = 'paid'; }
+    return { order: o || {}, changed: true };
+  }),
 }));
 
 jest.mock('../src/services/supabase', () => ({
@@ -26,11 +38,24 @@ jest.mock('../src/services/supabase', () => ({
     Object.values(mockPendingStore).find(p => p.return_value === rv) || null
   ),
   getAllPendingPayments:        jest.fn(async () => Object.values(mockPendingStore)),
+  getOrderByCardcomCode:        jest.fn(async (code) =>
+    mockSavedOrders.find(o => o.cardcom_code === code) || null
+  ),
+  updateOrder:                 jest.fn(async (id, patch) => {
+    const o = mockSavedOrders.find(x => x.id === id);
+    if (o) Object.assign(o, patch);
+    return o;
+  }),
   deletePendingPayment:        jest.fn(async (id) => { delete mockPendingStore[id]; }),
   saveOrder:                   jest.fn(async (data) => {
+    // The partial UNIQUE index on cardcom_code is the real idempotency key
+    if (data.cardcom_code && mockSavedOrders.some(o => o.cardcom_code === data.cardcom_code)) {
+      throw new Error('duplicate key value violates unique constraint');
+    }
     const orderNumber = 1000 + mockSavedOrders.length;
-    mockSavedOrders.push({ ...data, orderNumber });
-    return { id: `ord-${orderNumber}`, orderNumber };
+    const order = { ...data, id: `ord-${orderNumber}`, order_number: orderNumber, orderNumber };
+    mockSavedOrders.push(order);
+    return { id: order.id, orderNumber, order };
   }),
   getAdminUser:                jest.fn(async () => null),
   getSession:                  jest.fn(async () => ({ conversation_history: [], pending_order: {} })),
@@ -45,7 +70,16 @@ jest.mock('../src/services/greenapi', () => ({
   toChatId:     (p)   => `${p}@c.us`,
 }));
 
-jest.mock('../src/services/vendor-alerts',  () => ({ alert: jest.fn(async () => {}), alerts: { serverRestart: jest.fn(async () => {}), serverError: jest.fn(async () => {}) } }));
+jest.mock('../src/services/vendor-alerts',  () => ({
+  alert: jest.fn(async () => {}),
+  alerts: {
+    serverRestart:   jest.fn(async () => {}),
+    serverError:     jest.fn(async () => {}),
+    paymentMismatch: jest.fn(async () => {}),
+    orphanPayment:   jest.fn(async () => {}),
+    stalePayment:    jest.fn(async () => {}),
+  },
+}));
 jest.mock('../src/services/push-notifier',  () => ({ notifyNewOrder: jest.fn(async () => {}), saveSubscription: jest.fn() }));
 jest.mock('../src/services/settings',       () => ({ loadAll: jest.fn(async () => ({})), get: jest.fn(async () => null), isOpen: jest.fn(async () => true), _clearCache: jest.fn(), DEFAULT_TENANT_ID: 'aaaaaaaa-0000-0000-0000-000000000001' }));
 jest.mock('../src/services/menu-service',   () => ({ getMenu: jest.fn(async () => []), invalidateCache: jest.fn() }));
@@ -98,119 +132,151 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
-// ── POST /webhook/payment ─────────────────────────────────────────────────────
+
+const vendorAlerts = require('../src/services/vendor-alerts');
+const orderState   = require('../src/services/order-state');
+
+const settle = () => new Promise(r => setTimeout(r, 50));
+
+// ── The webhook is the only thing that can mark an order paid ────────────────
 describe('POST /webhook/payment — Cardcom IndicatorUrl', () => {
-  test('creates order and notifies customer on success', async () => {
-    const p = makePending({ cardcom_code: 'CODE-SUCCESS', return_value: 'PB-SUCCESS' });
+  test('ResponseCode 0 creates a paid order with the deal number', async () => {
+    const p = makePending({ cardcom_code: 'CODE-OK', return_value: 'PB-OK' });
 
-    await request(app)
-      .post('/webhook/payment')
-      .type('form')
-      .send({ LowProfileCode: 'CODE-SUCCESS', DealNumber: 'DN-42' })
+    await request(app).post('/webhook/payment').type('form')
+      .send({ LowProfileCode: 'CODE-OK', ResponseCode: '0', Amount: '60', DealNumber: 'DN-42' })
       .expect(200);
-
-    await new Promise(r => setTimeout(r, 50));
+    await settle();
 
     expect(mockSavedOrders).toHaveLength(1);
-    expect(mockSavedOrders[0].cardcom_deal_number).toBe('DN-42');
     expect(mockSavedOrders[0].payment_status).toBe('paid');
-
-    const notif = mockSentMessages.find(s => s.phone === p.phone && s.text.includes('הזמנה'));
-    expect(notif).toBeDefined();
+    expect(mockSavedOrders[0].cardcom_deal_number).toBe('DN-42');
+    expect(mockSavedOrders[0].payment_verified_at).toBeTruthy();
+    expect(mockSentMessages.find(s => s.phone === p.phone && s.text.includes('התשלום התקבל'))).toBeDefined();
   });
 
-  test('does not create order when verification fails', async () => {
-    makePending({ cardcom_code: 'CODE-FAIL' });
-    mockVerifyResult = { success: false, responseCode: 1 };
+  test('a declined transaction creates NO order and tells the customer', async () => {
+    makePending({ cardcom_code: 'CODE-DECLINED' });
 
-    await request(app)
-      .post('/webhook/payment')
-      .type('form')
-      .send({ LowProfileCode: 'CODE-FAIL' })
+    await request(app).post('/webhook/payment').type('form')
+      .send({ LowProfileCode: 'CODE-DECLINED', ResponseCode: '5', Description: 'Card declined' })
       .expect(200);
-
-    await new Promise(r => setTimeout(r, 50));
+    await settle();
 
     expect(mockSavedOrders).toHaveLength(0);
+    expect(mockSentMessages.find(s => s.text.includes('לא אושר'))).toBeDefined();
   });
 
-  test('saves DealNumber as cardcom_deal_number', async () => {
-    makePending({ cardcom_code: 'CODE-DEAL', return_value: 'PB-DEAL' });
+  test('a callback with no response code is recorded but not marked paid', async () => {
+    makePending({ cardcom_code: 'CODE-NOCODE' });
 
-    await request(app)
-      .post('/webhook/payment')
-      .type('form')
-      .send({ LowProfileCode: 'CODE-DEAL', DealNumber: 'DN-999' })
+    await request(app).post('/webhook/payment').type('form')
+      .send({ LowProfileCode: 'CODE-NOCODE' })
       .expect(200);
-
-    await new Promise(r => setTimeout(r, 50));
-
-    expect(mockSavedOrders[0].cardcom_deal_number).toBe('DN-999');
-  });
-
-  test('ignores webhook with no code or return value', async () => {
-    await request(app)
-      .post('/webhook/payment')
-      .type('form')
-      .send({ Operation: 'LowProfile', SomeOtherField: 'x' })
-      .expect(200);
-
-    await new Promise(r => setTimeout(r, 50));
-
-    expect(mockSavedOrders).toHaveLength(0);
-  });
-
-  test('falls back to ReturnValue lookup when LowProfileCode not found', async () => {
-    makePending({ cardcom_code: 'DIFFERENT', return_value: 'PB-RV-FALLBACK' });
-
-    await request(app)
-      .post('/webhook/payment')
-      .type('form')
-      .send({ ReturnValue: 'PB-RV-FALLBACK' })
-      .expect(200);
-
-    await new Promise(r => setTimeout(r, 50));
+    await settle();
 
     expect(mockSavedOrders).toHaveLength(1);
+    expect(mockSavedOrders[0].payment_status).toBe('pending');
+  });
+
+  test('an amount that does not match the order is not accepted as paid, and alerts the vendor', async () => {
+    makePending({ cardcom_code: 'CODE-MISMATCH' }); // order total is 60
+
+    await request(app).post('/webhook/payment').type('form')
+      .send({ LowProfileCode: 'CODE-MISMATCH', ResponseCode: '0', Amount: '6' })
+      .expect(200);
+    await settle();
+
+    expect(mockSavedOrders[0].payment_status).toBe('pending');
+    expect(vendorAlerts.alerts.paymentMismatch).toHaveBeenCalled();
+  });
+
+  test('a callback with no matching pending alerts the vendor (paid after expiry)', async () => {
+    await request(app).post('/webhook/payment').type('form')
+      .send({ LowProfileCode: 'CODE-GONE', ResponseCode: '0', Amount: '60' })
+      .expect(200);
+    await settle();
+
+    expect(mockSavedOrders).toHaveLength(0);
+    expect(vendorAlerts.alerts.orphanPayment).toHaveBeenCalled();
+  });
+
+  test('ignores a webhook with no code and no return value', async () => {
+    await request(app).post('/webhook/payment').type('form')
+      .send({ Operation: 'LowProfile' })
+      .expect(200);
+    await settle();
+
+    expect(mockSavedOrders).toHaveLength(0);
+    expect(vendorAlerts.alerts.orphanPayment).not.toHaveBeenCalled();
+  });
+
+  test('falls back to ReturnValue lookup when LowProfileCode does not match', async () => {
+    makePending({ cardcom_code: 'DIFFERENT', return_value: 'PB-RV' });
+
+    await request(app).post('/webhook/payment').type('form')
+      .send({ ReturnValue: 'PB-RV', ResponseCode: '0', Amount: '60' })
+      .expect(200);
+    await settle();
+
+    expect(mockSavedOrders).toHaveLength(1);
+    expect(mockSavedOrders[0].payment_status).toBe('paid');
   });
 });
 
-// ── GET /payment/success ──────────────────────────────────────────────────────
+// ── The success redirect is the customer's browser, and proves nothing ───────
 describe('GET /payment/success', () => {
-  test('confirms pending by rv= param and shows success page', async () => {
-    makePending({ cardcom_code: 'CODE-SR', return_value: 'PB-SR-001' });
+  test('records the order as awaiting verification, never as paid', async () => {
+    makePending({ cardcom_code: 'CODE-SR', return_value: 'PB-SR' });
 
-    const res = await request(app)
-      .get('/payment/success?rv=PB-SR-001')
-      .expect(200);
+    const res = await request(app).get('/payment/success?rv=PB-SR').expect(200);
+    await settle();
 
-    await new Promise(r => setTimeout(r, 50));
-
-    expect(res.text).toContain('התשלום בוצע בהצלחה');
+    expect(res.text).toContain('מאמתים את התשלום');
     expect(mockSavedOrders).toHaveLength(1);
+    expect(mockSavedOrders[0].payment_status).toBe('pending');
+    // The business is told, so an unverified order is not invisible
+    expect(orderState.notifyAdminsNewOrder).toHaveBeenCalled();
+    expect(orderState.afterCreate).not.toHaveBeenCalled();
   });
 
-  test('renders success page even when pending already consumed', async () => {
-    const res = await request(app)
-      .get('/payment/success?rv=PB-ALREADY-GONE')
-      .expect(200);
-
-    expect(res.text).toContain('התשלום בוצע');
+  test('renders the page when there is no pending left', async () => {
+    const res = await request(app).get('/payment/success?rv=PB-ALREADY-GONE').expect(200);
+    expect(res.text).toContain('ההזמנה התקבלה');
     expect(mockSavedOrders).toHaveLength(0);
   });
 });
 
-// ── Idempotency ───────────────────────────────────────────────────────────────
-describe('idempotency — no double processing', () => {
-  test('second webhook for same code is ignored after pending is deleted', async () => {
-    makePending({ cardcom_code: 'CODE-IDEM', return_value: 'PB-IDEM' });
+// ── Idempotency ──────────────────────────────────────────────────────────────
+describe('idempotency', () => {
+  test('a webhook after the redirect upgrades the same order instead of duplicating it', async () => {
+    const p = makePending({ cardcom_code: 'CODE-BOTH', return_value: 'PB-BOTH' });
 
-    await request(app).post('/webhook/payment').type('form').send({ LowProfileCode: 'CODE-IDEM' }).expect(200);
-    await new Promise(r => setTimeout(r, 50));
+    await request(app).get('/payment/success?rv=PB-BOTH').expect(200);
+    await settle();
+    expect(mockSavedOrders).toHaveLength(1);
+    expect(mockSavedOrders[0].payment_status).toBe('pending');
 
-    // Pending is now deleted — second call finds nothing
-    await request(app).post('/webhook/payment').type('form').send({ LowProfileCode: 'CODE-IDEM' }).expect(200);
-    await new Promise(r => setTimeout(r, 50));
+    // Cardcom's server-to-server callback arrives afterwards
+    mockPendingStore[p.id] = p; // redirect consumed it; Cardcom still reports
+    await request(app).post('/webhook/payment').type('form')
+      .send({ LowProfileCode: 'CODE-BOTH', ResponseCode: '0', Amount: '60', DealNumber: 'DN-7' })
+      .expect(200);
+    await settle();
+
+    expect(mockSavedOrders).toHaveLength(1);          // no second order
+    expect(orderState.confirmPayment).toHaveBeenCalled();
+    expect(mockSavedOrders[0].cardcom_deal_number).toBe('DN-7');
+  });
+
+  test('two concurrent webhooks produce one order', async () => {
+    const p = makePending({ cardcom_code: 'CODE-RACE', return_value: 'PB-RACE' });
+
+    await Promise.all([
+      request(app).post('/webhook/payment').type('form').send({ LowProfileCode: 'CODE-RACE', ResponseCode: '0', Amount: '60' }),
+      request(app).post('/webhook/payment').type('form').send({ LowProfileCode: 'CODE-RACE', ResponseCode: '0', Amount: '60' }),
+    ]);
+    await settle();
 
     expect(mockSavedOrders).toHaveLength(1);
   });

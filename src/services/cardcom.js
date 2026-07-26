@@ -78,23 +78,38 @@ async function createPaymentPage({ amount, returnValue, productName, maxPayments
 }
 
 /**
- * Verify a completed payment via Cardcom API.
- * NOTE: GetLowProfileIndicatorData endpoint does not exist on Cardcom's server (verified 2026-05).
- * This function is kept for future use when Cardcom provides the correct endpoint.
- * Currently returns { success: true } as a pass-through since the IndicatorUrl
- * callback and success-redirect are the actual confirmation mechanisms.
+ * Read the outcome out of a Cardcom IndicatorUrl callback.
+ *
+ * Cardcom fires the callback for FAILED deals too, so the response code is the
+ * only thing separating "customer paid" from "card declined". Nothing here
+ * trusts the caller's word about success — an absent/!=0 code is a failure.
+ * (Their GetLowProfileIndicatorData verify endpoint 404s — verified 2026-05 —
+ * so the callback is the strongest signal we have; the amount cross-check
+ * against our own pending record is the second.)
+ *
+ * Field names vary between Cardcom's low-profile versions, hence the probing.
  */
-async function verifyPayment(lowProfileCode) {
-  // The endpoint /api/v11/LowProfile/GetLowProfileIndicatorData returns 404 on Cardcom's servers.
-  // We trust the IndicatorUrl callback and the success-redirect (with embedded ReturnValue) instead.
-  // Returning success: true so the caller proceeds to save the order.
-  console.log(`[cardcom] verifyPayment called for ${lowProfileCode} — trusting Cardcom callback (no verify endpoint available)`);
+function readCallbackOutcome(body = {}) {
+  const pick = (...keys) => {
+    for (const k of keys) {
+      if (body[k] !== undefined && body[k] !== null && body[k] !== '') return body[k];
+    }
+    return undefined;
+  };
+
+  const rawCode = pick('ResponseCode', 'DealResponse', 'OperationResponse', 'responseCode');
+  const code    = rawCode === undefined ? undefined : parseInt(rawCode, 10);
+  const rawAmt  = pick('Amount', 'SumToBill', 'DealSum', 'amount');
+  const amount  = rawAmt === undefined ? null : parseFloat(rawAmt);
+
   return {
-    success:      true,
-    responseCode: 0,
-    returnValue:  null,
-    amount:       0,
-    description:  'trusted-callback',
+    // No code at all → treat as unverified rather than successful.
+    success:      code === 0,
+    hasCode:      code !== undefined && !Number.isNaN(code),
+    responseCode: Number.isNaN(code) ? undefined : code,
+    amount:       Number.isNaN(amount) ? null : amount,
+    description:  pick('Description', 'ResponseDescription', 'description') || '',
+    dealNumber:   pick('DealNumber', 'InternalDealNumber', 'CardcomDealNumber') || null,
   };
 }
 
@@ -130,4 +145,4 @@ async function cancelDeal(dealNumber, tenantId) {
   }
 }
 
-module.exports = { createPaymentPage, verifyPayment, cancelDeal };
+module.exports = { createPaymentPage, readCallbackOutcome, cancelDeal };
