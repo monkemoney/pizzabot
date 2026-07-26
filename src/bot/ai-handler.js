@@ -89,8 +89,18 @@ async function handleDisputeResponse(phone, userMessage, session, tenantId) {
   }
 
   if (choice === '1') {
-    await updateOrderStatus(order.id, 'cancelled');
-    await updateOrder(order.id, { dispute_status: 'resolved', dispute_resolution: 'cancelled', cancelled_by: 'customer' });
+    const orderState = require('../services/order-state');
+    // Attempt automatic refund for paid credit orders
+    let refundStatus = null;
+    if (order.payment_method === 'credit' && order.payment_status === 'paid') {
+      const { cancelDeal } = require('../services/cardcom');
+      const r = await cancelDeal(order.cardcom_deal_number, tenantId).catch(() => ({ success: false }));
+      refundStatus = r.success ? 'refunded' : 'manual';
+    }
+    await orderState.transition(order.id, 'cancelled', {
+      force: true, by: 'customer', notify: false,
+      extra: { dispute_status: 'resolved', dispute_resolution: 'cancelled', cancelled_by: 'customer', refund_status: refundStatus },
+    }).catch((err) => console.error('[dispute] cancel error:', err.message));
     await updateSession(phone, { pending_dispute: null, conversation_history: [], pending_order: {} }, tenantId);
     const refundNote = order.payment_method === 'credit'
       ? '\nהתשלום יזוכה לכרטיסך תוך 3-5 ימי עסקים.' : '';
@@ -205,10 +215,33 @@ async function handleMessage(phone, userMessage, tenantId = null) {
       const cancelKeywords = ['בטל', 'ביטול', 'לבטל', 'cancel', 'שנה', 'לשנות'];
       const wantsCancel = cancelKeywords.some((k) => userMessage.toLowerCase().includes(k));
       if (wantsCancel) {
-        await updateOrderStatus(lastOrder.id, 'cancelled');
+        const orderState = require('../services/order-state');
+        // Attempt automatic refund for paid credit orders before cancelling
+        let refundStatus = null;
+        if (lastOrder.payment_method === 'credit' && lastOrder.payment_status === 'paid') {
+          const { cancelDeal } = require('../services/cardcom');
+          const r = await cancelDeal(lastOrder.cardcom_deal_number, tid).catch(() => ({ success: false }));
+          refundStatus = r.success ? 'refunded' : 'manual';
+        }
+        try {
+          await orderState.transition(lastOrder.id, 'cancelled', {
+            by: 'customer', notify: false,
+            extra: { cancelled_by: 'customer', refund_status: refundStatus },
+          });
+        } catch (err) {
+          // Kitchen moved it to preparing (or similar) between our read and the write
+          const msg = lang === 'en'
+            ? `Order #${lastOrder.order_number} is already being prepared and can no longer be cancelled. Contact the restaurant for help.`
+            : `הזמנה מספר ${lastOrder.order_number} כבר נכנסה להכנה ולא ניתן לבטל אותה. לעזרה אפשר לפנות לעסק.`;
+          await reply(phone, msg, tid);
+          return;
+        }
+        const refundLine = refundStatus
+          ? (lang === 'en' ? '\nYour payment will be refunded within 3-5 business days.' : '\nהתשלום יזוכה לכרטיסך תוך 3-5 ימי עסקים.')
+          : '';
         const msg = lang === 'en'
-          ? `Order #${lastOrder.order_number} has been cancelled. Want to place a new order?`
-          : `הזמנה מספר ${lastOrder.order_number} בוטלה. רוצה להזמין מחדש?`;
+          ? `Order #${lastOrder.order_number} has been cancelled.${refundLine} Want to place a new order?`
+          : `הזמנה מספר ${lastOrder.order_number} בוטלה.${refundLine} רוצה להזמין מחדש?`;
         await reply(phone, msg, tid);
         return;
       }
@@ -370,7 +403,7 @@ async function handleMessage(phone, userMessage, tenantId = null) {
 
       const isScheduled = !!scheduledFor;
 
-      const { orderNumber } = await saveOrder({
+      const { orderNumber, order: savedOrder } = await saveOrder({
         phone,
         customer_name:   payload.customer_name   || null,
         customer_phone:  payload.customer_phone  || null,
@@ -404,10 +437,17 @@ async function handleMessage(phone, userMessage, tenantId = null) {
           : `הזמנה מספר *${orderNumber}* נשמרה!\nלסיום — שלח *₪${payload.total}* בBit${bitPhone ? ` למספר ${bitPhone}` : ''}.\nלאחר התשלום שלח *שילמתי*`;
         await reply(phone, confirmMsg, tid);
       } else {
-        const confirmMsg = lang === 'en'
-          ? `Order *#${orderNumber}* confirmed!\nWe'll start preparing it now.`
-          : `הזמנה מספר *${orderNumber}* אושרה!\nמתחילים להכין עכשיו.`;
-        await reply(phone, confirmMsg, tid);
+        // Acceptance flow: manual (default) — the order waits for business
+        // approval; auto — afterCreate() accepts immediately and sends the
+        // approval + ETA message itself, so no extra message is needed here.
+        const orderState = require('../services/order-state');
+        const mode = await orderState.afterCreate(savedOrder, { lang });
+        if (mode === 'manual') {
+          const confirmMsg = lang === 'en'
+            ? `Order *#${orderNumber}* received and sent to the restaurant for approval ✅\nWe'll update you the moment it's confirmed.`
+            : `הזמנה מספר *${orderNumber}* התקבלה ונשלחה למסעדה לאישור ✅\nנעדכן אותך ברגע שההזמנה תאושר ותיכנס להכנה.`;
+          await reply(phone, confirmMsg, tid);
+        }
       }
 
       await updateSession(phone, { conversation_history: [], pending_order: {} }, tid);

@@ -249,12 +249,15 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
             .from('orders').select('id,order_number,phone,customer_name')
             .eq('order_number', order_number).eq('tenant_id', tenantId).single();
           if (!orders) { results.push(`❌ הזמנה #${order_number} לא נמצאה`); break; }
-          const updated = await updateOrderStatus(orders.id, status);
           const STATUS_LABELS = { new:'חדשה', preparing:'בהכנה', ready:'מוכנה', out_for_delivery:'יצא למשלוח', delivered:'נמסרה', done:'הסתיימה', cancelled:'בוטלה' };
-          // Notify customer + courier through the tenant's channel, update dashboards
-          const { notifyStatusChange } = require('../services/status-notifier');
-          await notifyStatusChange(orders.phone, status, 'he', order_number, updated, tenantId).catch(() => {});
-          require('../services/sse').broadcast(tenantId, 'order_updated', updated);
+          // State machine: SSE + customer/courier notification fire from one place
+          const orderStateSvc = require('../services/order-state');
+          try {
+            await orderStateSvc.transition(orders.id, status, { force: true, by: 'admin-bot' });
+          } catch (err) {
+            results.push(`❌ עדכון הזמנה #${order_number} נכשל: ${err.message}`);
+            break;
+          }
           results.push(`✅ הזמנה #${order_number} — ${STATUS_LABELS[status] || status}`);
           break;
         }
@@ -265,15 +268,33 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
             .from('orders').select('*').eq('order_number', order_number).eq('tenant_id', tenantId).single();
           if (!ord) { results.push(`❌ הזמנה #${order_number} לא נמצאה`); break; }
           if (['cancelled','done'].includes(ord.status)) { results.push(`⚠️ הזמנה #${order_number} כבר ${ord.status}`); break; }
-          await supabase.from('orders').update({
-            status: 'cancelled', cancelled_by: 'business',
-            cancel_reason: reason || null, updated_at: new Date().toISOString(),
-          }).eq('id', ord.id);
+
+          // Attempt automatic refund for paid credit orders
+          let refundStatus = null;
+          if (ord.payment_method === 'credit' && ord.payment_status === 'paid') {
+            const { cancelDeal } = require('../services/cardcom');
+            const r = await cancelDeal(ord.cardcom_deal_number, tenantId).catch(() => ({ success: false }));
+            refundStatus = r.success ? 'refunded' : 'manual';
+          }
+
+          const orderState = require('../services/order-state');
+          try {
+            await orderState.transition(ord.id, 'cancelled', {
+              force: true, by: 'admin-bot', notify: false,
+              extra: { cancelled_by: 'business', cancel_reason: reason || null, refund_status: refundStatus },
+            });
+          } catch (err) {
+            results.push(`❌ ביטול הזמנה #${order_number} נכשל: ${err.message}`);
+            break;
+          }
+
           if (notify_customer) {
-            const msg = `❌ הזמנה מספר *${order_number}* בוטלה על ידי העסק.${reason ? `\nסיבה: ${reason}` : ''}\n\nמצטערים על אי הנוחות 🙏`;
+            const refundLine = refundStatus === 'refunded' ? '\nהתשלום יזוכה לכרטיסך תוך 3-5 ימי עסקים.'
+              : refundStatus === 'manual' ? '\nנחזור אליך בנוגע להחזר התשלום.' : '';
+            const msg = `❌ הזמנה מספר *${order_number}* בוטלה על ידי העסק.${reason ? `\nסיבה: ${reason}` : ''}${refundLine}\n\nמצטערים על אי הנוחות 🙏`;
             await sendMessage(ord.phone, msg, tenantId).catch(() => {});
           }
-          results.push(`✅ הזמנה #${order_number} בוטלה`);
+          results.push(`✅ הזמנה #${order_number} בוטלה${refundStatus === 'refunded' ? ' + זיכוי אוטומטי בוצע' : refundStatus === 'manual' ? ' ⚠️ נדרש זיכוי ידני' : ''}`);
           break;
         }
 

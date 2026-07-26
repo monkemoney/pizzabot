@@ -12,6 +12,7 @@ const { cancelDeal } = require('../services/cardcom');
 const { getOrders, getOrderById, updateOrderStatus, updateOrder, updateSession,
         autoCompleteDeliveredOrders, getInboxSessions, setBotActive, markInboxRead } = require('../services/supabase');
 const { notifyStatusChange }              = require('../services/status-notifier');
+const orderState                          = require('../services/order-state');
 const settings                            = require('../services/settings');
 const { invalidateCache }                 = require('../services/menu-service');
 const { sendMessage }                     = require('../services/greenapi');
@@ -122,21 +123,50 @@ router.get('/orders/:id', requireAuth, async (req, res) => {
   res.json(order);
 });
 
-const STATUS_ORDER = ['new','scheduled','preparing','ready','out_for_delivery','delivered','done','cancelled'];
+const STATUS_ORDER = orderState.STATUSES;
 
 router.patch('/orders/:id/status', requireAuth, async (req, res) => {
-  const { status } = req.body;
+  const { status, force = false } = req.body;
   if (!STATUS_ORDER.includes(status)) {
     return res.status(400).json({ error: `Invalid status. Valid: ${STATUS_ORDER.join(', ')}` });
   }
   try {
     const existing = await getOrderById(req.params.id);
     if (!assertTenant(existing, req)) return res.status(404).json({ error: 'Not found' });
-    const order = await updateOrderStatus(req.params.id, status);
-    await notifyStatusChange(order.phone, status, 'he', order.order_number, order, tid(req));
-    sse.broadcast(order.tenant_id || req.user.tenant_id, 'order_updated', order);
+    // force=true — explicit staff override from the dashboard status select;
+    // kitchen buttons and programmatic callers stay strict.
+    const { order, changed } = await orderState.transition(req.params.id, status, {
+      force: !!force,
+      by: req.user.role || 'dashboard',
+      notify: true,
+    });
+    if (!changed) return res.json({ success: true, order, unchanged: true });
     res.json({ success: true, order });
   } catch (err) {
+    if (err.code === 'ORDER_NOT_FOUND')     return res.status(404).json({ error: err.message });
+    if (err.code === 'INVALID_TRANSITION' || err.code === 'CONFLICT')
+      return res.status(409).json({ error: err.message, code: err.code });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Accept order (business approves — new/scheduled → preparing) ────────────
+
+router.post('/orders/:id/accept', requireAuth, async (req, res) => {
+  try {
+    const existing = await getOrderById(req.params.id);
+    if (!existing || !assertTenant(existing, req)) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+
+    const prep = parseInt(req.body?.prep_minutes, 10);
+    const order = await orderState.accept(req.params.id, {
+      prepMinutes: Number.isFinite(prep) && prep > 0 ? prep : await orderState.getDefaultPrepMinutes(tid(req)),
+      by: req.user.role || 'dashboard',
+    });
+    res.json({ success: true, order });
+  } catch (err) {
+    if (err.code === 'ORDER_NOT_FOUND')     return res.status(404).json({ error: err.message });
+    if (err.code === 'INVALID_TRANSITION' || err.code === 'CONFLICT')
+      return res.status(409).json({ error: err.message, code: err.code });
     res.status(500).json({ error: err.message });
   }
 });
@@ -189,16 +219,18 @@ router.post('/orders/:id/cancel-refund', requireAdmin, async (req, res) => {
     }
   }
 
-  // ── Cancel order in DB ───────────────────────────────────────────────────────
-  const { error } = await supabase.from('orders').update({
-    status:         'cancelled',
-    cancelled_by:   cancelled_by,
-    cancel_reason:  reason || null,
-    refund_status:  refundStatus,
-    updated_at:     new Date().toISOString(),
-  }).eq('id', order.id);
-
-  if (error) return res.status(500).json({ error: error.message });
+  // ── Cancel order via the state machine (SSE + status_history included) ──────
+  try {
+    await orderState.transition(order.id, 'cancelled', {
+      force:  true,               // staff cancellation is allowed from any active status
+      by:     req.user.role || 'dashboard',
+      notify: false,              // custom WhatsApp message below
+      extra:  { cancelled_by, cancel_reason: reason || null, refund_status: refundStatus },
+    });
+  } catch (err) {
+    if (err.code === 'CONFLICT') return res.status(409).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
+  }
 
   // ── Notify customer via WhatsApp ─────────────────────────────────────────────
   const refundLine = isCreditPaid
@@ -242,16 +274,25 @@ router.post('/orders/:id/confirm-payment', requireAdmin, async (req, res) => {
   if (!order || !assertTenant(order, req)) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
   if (order.payment_status === 'paid') return res.status(400).json({ error: 'ההזמנה כבר שולמה' });
 
-  const { error } = await supabase.from('orders').update({
+  const { data: paidOrder, error } = await supabase.from('orders').update({
     payment_status: 'paid',
     updated_at:     new Date().toISOString(),
-  }).eq('id', order.id);
+  }).eq('id', order.id).select('*').single();
 
   if (error) return res.status(500).json({ error: error.message });
 
-  // Notify customer
-  const method = order.payment_method === 'bit' ? 'Bit' : 'מזומן';
-  await sendMessage(order.phone, `✅ קיבלנו את התשלום ב${method}! ההזמנה מספר *${order.order_number}* אושרה — מתחילים להכין 🍕`, tid(req)).catch(() => {});
+  sse.broadcast(tid(req), 'order_updated', paidOrder);
+
+  // Auto-acceptance tenants: a Bit order deferred its auto-accept until payment
+  // confirmation — fire it now (no-op for manual tenants / non-new statuses).
+  const acceptMode = await orderState.afterCreate(paidOrder).catch(() => 'manual');
+
+  // Notify customer — wording depends on whether the order awaits approval
+  const method  = order.payment_method === 'bit' ? 'Bit' : 'מזומן';
+  const tailMsg = (paidOrder.status === 'new' && acceptMode === 'manual')
+    ? 'ההזמנה ממתינה לאישור המסעדה — נעדכן אותך ברגע שתאושר.'
+    : 'ההזמנה בהכנה 🍕';
+  await sendMessage(order.phone, `✅ קיבלנו את התשלום ב${method}! (הזמנה מספר *${order.order_number}*)\n${tailMsg}`, tid(req)).catch(() => {});
 
   console.log(`[confirm-payment] Order #${order.order_number} payment confirmed by admin`);
   res.json({ success: true });
@@ -278,12 +319,14 @@ router.post('/orders/:id/item-dispute', requireAdmin, async (req, res) => {
   const refund   = items.reduce((s, d) => s + (d.price || 0) * (d.qty || 1), 0);
 
   // Mark order
-  const { error: orderErr } = await supabase.from('orders').update({
+  const { data: disputedOrder, error: orderErr } = await supabase.from('orders').update({
     dispute_status: 'pending',
     dispute_item:   items.map(d => d.name).join(', '),
     updated_at:     new Date().toISOString(),
-  }).eq('id', order.id);
+  }).eq('id', order.id).select('*').single();
   if (orderErr) return res.status(500).json({ error: orderErr.message });
+
+  sse.broadcast(tid(req), 'order_updated', disputedOrder);
 
   // Store full context in session for bot to resolve
   await updateSession(order.phone, {

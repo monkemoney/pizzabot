@@ -32,7 +32,7 @@ async function confirmPending(pending, source = 'webhook', dealNumber = null) {
 
   const orderData = pending.order_data;
   try {
-    const { id, orderNumber } = await saveOrder({
+    const { id, orderNumber, order: savedOrder } = await saveOrder({
       phone:                pending.phone,
       customer_name:        orderData.customer_name   || null,
       customer_phone:       orderData.customer_phone  || null,
@@ -52,7 +52,14 @@ async function confirmPending(pending, source = 'webhook', dealNumber = null) {
     await deletePendingPayment(pending.id);
 
     const tenantId = pending.tenant_id || orderData.tenant_id || null;
-    const msg = `✅ התשלום התקבל! הזמנה מספר *${orderNumber}* בדרך 🍕\nנעדכן אותך על כל שינוי בסטטוס.`;
+
+    // Acceptance flow: auto → afterCreate accepts + sends the approval/ETA
+    // message; manual → tell the customer the order awaits approval.
+    const orderState = require('../services/order-state');
+    const mode = await orderState.afterCreate(savedOrder).catch(() => 'manual');
+    const msg = mode === 'manual'
+      ? `✅ התשלום התקבל! הזמנה מספר *${orderNumber}* נשלחה למסעדה לאישור 🍕\nנעדכן אותך ברגע שההזמנה תאושר ותיכנס להכנה.`
+      : `✅ התשלום התקבל! (הזמנה מספר *${orderNumber}*)`;
     await sendMessage(pending.phone, msg, tenantId).catch((err) =>
       console.error(`[payment:${source}] WhatsApp notify error:`, err.message)
     );

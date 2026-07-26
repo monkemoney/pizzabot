@@ -237,8 +237,17 @@ async function processScheduledOrders() {
     const lead = (await settings.get('prep_lead_time')) ?? 45;
     const due  = await getScheduledOrdersDue(Number(lead));
     for (const order of due) {
-      const updated = await updateOrderStatus(order.id, 'preparing');
-      sse.broadcast(order.tenant_id, 'order_updated', updated);
+      const orderState = require('./services/order-state');
+      let updated;
+      try {
+        ({ order: updated } = await orderState.transition(order.id, 'preparing', {
+          by: 'scheduler', notify: false, // custom scheduled-order message below
+        }));
+      } catch (err) {
+        // Cancelled/edited concurrently — skip quietly
+        console.warn(`[scheduler] skip #${order.order_number}: ${err.message}`);
+        continue;
+      }
       const { sendMessage } = require('./services/greenapi');
       const timeStr = order.scheduled_for
         ? new Date(order.scheduled_for).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem', hour12: false })
@@ -252,6 +261,69 @@ async function processScheduledOrders() {
   }
 }
 setInterval(processScheduledOrders, 60 * 1000); // every minute
+
+// ─── Unaccepted-order escalation (every minute) ──────────────────────────────
+// Manual-acceptance flow: an order sitting in 'new' means the business hasn't
+// approved it yet while the customer waits. Level 1 (after accept_reminder_minutes,
+// default 3): re-push + WhatsApp the admins. Level 2 (after 3×): urgent WhatsApp
+// to admins + reassurance message to the customer. escalation_level is persisted
+// on the order row, so restarts don't re-alert.
+async function escalateUnacceptedOrders() {
+  try {
+    const sb = createSB(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data: waiting, error } = await sb
+      .from('orders').select('*')
+      .eq('status', 'new')
+      .lt('escalation_level', 2)
+      .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+    if (error || !waiting?.length) return;
+
+    const { getAdminUsers } = require('./services/supabase');
+    const { sendMessage }   = require('./services/greenapi');
+    const pushNotifier      = require('./services/push-notifier');
+
+    for (const order of waiting) {
+      const tenantId  = order.tenant_id || DEFAULT_TENANT_ID;
+      const ageMin    = (Date.now() - new Date(order.created_at).getTime()) / 60000;
+      const remindMin = Number(await settings.get('accept_reminder_minutes', tenantId).catch(() => null)) || 3;
+
+      const targetLevel = ageMin >= remindMin * 3 ? 2 : ageMin >= remindMin ? 1 : 0;
+      if (targetLevel <= (order.escalation_level || 0)) continue;
+
+      // Guarded write — only one process/interval wins the escalation
+      const { data: claimed } = await sb.from('orders')
+        .update({ escalation_level: targetLevel, updated_at: new Date().toISOString() })
+        .eq('id', order.id).eq('status', 'new')
+        .eq('escalation_level', order.escalation_level || 0)
+        .select('id');
+      if (!claimed?.length) continue;
+
+      const itemsShort = (order.items || []).map(it => `${it.name || it.name_he}${(it.quantity || it.qty || 1) > 1 ? ` ×${it.quantity || it.qty}` : ''}`).join(', ');
+      const adminMsg = targetLevel === 1
+        ? `🔔 *הזמנה #${order.order_number} ממתינה לאישור כבר ${Math.round(ageMin)} דקות*\n${order.customer_name || 'לקוח'} — ₪${order.total_price}\n${itemsShort}\n\nהיכנסו לדשבורד לאישור ההזמנה 👨‍🍳`
+        : `🚨 *הזמנה #${order.order_number} עדיין לא אושרה (${Math.round(ageMin)} דקות!)*\nהלקוח ממתין — אנא אשרו או בטלו את ההזמנה עכשיו.\n${order.customer_name || 'לקוח'} — ₪${order.total_price}`;
+
+      const admins = await getAdminUsers(tenantId);
+      for (const admin of admins) {
+        await sendMessage(admin.phone, adminMsg, tenantId).catch(() => {});
+      }
+
+      pushNotifier.notifyNewOrder({ ...order, customer_name: `⏰ ממתינה לאישור — ${order.customer_name || 'לקוח'}` }).catch(() => {});
+
+      if (targetLevel === 2) {
+        await sendMessage(order.phone,
+          `היי${order.customer_name ? ` ${order.customer_name}` : ''} 🙏 ההזמנה שלך (מספר *${order.order_number}*) התקבלה והעסק יאשר אותה ממש בקרוב. תודה על הסבלנות!`,
+          tenantId
+        ).catch(() => {});
+      }
+
+      console.log(`[escalation] order #${order.order_number} → level ${targetLevel} (${Math.round(ageMin)}m, ${admins.length} admins notified)`);
+    }
+  } catch (err) {
+    console.error('[escalation] error:', err.message);
+  }
+}
+setInterval(escalateUnacceptedOrders, 60 * 1000);
 
 // ─── Pending payment watchdog (every 2 min) ──────────────────────────────────
 // A pending_payments row only proves a payment LINK was generated — not that the

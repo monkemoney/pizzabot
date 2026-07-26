@@ -94,6 +94,21 @@ jest.mock('../src/services/greenapi',      () => ({ sendMessage: jest.fn(async (
 jest.mock('../src/services/settings',      () => ({ loadAll: jest.fn(async () => ({})), get: jest.fn(async ()=>null), isOpen: jest.fn(async ()=>true), _clearCache: jest.fn(), set: jest.fn(async ()=>{}), DEFAULT_TENANT_ID: 'aaaaaaaa-0000-0000-0000-000000000001' }));
 jest.mock('../src/services/menu-service',  () => ({ getMenu: jest.fn(async () => []), invalidateCache: jest.fn() }));
 jest.mock('../src/services/status-notifier', () => ({ notifyStatusChange: jest.fn(async () => {}) }));
+jest.mock('../src/services/order-state', () => ({
+  STATUSES: ['new','scheduled','preparing','ready','out_for_delivery','delivered','done','cancelled'],
+  transition: jest.fn(async (id, to, opts = {}) => {
+    const order = store.orders?.[id];
+    if (!order) { const e = new Error('הזמנה לא נמצאה'); e.code = 'ORDER_NOT_FOUND'; throw e; }
+    const data = { status: to, updated_at: new Date().toISOString(), ...(opts.extra || {}) };
+    Object.assign(order, data);
+    updateLog.push({ table: 'orders', data, filter: { id } });
+    return { order, changed: true };
+  }),
+  accept: jest.fn(async () => ({})),
+  afterCreate: jest.fn(async () => 'manual'),
+  getAcceptanceMode: jest.fn(async () => 'manual'),
+  getDefaultPrepMinutes: jest.fn(async () => 30),
+}));
 jest.mock('../src/services/push-notifier', () => ({ notifyNewOrder: jest.fn(async () => {}), saveSubscription: jest.fn() }));
 jest.mock('../src/services/cardcom',       () => ({
   verifyPayment: jest.fn(async () => ({ success: false })),

@@ -111,6 +111,16 @@ async function getAdminUser(phone, tenantId = DEFAULT_TENANT_ID) {
   return data;
 }
 
+/** All admin users for a tenant (for order-approval notifications) */
+async function getAdminUsers(tenantId = DEFAULT_TENANT_ID) {
+  const { data, error } = await supabase
+    .from('admin_users')
+    .select('*')
+    .eq('tenant_id', tenantId);
+  if (error) { console.error('[supabase] getAdminUsers error:', error.message); return []; }
+  return data || [];
+}
+
 // ─── Pending payments ─────────────────────────────────────────────────────────
 
 async function savePendingPayment({ phone, cardcomCode, returnValue, orderData }) {
@@ -185,7 +195,7 @@ async function saveOrder(orderData) {
   // Broadcast to kitchen SSE connections
   require('./sse').broadcast(orderData.tenant_id, 'new_order', data);
 
-  return { id: data.id, orderNumber: data.order_number };
+  return { id: data.id, orderNumber: data.order_number, order: data };
 }
 
 async function getOrders(status) {
@@ -335,6 +345,7 @@ module.exports = {
   saveCustomerProfile,
   getCustomerProfile,
   getAdminUser,
+  getAdminUsers,
   savePendingPayment,
   getPendingByCardcomCode,
   getPendingByReturnValue,

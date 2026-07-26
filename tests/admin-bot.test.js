@@ -118,6 +118,26 @@ jest.mock('../src/services/status-notifier', () => ({
   notifyStatusChange: jest.fn(async () => {}),
 }));
 
+jest.mock('../src/services/cardcom', () => ({
+  cancelDeal: jest.fn(async () => ({ success: false, message: 'mock' })),
+}));
+
+// Order state machine — all status writes go through transition()
+jest.mock('../src/services/order-state', () => ({
+  STATUSES: ['new','scheduled','preparing','ready','out_for_delivery','delivered','done','cancelled'],
+  transition: jest.fn(async (id, to, opts = {}) => {
+    const order = dbRows.orders.find(o => o.id === id);
+    if (!order) { const e = new Error('הזמנה לא נמצאה'); e.code = 'ORDER_NOT_FOUND'; throw e; }
+    Object.assign(order, { status: to }, opts.extra || {});
+    updateLog.push({ table: 'orders', vals: { status: to, ...(opts.extra || {}) }, filter: { id } });
+    return { order, changed: true };
+  }),
+  accept: jest.fn(async () => ({})),
+  afterCreate: jest.fn(async () => 'manual'),
+  getAcceptanceMode: jest.fn(async () => 'manual'),
+  getDefaultPrepMinutes: jest.fn(async () => 30),
+}));
+
 const { handleAdminMessage } = require('../src/bot/admin-handler');
 
 const ADMIN_USER = { name: 'ישראל', role: 'admin' };
@@ -212,10 +232,11 @@ describe('ORDER_STATUS', () => {
     const order = seedOrder({ order_number: 1002, id: 'ord-2' });
     mockClaudeReturn = `<!--ADMIN:ORDER_STATUS:{"order_number":1002,"status":"preparing"}-->`;
 
-    const { updateOrderStatus } = require('../src/services/supabase');
+    const orderState = require('../src/services/order-state');
     await handleAdminMessage(PHONE, 'הזמנה 1002 בהכנה', ADMIN_USER, TENANT);
 
-    expect(updateOrderStatus).toHaveBeenCalledWith(order.id, 'preparing');
+    expect(orderState.transition).toHaveBeenCalledWith(order.id, 'preparing',
+      expect.objectContaining({ force: true, by: 'admin-bot' }));
   });
 
   test('reports error when order not found', async () => {
