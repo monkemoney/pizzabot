@@ -3,8 +3,30 @@
 const axios = require('axios');
 
 const BASE_URL = process.env.CARDCOM_API_URL || 'https://secure.cardcom.solutions';
-const TERMINAL = process.env.CARDCOM_TERMINAL;   // 1000 for test
-const API_NAME = process.env.CARDCOM_USERNAME;    // CardTest1994
+const TERMINAL = process.env.CARDCOM_TERMINAL;   // default tenant (env)
+const API_NAME = process.env.CARDCOM_USERNAME;
+
+const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
+
+/**
+ * Resolve Cardcom credentials per tenant: default tenant → env vars;
+ * other tenants → settings cardcom_terminal / cardcom_username (seeded at
+ * onboarding), with env as last-resort fallback so a missing setting fails
+ * loudly at the API call rather than silently charging the wrong terminal.
+ */
+async function _creds(tenantId) {
+  if (!tenantId || tenantId === DEFAULT_TENANT_ID) {
+    return { terminal: TERMINAL, apiName: API_NAME };
+  }
+  const settings = require('./settings');
+  const [terminal, apiName] = await Promise.all([
+    settings.get('cardcom_terminal', tenantId).catch(() => null),
+    settings.get('cardcom_username', tenantId).catch(() => null),
+  ]);
+  if (terminal && apiName) return { terminal: String(terminal), apiName: String(apiName) };
+  console.warn(`[cardcom] tenant ${tenantId} missing cardcom_terminal/cardcom_username settings — falling back to env`);
+  return { terminal: TERMINAL, apiName: API_NAME };
+}
 
 /**
  * Create a Cardcom Low-Profile payment page via the JSON API (v11).
@@ -13,16 +35,17 @@ const API_NAME = process.env.CARDCOM_USERNAME;    // CardTest1994
  * Key: ReturnValue is embedded in SuccessRedirectUrl so we can always
  * identify which pending order was paid — even if Cardcom doesn't pass params back.
  */
-async function createPaymentPage({ amount, returnValue, productName, maxPayments }) {
-  if (!TERMINAL || !API_NAME) {
+async function createPaymentPage({ amount, returnValue, productName, maxPayments, tenantId }) {
+  const { terminal, apiName } = await _creds(tenantId);
+  if (!terminal || !apiName) {
     throw new Error('CARDCOM_TERMINAL and CARDCOM_USERNAME must be set');
   }
 
   const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:3000';
 
   const body = {
-    TerminalNumber:    parseInt(TERMINAL, 10),
-    ApiName:           API_NAME,
+    TerminalNumber:    parseInt(terminal, 10),
+    ApiName:           apiName,
     Amount:            parseFloat(amount.toFixed(2)),
     CoinID:            1,           // ILS
     Language:          'he',
@@ -80,16 +103,17 @@ async function verifyPayment(lowProfileCode) {
  * Requires the InternalDealNumber saved when the original payment was confirmed.
  * Returns { success: bool, message: string }.
  */
-async function cancelDeal(dealNumber) {
+async function cancelDeal(dealNumber, tenantId) {
   if (!dealNumber) return { success: false, message: 'אין מספר עסקה — זיכוי ידני נדרש' };
-  if (!TERMINAL || !API_NAME) return { success: false, message: 'הגדרות Cardcom חסרות' };
+  const { terminal, apiName } = await _creds(tenantId);
+  if (!terminal || !apiName) return { success: false, message: 'הגדרות Cardcom חסרות' };
 
   try {
     const result = await axios.post(
       `${BASE_URL}/Interface/CancelDeal.aspx`,
       new URLSearchParams({
-        TerminalNumber:     TERMINAL,
-        ApiName:            API_NAME,
+        TerminalNumber:     terminal,
+        ApiName:            apiName,
         InternalDealNumber: dealNumber,
         CancelType:         '1',   // full refund
       }).toString(),

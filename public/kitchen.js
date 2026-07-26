@@ -8,11 +8,13 @@ let _token = null;
 
 function getToken() {
   if (_token) return _token;
-  _token = localStorage.getItem('kitchen_token') || localStorage.getItem('dashboard_token');
+  // Login page (index.html) stores the JWT under 'token'; legacy keys kept as fallback
+  _token = localStorage.getItem('token') || localStorage.getItem('kitchen_token') || localStorage.getItem('dashboard_token');
   return _token;
 }
 
 function logout() {
+  localStorage.removeItem('token');
   localStorage.removeItem('kitchen_token');
   localStorage.removeItem('dashboard_token');
   window.location.href = '/';

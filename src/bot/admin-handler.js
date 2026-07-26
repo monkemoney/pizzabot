@@ -249,11 +249,12 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
             .from('orders').select('id,order_number,phone,customer_name')
             .eq('order_number', order_number).eq('tenant_id', tenantId).single();
           if (!orders) { results.push(`❌ הזמנה #${order_number} לא נמצאה`); break; }
-          await updateOrderStatus(orders.id, status);
-          const STATUS_LABELS = { new:'חדשה', preparing:'בהכנה', out_for_delivery:'יצא למשלוח', delivered:'נמסרה', done:'הסתיימה', cancelled:'בוטלה' };
-          // Notify customer
+          const updated = await updateOrderStatus(orders.id, status);
+          const STATUS_LABELS = { new:'חדשה', preparing:'בהכנה', ready:'מוכנה', out_for_delivery:'יצא למשלוח', delivered:'נמסרה', done:'הסתיימה', cancelled:'בוטלה' };
+          // Notify customer + courier through the tenant's channel, update dashboards
           const { notifyStatusChange } = require('../services/status-notifier');
-          await notifyStatusChange(orders.phone, status, 'he', order_number).catch(() => {});
+          await notifyStatusChange(orders.phone, status, 'he', order_number, updated, tenantId).catch(() => {});
+          require('../services/sse').broadcast(tenantId, 'order_updated', updated);
           results.push(`✅ הזמנה #${order_number} — ${STATUS_LABELS[status] || status}`);
           break;
         }

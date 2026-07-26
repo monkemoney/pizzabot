@@ -81,6 +81,8 @@ async function alert(type, emoji, title, detail = '') {
 const alerts = {
   serverError:   (err)     => alert('server_error',   '🔴', 'שגיאת שרת', err?.message || String(err)),
   paymentFailed: (phone, code) => alert('payment_failed', '💳', 'תשלום נכשל', `לקוח: ${phone} | קוד: ${code}`),
+  stalePayment:  (phone, total) => alert('payment_failed', '💳', 'תשלום ממתין ללא אישור',
+    `לקוח: ${phone}${total ? ` | סכום: ₪${total}` : ''}\nלינק תשלום נוצר אך לא התקבל אישור מכרטקום. אם התשלום מופיע בפורטל כרטקום — ההזמנה לא נקלטה אוטומטית וצריך ליצור אותה ידנית.`),
   botError:      (phone, err)  => alert('bot_error',   '🤖', 'שגיאת בוט', `לקוח: ${phone}\n${err?.message || err}`),
   newOrder:      (num, total)  => alert('new_order',   '🍕', `הזמנה #${num} התקבלה`, `סכום: ₪${total}`),
   serverRestart: ()       => alert('restart',      '🔄', 'שרת אותחל', 'pizzabot-jasell.onrender.com'),

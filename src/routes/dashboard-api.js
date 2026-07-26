@@ -175,7 +175,7 @@ router.post('/orders/:id/cancel-refund', requireAdmin, async (req, res) => {
 
   // ── Try Cardcom refund if we have a deal number ──────────────────────────────
   if (isCreditPaid) {
-    const { success, message } = await cancelDeal(order.cardcom_deal_number);
+    const { success, message } = await cancelDeal(order.cardcom_deal_number, order.tenant_id);
     if (success) {
       refundStatus  = 'refunded';
       refundMessage = message;

@@ -253,65 +253,32 @@ async function processScheduledOrders() {
 }
 setInterval(processScheduledOrders, 60 * 1000); // every minute
 
-// ─── Pending payment polling (every 2 min) ───────────────────────────────────
-// Safety net: if success-redirect and IndicatorUrl both missed, confirm after 5 min.
-// NOTE: Cardcom's GetLowProfileIndicatorData endpoint does not exist (verified 2026-05).
-// We trust Cardcom's callbacks (IndicatorUrl + success-redirect) as confirmation.
-// After 5 min with no confirmation, we treat the payment as completed if the
-// pending entry still exists (customer reached the success page).
-const { getAllPendingPayments, deletePendingPayment } = require('./services/supabase');
+// ─── Pending payment watchdog (every 2 min) ──────────────────────────────────
+// A pending_payments row only proves a payment LINK was generated — not that the
+// customer paid. Order creation happens exclusively in Cardcom's callbacks
+// (IndicatorUrl webhook / success-redirect — routes/payment.js). This watchdog
+// no longer auto-creates orders (the old behavior fabricated "paid" orders from
+// abandoned checkouts); it alerts the vendor about stale pendings so a human can
+// check the Cardcom portal, and prunes expired rows.
+const { getAllPendingPayments, deleteExpiredPendingPayments } = require('./services/supabase');
+
+const _alertedPendings = new Set(); // pending ids already alerted (per process)
 
 async function pollPendingPayments() {
   const pendings = await getAllPendingPayments().catch(() => []);
-  if (!pendings.length) return;
 
-  const stale = pendings.filter(p => {
-    const ageMin = (Date.now() - new Date(p.created_at).getTime()) / 60000;
-    return ageMin >= 5; // only act on payments older than 5 minutes
-  });
+  for (const pending of pendings) {
+    const ageMin = (Date.now() - new Date(pending.created_at).getTime()) / 60000;
+    if (ageMin < 10 || _alertedPendings.has(pending.id)) continue;
+    _alertedPendings.add(pending.id);
 
-  if (!stale.length) return;
-  console.log(`[poll] ${stale.length} unconfirmed payment(s) older than 5 min — confirming`);
+    const total = pending.order_data?.total;
+    console.log(`[poll] stale pending payment for ${pending.phone} (${Math.round(ageMin)}m${total ? `, ₪${total}` : ''}) — no Cardcom confirmation, alerting vendor`);
+    vendorAlerts.alerts.stalePayment(pending.phone, total).catch(() => {});
+  }
 
-  for (const pending of stale) {
-    try {
-      const { saveOrder } = require('./services/supabase');
-      const { sendMessage } = require('./services/greenapi');
-      const orderData = pending.order_data;
-
-      const { orderNumber } = await saveOrder({
-        phone:           pending.phone,
-        customer_name:   orderData.customer_name  || null,
-        customer_phone:  orderData.customer_phone || null,
-        items:           orderData.items          || [],
-        delivery_method: orderData.delivery_method,
-        address:         orderData.address        || null,
-        notes:           orderData.notes          || null,
-        payment_method:  'credit',
-        payment_status:  'paid',
-        cardcom_code:    pending.cardcom_code,
-        total_price:     orderData.total,
-        status:          'new',
-        tenant_id:       pending.tenant_id || orderData.tenant_id || process.env.TENANT_ID,
-      });
-
-      await deletePendingPayment(pending.id);
-
-      const tenantId = pending.tenant_id || orderData.tenant_id || null;
-      await sendMessage(pending.phone,
-        `✅ התשלום התקבל! הזמנה מספר *${orderNumber}* בדרך 🍕\nנעדכן אותך על כל שינוי בסטטוס.`,
-        tenantId
-      ).catch(() => {});
-
-      console.log(`[poll] ✅ Order #${orderNumber} created for ${pending.phone}`);
-    } catch (err) {
-      if (err.message && (err.message.includes('duplicate') || err.message.includes('unique'))) {
-        console.log(`[poll] Already processed for ${pending.phone} — removing orphan`);
-        await deletePendingPayment(pending.id).catch(() => {});
-      } else {
-        console.error(`[poll] Error for ${pending.phone}:`, err.message);
-      }
-    }
+  if (typeof deleteExpiredPendingPayments === 'function') {
+    await deleteExpiredPendingPayments().catch(() => {});
   }
 }
 

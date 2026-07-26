@@ -146,6 +146,15 @@ async function deletePendingPayment(id) {
   await supabase.from('pending_payments').delete().eq('id', id);
 }
 
+/** Delete pending payments past their expiry (no callback ever arrived) */
+async function deleteExpiredPendingPayments() {
+  const { error } = await supabase
+    .from('pending_payments')
+    .delete()
+    .lt('expires_at', new Date().toISOString());
+  if (error) console.error('[supabase] deleteExpiredPendingPayments error:', error.message);
+}
+
 /** Get all pending payments that haven't expired yet */
 async function getAllPendingPayments() {
   const { data, error } = await supabase
@@ -163,7 +172,7 @@ async function saveOrder(orderData) {
   const { data, error } = await supabase
     .from('orders')
     .insert(orderData)
-    .select('id, order_number, customer_name, total_price')
+    .select('*')
     .single();
 
   if (error) throw new Error('Failed to save order: ' + error.message);
@@ -331,6 +340,7 @@ module.exports = {
   getPendingByReturnValue,
   deletePendingPayment,
   getAllPendingPayments,
+  deleteExpiredPendingPayments,
   saveOrder,
   getOrders,
   getOrderById,
