@@ -7,7 +7,6 @@ const path             = require('path');
 const adminRouter      = require('./routes/admin');
 const dashboardApi     = require('./routes/dashboard-api');
 const paymentRouter    = require('./routes/payment');
-const businessBotRouter = require('./routes/business-bot');
 const { handleMessage }        = require('./bot/handler');
 const { handleAdminMessage }   = require('./bot/admin-handler');
 const { getAdminUser }         = require('./services/supabase');
@@ -85,12 +84,6 @@ app.use('/webhook', require('./routes/call-events'));   // POST /webhook/calls/:
 
 // ─── Legacy admin routes ──────────────────────────────────────────────────────
 app.use('/admin', adminRouter);
-
-// ─── Business owner WhatsApp bot ──────────────────────────────────────────────
-if (process.env.GREEN_API_BUSINESS_INSTANCE_ID) {
-  app.use('/webhook/business', businessBotRouter);
-  console.log('[server] Business bot webhook: /webhook/business');
-}
 
 // ─── WhatsApp webhook handler (shared for default + per-tenant routes) ───────
 

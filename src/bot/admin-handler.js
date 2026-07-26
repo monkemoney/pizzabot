@@ -3,7 +3,7 @@
 const { callClaude }         = require('../services/claude');
 const { sendMessage }        = require('../services/greenapi');
 const { getSession, updateSession,
-        getOrders, updateOrderStatus, updateOrder,
+        updateOrderStatus, updateOrder,
         getOrderById }       = require('../services/supabase');
 const settings               = require('../services/settings');
 const { invalidateCache }    = require('../services/menu-service');

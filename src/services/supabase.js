@@ -221,18 +221,6 @@ async function saveOrder(orderData) {
   return { id: data.id, orderNumber: data.order_number, order: data };
 }
 
-async function getOrders(status) {
-  let query = supabase
-    .from('orders')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (status && status !== 'all') query = query.eq('status', status);
-
-  const { data, error } = await query;
-  if (error) throw new Error('Failed to fetch orders: ' + error.message);
-  return data;
-}
 
 async function getOrderById(id) {
   const { data, error } = await supabase
@@ -442,7 +430,6 @@ module.exports = {
   getOrderByCardcomCode,
   deleteExpiredPendingPayments,
   saveOrder,
-  getOrders,
   getOrderById,
   getLastOrderByPhone,
   updateOrderStatus,

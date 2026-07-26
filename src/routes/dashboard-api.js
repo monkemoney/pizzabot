@@ -9,7 +9,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { signDashboard, requireAuth, requireAdmin, requireVendor, requireKitchenOrAdmin, DEFAULT_TENANT_ID } = require('../middleware/auth');
 const sse = require('../services/sse');
 const { cancelDeal } = require('../services/cardcom');
-const { getOrders, getOrderById, updateOrderStatus, updateOrder, updateSession,
+const { getOrderById, updateOrderStatus, updateOrder, updateSession,
         getInboxSessions, setBotActive, markInboxRead } = require('../services/supabase');
 const { notifyStatusChange }              = require('../services/status-notifier');
 const orderState                          = require('../services/order-state');
@@ -178,7 +178,7 @@ router.put('/orders/:id', requireAdmin, async (req, res) => {
   if (!assertTenant(existing, req)) return res.status(404).json({ error: 'Not found' });
 
   const allowed = ['items','address','notes','destination_type','courier_notes',
-                   'delivery_method','total_price'];
+                   'delivery_method','total_price','delivery_fee'];
   const updates = {};
   for (const key of allowed) {
     if (req.body[key] !== undefined) updates[key] = req.body[key];
@@ -996,6 +996,21 @@ router.post('/push-unsubscribe', requireAuth, async (req, res) => {
 });
 
 // ─── Settings ────────────────────────────────────────────────────────────────
+
+// The few business values the dashboard needs to render money correctly.
+// /settings is admin-only, so managers had nothing to read and the client fell
+// back to hardcoded literals — an 18% VAT line and a ₪30 delivery fee printed
+// on every receipt regardless of what the tenant actually charges.
+router.get('/business-config', requireAuth, async (req, res) => {
+  const all = await settings.loadAll(tid(req)).catch(() => ({}));
+  const vat = parseFloat(all.vat_rate);
+  res.json({
+    vat_rate:       Number.isFinite(vat) ? vat : 18,
+    delivery_price: all.delivery_price ?? null,
+    delivery_zones: Array.isArray(all.delivery_zones) ? all.delivery_zones : [],
+    currency:       '₪',
+  });
+});
 
 router.get('/settings', requireAdmin, async (req, res) => {
   const all = await settings.loadAll(tid(req));

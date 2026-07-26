@@ -516,6 +516,11 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
         items:           payload.items           || [],
         delivery_method: payload.delivery_method,
         address:         payload.address         || null,
+        // Recorded at order time so a later change to the zone table cannot
+        // rewrite what this customer was actually charged.
+        delivery_fee:    payload.delivery_method === 'delivery'
+          ? await require('../services/delivery-fee').resolveDeliveryFee(payload.address, tid)
+          : 0,
         notes:           payload.notes           || null,
         payment_method:  isBit ? 'bit' : 'cash',
         payment_status:  isBit ? 'pending' : 'paid',
@@ -612,7 +617,15 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
         phone,
         cardcomCode:  lowProfileCode,
         returnValue,
-        orderData:    { ...payload, tenant_id: tid },
+        orderData:    {
+          ...payload,
+          tenant_id: tid,
+          // Carried through the payment round-trip so the order records what
+          // the zone charged at the time, not what it charges when it lands.
+          delivery_fee: payload.delivery_method === 'delivery'
+            ? await require('../services/delivery-fee').resolveDeliveryFee(payload.address, tid)
+            : 0,
+        },
       });
 
       console.log(`[ai-handler] CREATE_PAYMENT — phone=${phone} tenant=${tid} code=${lowProfileCode} rv=${returnValue} total=${payload.total}`);

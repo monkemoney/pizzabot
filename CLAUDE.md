@@ -148,7 +148,6 @@ pizza-bot/
 │   │   ├── call-events.js        # POST /webhook/calls/:tenantId — VoIP CDR webhook (missed-call recovery)
 │   │   ├── payment.js            # POST /webhook/payment + GET /payment/success (embeds rv= in URL)
 │   │   ├── admin.js              # Legacy /admin/orders (backwards compat)
-│   │   └── business-bot.js       # POST /webhook/business (not yet active)
 │   └── middleware/auth.js        # HMAC-SHA256 sign/verify, requireAuth/Admin/Vendor/KitchenOrAdmin
 ├── public/
 │   ├── index.html                # Login page — routes vendor→/admin, kitchen→/kitchen, others→/dashboard.html
@@ -286,6 +285,15 @@ Status-based, no time limit: cancellable while `status ∈ {'new','scheduled'}` 
 Sender in `admin_users` → admin bot on the same WhatsApp number (sessions keyed `admin:<phone>`). System prompt carries live state: current IL date/time line (answer time questions from it only), open/delivery/payment status, full product+topping availability, active orders (Bit-pending flagged). `reset`/`אפס` clears the session.
 
 ACTION blocks: `SET_AVAILABLE` (checks ALL occurrences of a name — standalone product + per-pizza topping; limits 500/100 to avoid silent truncation; logs updated row ids), `ORDER_STATUS`, `CANCEL_ORDER`, `DISPUTE`, `SET`, `SET_DELIVERY_HOURS`, `UPDATE_PRICE`, `LIST_ORDERS`, `CONFIRM_PAYMENT` (Bit).
+
+### Money Display (2026-07-27)
+
+VAT and the delivery fee were literals in the client — `18%` and `₪30` in four places — and `orders.delivery_fee` did not exist, so the ₪30 fallback was the *only* branch that ever ran: a tenant charging 25 printed 30 on every receipt, which is a tax document with a wrong number on it.
+
+- `orders.delivery_fee` is now recorded **at order time** (`services/delivery-fee.js` resolves it from the tenant's `delivery_zones`, longest city name first so "תל אביב יפו" beats "תל אביב"), and carried through the Cardcom round-trip in `order_data`. Freezing it means a later edit to the zone table cannot rewrite what a customer was charged.
+- `vat_rate` is a per-tenant setting (default 18), edited in הגדרות → מע"מ.
+- `GET /api/business-config` (requireAuth, unlike admin-only `/settings`) serves `vat_rate` + zones so managers' dashboards render money correctly too.
+- When no fee can be determined the line is **omitted** rather than filled with a guess.
 
 ### Stats Correctness (2026-07-27)
 

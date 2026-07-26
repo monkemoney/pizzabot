@@ -35,6 +35,7 @@ function orderPayloadFrom(pending, { verified, dealNumber }) {
     items:                orderData.items           || [],
     delivery_method:      orderData.delivery_method,
     address:              orderData.address         || null,
+    delivery_fee:         orderData.delivery_fee ?? null,
     notes:                orderData.notes           || null,
     payment_method:       'credit',
     payment_status:       verified ? 'paid' : 'pending',

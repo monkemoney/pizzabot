@@ -131,6 +131,7 @@ CREATE TABLE IF NOT EXISTS orders (
   items               JSONB NOT NULL,
   delivery_method     TEXT NOT NULL CHECK (delivery_method IN ('pickup','delivery')),
   address             TEXT,
+  delivery_fee        NUMERIC(10,2),            -- charged fee, frozen at order time
   destination_type    TEXT,
   courier_notes       TEXT,
   notes               TEXT,

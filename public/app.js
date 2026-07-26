@@ -163,6 +163,40 @@ function statusBadge(status, order) {
   return `<span class="badge ${cls}">${STATUS_LABELS[status] || status}${extra}</span>`;
 }
 
+// ─── Money ────────────────────────────────────────────────────────────────────
+// VAT and the delivery fee used to be literals — 18% and ₪30 — in four places,
+// and `delivery_fee` was not even a column, so the ₪30 fallback was the only
+// branch that ever ran. A tenant charging 25 printed 30 on every receipt.
+let _bizConfig = { vat_rate: 18, delivery_price: null, delivery_zones: [] };
+
+async function loadBusinessConfig() {
+  try { _bizConfig = await api('GET', '/business-config'); } catch { /* keep defaults */ }
+}
+
+const vatRate    = () => (Number.isFinite(+_bizConfig.vat_rate) ? +_bizConfig.vat_rate : 18);
+const vatLabel   = () => `${TR('מע"מ')} ${vatRate()}%`;
+const vatOf      = (grossTotal) => grossTotal * vatRate() / (100 + vatRate());
+
+/** The fee recorded on the order; falls back to the tenant's zone table. */
+function deliveryFeeOf(o) {
+  if (!o || o.delivery_method !== 'delivery') return 0;
+  const recorded = parseFloat(o.delivery_fee);
+  if (Number.isFinite(recorded)) return recorded;
+
+  const addr = (o.address || '').toLowerCase();
+  const zones = [..._bizConfig.delivery_zones]
+    .filter(z => z && z.city)
+    .sort((a, b) => String(b.city).length - String(a.city).length);
+  for (const z of zones) {
+    if (addr.includes(String(z.city).trim().toLowerCase())) {
+      const f = parseFloat(z.fee ?? _bizConfig.delivery_price);
+      if (Number.isFinite(f)) return f;
+    }
+  }
+  const flat = parseFloat(_bizConfig.delivery_price);
+  return Number.isFinite(flat) ? flat : null;   // null = unknown, show nothing
+}
+
 // ─── ORDERS ───────────────────────────────────────────────────────────────────
 
 let currentOrders   = [];
@@ -410,8 +444,8 @@ function renderOrderRow(o) {
 
   // ── Financial summary ──
   const total    = parseFloat(o.total_price)||0;
-  const delivery = o.delivery_method==='delivery' ? (parseFloat(o.delivery_fee)||30) : 0;
-  const vat      = total * 18 / 118;
+  const delivery = deliveryFeeOf(o);
+  const vat      = vatOf(total);
 
   // ── Status selector ──
   const statusOpts = Object.entries(STATUS_LABELS).map(([val,label])=>
@@ -472,7 +506,7 @@ function renderOrderRow(o) {
         <div style="margin-bottom:10px">${itemsHtml}</div>
         <div style="font-size:.8rem;display:flex;flex-direction:column;gap:4px;padding:10px;background:var(--bg);border-radius:10px;margin-bottom:14px">
           ${delivery ? `<div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>${TR('משלוח')}</span><span>₪${delivery.toFixed(0)}</span></div>` : ''}
-          <div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>${TR('מע"מ 18%')}</span><span>₪${vat.toFixed(2)}</span></div>
+          <div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>${vatLabel()}</span><span>₪${vat.toFixed(2)}</span></div>
           <div style="display:flex;justify-content:space-between;font-weight:800;font-size:.92rem;border-top:1.5px solid var(--border);padding-top:6px;margin-top:4px">
             <span>${TR('סה"כ')}</span><span>₪${total.toFixed(2)}</span>
           </div>
@@ -1415,9 +1449,9 @@ function printOrder(orderId) {
 
   const items    = o.items || [];
   const subtotal = items.reduce((s, it) => s + (parseFloat(it.price)||0) * (it.quantity||it.qty||1), 0);
-  const delivery = o.delivery_method === 'delivery' ? (parseFloat(o.delivery_fee)||30) : 0;
+  const delivery = deliveryFeeOf(o);
   const total    = parseFloat(o.total_price) || (subtotal + delivery);
-  const vat      = total * 18 / 118;
+  const vat      = vatOf(total);
   const net      = total - vat;
 
   const itemRows = items.map(it => {
@@ -1523,7 +1557,7 @@ function printOrder(orderId) {
   <div class="totals">
     ${delivery ? `<div class="total-row"><span>משלוח</span><span>₪${delivery.toFixed(2)}</span></div>` : ''}
     <div class="total-row"><span>לפני מע"מ</span><span>₪${net.toFixed(2)}</span></div>
-    <div class="total-row"><span>מע"מ 18%</span><span>₪${vat.toFixed(2)}</span></div>
+    <div class="total-row"><span>${vatLabel()}</span><span>₪${vat.toFixed(2)}</span></div>
     <div class="total-row big"><span>סה"כ לתשלום</span><span>₪${total.toFixed(2)}</span></div>
   </div>
 
@@ -1610,10 +1644,10 @@ function removeEditItem(i) {
 }
 
 function updateEditSummary(order) {
-  const deliveryFee = order?.delivery_method === 'delivery' ? (parseFloat(order?.delivery_fee) || 30) : 0;
+  const deliveryFee = deliveryFeeOf(order) || 0;
   const subtotal = _editItems.reduce((s, item) => s + (parseFloat(item.price)||0) * (item.quantity||1), 0);
   const total = subtotal + deliveryFee;
-  const vat   = total * 18 / 118;
+  const vat   = vatOf(total);
 
   document.getElementById('editSubtotal').textContent    = `₪${subtotal.toFixed(2)}`;
   document.getElementById('editDeliveryFee').textContent  = `₪${deliveryFee.toFixed(0)}`;
@@ -1637,7 +1671,9 @@ async function saveOrderEdit() {
   const num    = document.getElementById('editStreetNum').value.trim();
   const addr   = [street, num, city].filter(Boolean).join(', ');
 
-  const deliveryFee = _editOrder.delivery_method === 'delivery' ? 30 : 0;
+  // The fee the order was actually placed with — recomputing it from a literal
+  // rewrote the charged total every time anyone opened the edit modal.
+  const deliveryFee = deliveryFeeOf({ ..._editOrder, address: addr || _editOrder.address }) || 0;
   const subtotal    = _editItems.reduce((s,i) => s+(parseFloat(i.price)||0)*(i.quantity||1), 0);
 
   try {
@@ -1646,6 +1682,7 @@ async function saveOrderEdit() {
       address:          addr || _editOrder.address,
       destination_type: document.getElementById('editDestType').value,
       courier_notes:    document.getElementById('editCourierNotes').value.trim(),
+      delivery_fee:     deliveryFee,
       total_price:      (subtotal + deliveryFee).toFixed(2),
     });
     closeModal('orderEditModal');
@@ -2452,7 +2489,7 @@ function renderSettingsForm(s) {
     phone: ico('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>'),
   };
 
-  const NAV_LABELS = ['פרטי העסק','תשלום','סוגי הזמנה','אישור הזמנות','מתוזמנות','שינויי הזמנות','שיחה עם נציג','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים','שיחות שלא נענו'];
+  const NAV_LABELS = ['פרטי העסק','מע"מ','תשלום','סוגי הזמנה','אישור הזמנות','מתוזמנות','שינויי הזמנות','שיחה עם נציג','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים','שיחות שלא נענו'];
 
   _sCardSeq = 0;
   document.getElementById('settingsForm').innerHTML = `
@@ -2466,6 +2503,16 @@ function renderSettingsForm(s) {
       ${sField('biz_pickup',  'כתובת לאיסוף עצמי', s.pickup_address   || '', 'text', 'רוטשילד 19, תל אביב')}
       ${sField('biz_whatsapp','מספר וואטסאפ להזמנות (בתפריט הציבורי)', s.bot_whatsapp || '', 'tel', '972500000000')}
       ${saveBtn('saveBizInfo')}
+    `)}
+
+    ${sCard(ICONS.pay, 'מע"מ וחיוב', 'שיעור המע"מ המוצג בקבלות ובסיכומי הזמנה', `
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <label style="font-size:.84rem;font-weight:600;min-width:150px">${TR('שיעור מע"מ')}</label>
+        <input type="number" id="vatRate" value="${s.vat_rate ?? 18}" min="0" max="100" step="0.5"
+          style="width:90px;font-weight:700;text-align:center">
+        <span style="font-size:.84rem;color:var(--text-muted)">%</span>
+      </div>
+      ${saveBtn('saveVatRate')}
     `)}
 
     ${sCard(ICONS.pay, 'אמצעי תשלום', 'אילו אמצעי תשלום הבוט מציע ללקוחות', `
@@ -2674,6 +2721,12 @@ async function saveAcceptance() {
   });
   _defaultPrep = Math.max(5, Math.min(120, prep));
   renderSettingsForm(_currentSettings = { ..._currentSettings, order_acceptance: mode, default_prep_minutes: prep, accept_reminder_minutes: remind });
+}
+
+async function saveVatRate() {
+  const v = parseFloat(document.getElementById('vatRate')?.value);
+  await saveSection({ vat_rate: Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : 18 });
+  await loadBusinessConfig();
 }
 
 async function saveHandoffSettings() {
@@ -3293,6 +3346,9 @@ initTheme();
 // Deep link (?tab=orders — used by push-notification clicks), default: orders
 const _urlTab = new URLSearchParams(location.search).get('tab');
 showTab(TABS.includes(_urlTab) ? _urlTab : 'orders');
+
+// Money formatting depends on the tenant's VAT rate and delivery zones
+loadBusinessConfig().then(() => { if (currentOrders.length) filterOrders(); });
 
 // Live updates via SSE; 30s polling stays as fallback
 _ordersConnectSSE();
