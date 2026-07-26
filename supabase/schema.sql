@@ -185,6 +185,14 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS cardcom_code      TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at        TIMESTAMPTZ DEFAULT NOW();
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS destination_type  TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS courier_notes     TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS status_history    JSONB;        -- [{status, at, by}] appended by order-state.js
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS scheduled_for     TIMESTAMPTZ;  -- scheduled orders target time
+-- Acceptance flow (2026-07-26): 'new' = awaiting business approval
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS accepted_at       TIMESTAMPTZ;  -- when the business accepted
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS prep_minutes      INTEGER;      -- ETA given to the customer at accept
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS escalation_level  INTEGER DEFAULT 0;  -- unaccepted-order reminders sent (0-2)
+-- NOTE: live DB CHECK includes 'scheduled' and 'ready' as well:
+-- CHECK (status IN ('new','scheduled','preparing','ready','out_for_delivery','delivered','done','cancelled'))
 
 CREATE INDEX IF NOT EXISTS idx_orders_phone      ON orders(phone);
 CREATE INDEX IF NOT EXISTS idx_orders_status     ON orders(status);
