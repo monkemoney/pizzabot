@@ -61,6 +61,10 @@ const HE2EN = {
   'ממתינות לאישור': 'Awaiting approval',
   'הזמנות ממתינות': 'Orders waiting',
   'אשר הזמנה': 'Accept order',
+  'אשר הזמנה מתוזמנת': 'Confirm pre-order',
+  'מתוזמנת': 'Pre-order',
+  'אישור מתחייב להכנה בשעה זו; ההזמנה תיכנס למטבח אוטומטית לפני המועד':
+    'Confirming commits you to that time; the order enters the kitchen automatically before it',
   'זמן הכנה': 'Prep time',
   'דחה': 'Reject',
   'אזל במלאי': 'Out of stock',

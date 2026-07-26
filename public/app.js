@@ -175,7 +175,7 @@ async function loadOrders() {
   try {
     const data = await api('GET', '/orders');
     currentOrders = data.orders || [];
-    if (currentOrders.some(o => o.status === 'new')) await _loadAvailability();
+    if (currentOrders.some(_awaitingApproval)) await _loadAvailability();
     _orderUIRefresh();
   } catch (err) {
     container.innerHTML = `<div style="padding:20px;color:red">${err.message}</div>`;
@@ -201,7 +201,7 @@ function renderStatusSummaryCards(orders) {
   if (!el) return;
   const counts = {
     total:    orders.length,
-    new:      orders.filter(o => o.status === 'new').length,
+    new:      orders.filter(_awaitingApproval).length,
     preparing:orders.filter(o => o.status === 'preparing').length,
     out:      orders.filter(o => o.status === 'out_for_delivery').length,
     delivered:orders.filter(o => o.status === 'delivered').length,
@@ -611,11 +611,22 @@ async function _loadAvailability() {
   } catch { _availability = _availability || {}; }
 }
 
+// Awaiting the business's approval: immediate orders sitting in 'new', and
+// pre-orders that were booked but never approved.
+function _awaitingApproval(o) {
+  return o.status === 'new' || (o.status === 'scheduled' && !o.accepted_at);
+}
+
 function _incomingAge(o) {
   const min = Math.max(0, Math.floor((Date.now() - new Date(o.created_at).getTime()) / 60000));
   const color = min >= 6 ? '#dc2626' : min >= 3 ? '#d97706' : '#16a34a';
   const bg    = min >= 6 ? '#fef2f2' : min >= 3 ? '#fffbeb' : '#f0fdf4';
   return { min, color, bg };
+}
+
+function _schedLabel(o) {
+  if (!o.scheduled_for) return '';
+  return new Date(o.scheduled_for).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 function _unavailableTag(name) {
@@ -629,6 +640,8 @@ function _unavailableTag(name) {
 function _incomingCard(o) {
   const age = _incomingAge(o);
   const chosen = _prepChoice[o.id] || _defaultPrep;
+  const isScheduled = o.status === 'scheduled';
+  const schedTime   = _schedLabel(o);
 
   const items = (o.items || []).map(it => {
     const qty  = it.quantity || it.qty || 1;
@@ -666,10 +679,13 @@ function _incomingCard(o) {
         <span style="font-weight:900;font-size:1.35rem;color:var(--primary);line-height:1">#${o.order_number}</span>
         <span style="font-weight:700;font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.customer_name || TR('לקוח')}</span>
       </div>
-      <span style="font-size:.8rem;font-weight:800;color:${age.color};background:${age.bg};border-radius:8px;padding:4px 10px;white-space:nowrap">${age.min} ${TR("דק'")}</span>
+      ${isScheduled
+        ? `<span style="font-size:.8rem;font-weight:800;color:#005faa;background:#eff6ff;border-radius:8px;padding:4px 10px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px">${SVG.clock} ${schedTime}</span>`
+        : `<span style="font-size:.8rem;font-weight:800;color:${age.color};background:${age.bg};border-radius:8px;padding:4px 10px;white-space:nowrap">${age.min} ${TR("דק'")}</span>`}
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
       ${methodBadge}${payBadge}
+      ${isScheduled ? `<span class="badge badge-scheduled" style="display:inline-flex;align-items:center;gap:4px">${TR('מתוזמנת')} ${schedTime}</span>` : ''}
       ${o.address ? `<span style="font-size:.74rem;color:var(--text-muted);display:inline-flex;align-items:center;gap:3px">${SVG.pin} ${o.address.slice(0,34)}</span>` : ''}
     </div>
     <div style="flex:1;margin-bottom:6px">${items}</div>
@@ -679,9 +695,10 @@ function _incomingCard(o) {
       <span style="font-weight:800;font-size:1rem">₪${(parseFloat(o.total_price)||0).toFixed(0)}</span>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${chips}</div>
+    ${isScheduled ? `<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:8px">${TR('אישור מתחייב להכנה בשעה זו; ההזמנה תיכנס למטבח אוטומטית לפני המועד')}</div>` : ''}
     <button onclick="acceptOrder('${o.id}')" class="btn btn-primary"
       style="width:100%;padding:12px;font-size:1rem;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px">
-      ${SVG.checkCircle} ${TR('אשר הזמנה')}
+      ${SVG.checkCircle} ${isScheduled ? TR('אשר הזמנה מתוזמנת') : TR('אשר הזמנה')}
     </button>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button onclick="openDisputeModal('${o.id}')" class="btn btn-sm"
@@ -696,7 +713,7 @@ function renderIncomingOrders() {
   const zone = document.getElementById('incomingOrders');
   if (!zone) return;
   const incoming = currentOrders
-    .filter(o => o.status === 'new')
+    .filter(_awaitingApproval)
     .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
   if (!incoming.length) { zone.style.display = 'none'; zone.innerHTML = ''; return; }
@@ -761,7 +778,7 @@ function _ordersConnectSSE() {
     if (!currentOrders.find(x => x.id === o.id)) currentOrders.unshift(o);
     _loadAvailability().then(_orderUIRefresh);
     _orderUIRefresh();
-    if (o.status === 'new') {
+    if (_awaitingApproval(o)) {
       _chime();
       showToast(`🔔 ${TR('הזמנה חדשה')} #${o.order_number}`);
     }
@@ -813,12 +830,12 @@ function _chime() {
 let _titleTimer = null;
 const _origTitle = document.title;
 function _titleFlashSync() {
-  const n = currentOrders.filter(o => o.status === 'new').length;
+  const n = currentOrders.filter(_awaitingApproval).length;
   if (n > 0 && !_titleTimer) {
     let flip = false;
     _titleTimer = setInterval(() => {
       flip = !flip;
-      const count = currentOrders.filter(o => o.status === 'new').length;
+      const count = currentOrders.filter(_awaitingApproval).length;
       document.title = flip && count > 0 ? `🔔 (${count}) ${TR('הזמנות ממתינות')}` : _origTitle;
     }, 1500);
   } else if (n === 0 && _titleTimer) {
@@ -2842,7 +2859,7 @@ function initTheme() {
 // ─── Notifications ────────────────────────────────────────────────────────────
 
 function updateNotifBadge() {
-  const newOrders = currentOrders.filter(o => o.status === 'new').length;
+  const newOrders = currentOrders.filter(_awaitingApproval).length;
   ['notifBadge', 'notifBadgeMobile'].forEach(id => {
     const badge = document.getElementById(id);
     if (!badge) return;
@@ -2856,12 +2873,13 @@ function updateNotifBadge() {
 }
 
 function toggleNotifPanel() {
-  const newOrders = currentOrders.filter(o => o.status === 'new');
+  const newOrders = currentOrders.filter(_awaitingApproval);
   if (!newOrders.length) { showToast(TR('אין הזמנות חדשות')); return; }
-  // Switch to orders tab filtered to 'new'
+  // Jump to the incoming-orders zone — it holds both 'new' and unaccepted
+  // pre-orders, which a single status filter can't show together.
   showTab('orders');
-  const sf = document.getElementById('statusFilter');
-  if (sf) { sf.value = 'new'; filterOrders(); }
+  requestAnimationFrame(() =>
+    document.getElementById('incomingOrders')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
 }
 
 // ─── Kitchen Window ───────────────────────────────────────────────────────────
@@ -3234,7 +3252,7 @@ setInterval(() => {
   if (document.getElementById('page-orders').style.display !== 'none') loadOrders();
 }, 30_000);
 // Refresh incoming-card aging timers every 30s even without data changes
-setInterval(() => { if (currentOrders.some(o => o.status === 'new')) renderIncomingOrders(); }, 30_000);
+setInterval(() => { if (currentOrders.some(_awaitingApproval)) renderIncomingOrders(); }, 30_000);
 
 // Default prep-time for the accept quick-picks (settings are admin-only; managers get the default)
 if (role === 'admin') {

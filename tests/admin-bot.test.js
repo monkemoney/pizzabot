@@ -138,6 +138,15 @@ jest.mock('../src/services/order-state', () => ({
     order.status = 'preparing';
     return { ...order, prep_minutes: opts.prepMinutes };
   }),
+  confirmPayment: jest.fn(async (id) => {
+    const order = dbRows.orders.find(o => o.id === id);
+    if (!order) { const e = new Error('הזמנה לא נמצאה'); e.code = 'ORDER_NOT_FOUND'; throw e; }
+    if (order.payment_status === 'paid') return { order, changed: false };
+    order.payment_status = 'paid';
+    updateLog.push({ table: 'orders', vals: { payment_status: 'paid' }, filter: { id } });
+    sendLog.push({ phone: order.phone, text: `✅ קיבלנו את התשלום ב${order.payment_method === 'bit' ? 'Bit' : 'מזומן'}! (הזמנה מספר *${order.order_number}*)` });
+    return { order, changed: true };
+  }),
   afterCreate: jest.fn(async () => 'manual'),
   notifyAdminsNewOrder: jest.fn(async () => {}),
   getAcceptanceMode: jest.fn(async () => 'manual'),

@@ -423,18 +423,21 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
         case 'CONFIRM_PAYMENT': {
           const { order_number } = payload;
           const { data: ord } = await supabase
-            .from('orders').select('*').eq('order_number', order_number).eq('tenant_id', tenantId).single();
+            .from('orders').select('id').eq('order_number', order_number).eq('tenant_id', tenantId).single();
           if (!ord) { results.push(`❌ הזמנה #${order_number} לא נמצאה`); break; }
-          if (ord.payment_status === 'paid') { results.push(`⚠️ הזמנה #${order_number} כבר שולמה`); break; }
-          await supabase.from('orders').update({
-            payment_status: 'paid', updated_at: new Date().toISOString(),
-          }).eq('id', ord.id);
-          const method = ord.payment_method === 'bit' ? 'Bit' : 'מזומן';
-          await sendMessage(ord.phone,
-            `✅ קיבלנו את התשלום ב${method}! הזמנה מספר *${order_number}* אושרה — מתחילים להכין 🍕`,
-            tenantId
-          ).catch(() => {});
-          results.push(`✅ תשלום ${method} אושר להזמנה #${order_number} — הלקוח עודכן`);
+          // Single path: marks paid, broadcasts SSE, notifies the customer and
+          // releases the order in auto-acceptance tenants.
+          const orderStatePay = require('../services/order-state');
+          try {
+            const { order, changed } = await orderStatePay.confirmPayment(ord.id, { by: 'admin-bot' });
+            const method = order.payment_method === 'bit' ? 'Bit' : 'מזומן';
+            if (!changed) { results.push(`⚠️ הזמנה #${order_number} כבר שולמה`); break; }
+            const stillPending = ['new', 'scheduled'].includes(order.status) && !order.accepted_at;
+            results.push(`✅ תשלום ${method} אושר להזמנה #${order_number} — הלקוח עודכן` +
+              (stillPending ? ` (עדיין ממתינה לאישור — "אשר ${order_number}")` : ''));
+          } catch (err) {
+            results.push(`⚠️ הזמנה #${order_number}: ${err.message}`);
+          }
           break;
         }
 
@@ -491,6 +494,10 @@ async function handleOrderShortcut(interactiveId, textMessage, tenantId, phone) 
       tenantId, 'השב: אשר <מספר הזמנה> <דקות> דק');
     return true;
   }
+  if ((m = id.match(/^confirmpay:([\w-]+)$/))) {
+    await confirmPaymentFor(m[1], tenantId, phone);
+    return true;
+  }
   if (id.match(/^orderissue:[\w-]+$/)) {
     await reply(phone,
       'כתוב מה הבעיה ואני אטפל:\n• "אין <פריט> בהזמנה <מספר>" — נודיע ללקוח ונציע חלופות\n• "בטל הזמנה <מספר>" — ביטול מלא (כולל זיכוי אם שולם)',
@@ -506,7 +513,36 @@ async function handleOrderShortcut(interactiveId, textMessage, tenantId, phone) 
     await acceptWith(ord.id, m[2] ? parseInt(m[2], 10) : await orderState.getDefaultPrepMinutes(tenantId));
     return true;
   }
+
+  // Text fallback for the Bit confirmation: "שולם 1026"
+  if ((m = (textMessage || '').trim().match(/^שולם\s+(\d{3,6})$/))) {
+    const { data: ord } = await supabase.from('orders').select('id')
+      .eq('order_number', parseInt(m[1], 10)).eq('tenant_id', tenantId).single();
+    if (!ord) { await reply(phone, `❌ הזמנה #${m[1]} לא נמצאה`, tenantId); return true; }
+    await confirmPaymentFor(ord.id, tenantId, phone);
+    return true;
+  }
   return false;
+}
+
+/** Shared by the confirmpay button, the "שולם <num>" text and CONFIRM_PAYMENT. */
+async function confirmPaymentFor(orderId, tenantId, phone) {
+  const orderState = require('../services/order-state');
+  try {
+    const { order, changed } = await orderState.confirmPayment(orderId, { by: 'admin-whatsapp' });
+    if (!changed) {
+      await reply(phone, `⚠️ הזמנה #${order.order_number} כבר מסומנת כשולמה`, tenantId);
+      return;
+    }
+    const pending = ['new', 'scheduled'].includes(order.status) && !order.accepted_at;
+    await reply(phone,
+      `💰 תשלום אושר להזמנה #${order.order_number} — הלקוח עודכן.` +
+      (pending ? `\nההזמנה עדיין ממתינה לאישור שלך — השב *אשר ${order.order_number}*.` : ''),
+      tenantId);
+  } catch (err) {
+    const msg = err.code === 'ORDER_NOT_FOUND' ? '❌ הזמנה לא נמצאה' : `⚠️ שגיאה באישור התשלום: ${err.message}`;
+    await reply(phone, msg, tenantId);
+  }
 }
 
 async function handleAdminMessage(phone, userMessage, adminUser, tenantId = DEFAULT_TENANT_ID, interactiveId = null) {

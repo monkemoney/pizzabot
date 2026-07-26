@@ -239,6 +239,27 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
       getLastOrderByPhone(phone, tid),
       settings.get('allow_order_edits', tid),
     ]);
+
+    // "שילמתי" on an unpaid Bit order — the bot asked for this reply, so handle
+    // it deterministically. We cannot verify a Bit transfer, so this only asks
+    // the admins to confirm; nothing here marks the order paid.
+    if (lastOrder && lastOrder.payment_method === 'bit' && lastOrder.payment_status !== 'paid'
+        && !['cancelled', 'done'].includes(lastOrder.status)) {
+      const paidKeywords = ['שילמתי', 'שולם', 'העברתי', 'ביצעתי תשלום', 'paid', 'i paid', 'sent the money'];
+      const claimsPaid = paidKeywords.some((k) => userMessage.toLowerCase().includes(k));
+      if (claimsPaid) {
+        const lang = detectLang(userMessage, []);
+        const orderState = require('../services/order-state');
+        const relayed = await orderState.notifyAdminsPaymentClaim(lastOrder).catch(() => false);
+        const msg = lang === 'en'
+          ? `Thanks! We've asked the restaurant to confirm the Bit transfer for order *#${lastOrder.order_number}*.\nYou'll get a confirmation as soon as they verify it.`
+          : `תודה! ביקשנו מהעסק לאמת את התשלום ב-Bit להזמנה *#${lastOrder.order_number}*.\nתקבל אישור ברגע שהתשלום יאומת.`;
+        await reply(phone, msg, tid);
+        if (!relayed) console.warn(`[ai-handler] payment claim for #${lastOrder.order_number} — tenant ${tid} has no admin_users to notify`);
+        return;
+      }
+    }
+
     // Editable only while the order hasn't started preparing yet ('new' or 'scheduled').
     // The moment the kitchen moves it to 'preparing', the customer can no longer change/cancel it.
     if (lastOrder && ['new', 'scheduled'].includes(lastOrder.status) && editsAllowed !== false) {
@@ -447,13 +468,25 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
 
       const lang = detectLang(userMessage, history);
 
+      // Acceptance flow — every creation path goes through it: manual (default)
+      // leaves the order awaiting approval and WhatsApps the admins; auto
+      // accepts immediately and sends the approval + ETA message itself.
+      // Bit orders defer both until the payment is confirmed.
+      const orderState = require('../services/order-state');
+      const mode = await orderState.afterCreate(savedOrder, { lang, notifyAdmins: true });
+      const awaitingApproval = mode === 'manual';
+
       if (isScheduled) {
         const timeStr = payload.scheduled_for;
-        const allSettings = await settings.loadAll(tid);
-        const lead = allSettings.prep_lead_time ?? 45;
+        const tailHe = awaitingApproval
+          ? '\nנשלחה למסעדה לאישור — נעדכן אותך ברגע שתאושר.'
+          : '\nנתחיל להכין בזמן.';
+        const tailEn = awaitingApproval
+          ? "\nSent to the restaurant for approval — we'll update you once it's confirmed."
+          : "\nWe'll start preparing in time.";
         const confirmMsg = lang === 'en'
-          ? `Order *#${orderNumber}* scheduled for ${timeStr}!\nWe'll start preparing ${lead} min before.`
-          : `הזמנה מספר *${orderNumber}* תוזמנה לשעה ${timeStr}!\nנתחיל להכין ${lead} דקות לפני`;
+          ? `Order *#${orderNumber}* scheduled for ${timeStr}!${tailEn}`
+          : `הזמנה מספר *${orderNumber}* תוזמנה לשעה ${timeStr}!${tailHe}`;
         await reply(phone, confirmMsg, tid);
       } else if (isBit) {
         const allSettings = await settings.loadAll(tid);
@@ -462,18 +495,11 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
           ? `Order *#${orderNumber}* saved!\nPlease send ₪${payload.total} via Bit${bitPhone ? ` to ${bitPhone}` : ''}.\nOnce paid, reply *paid*`
           : `הזמנה מספר *${orderNumber}* נשמרה!\nלסיום — שלח *₪${payload.total}* בBit${bitPhone ? ` למספר ${bitPhone}` : ''}.\nלאחר התשלום שלח *שילמתי*`;
         await reply(phone, confirmMsg, tid);
-      } else {
-        // Acceptance flow: manual (default) — the order waits for business
-        // approval; auto — afterCreate() accepts immediately and sends the
-        // approval + ETA message itself, so no extra message is needed here.
-        const orderState = require('../services/order-state');
-        const mode = await orderState.afterCreate(savedOrder, { lang, notifyAdmins: true });
-        if (mode === 'manual') {
-          const confirmMsg = lang === 'en'
-            ? `Order *#${orderNumber}* received and sent to the restaurant for approval ✅\nWe'll update you the moment it's confirmed.`
-            : `הזמנה מספר *${orderNumber}* התקבלה ונשלחה למסעדה לאישור ✅\nנעדכן אותך ברגע שההזמנה תאושר ותיכנס להכנה.`;
-          await reply(phone, confirmMsg, tid);
-        }
+      } else if (awaitingApproval) {
+        const confirmMsg = lang === 'en'
+          ? `Order *#${orderNumber}* received and sent to the restaurant for approval ✅\nWe'll update you the moment it's confirmed.`
+          : `הזמנה מספר *${orderNumber}* התקבלה ונשלחה למסעדה לאישור ✅\nנעדכן אותך ברגע שההזמנה תאושר ותיכנס להכנה.`;
+        await reply(phone, confirmMsg, tid);
       }
 
       await updateSession(phone, { conversation_history: [], pending_order: {} }, tid);

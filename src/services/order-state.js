@@ -104,23 +104,78 @@ async function transition(orderId, to, opts = {}) {
   return { order: updated, changed: true };
 }
 
+/** Scheduled-order time, formatted in Israel time (empty when not scheduled). */
+function scheduledTimeLabel(order) {
+  if (!order?.scheduled_for) return '';
+  return new Date(order.scheduled_for).toLocaleTimeString('he-IL', {
+    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem', hour12: false,
+  });
+}
+
 /**
- * Business approves an order: new/scheduled → preparing, stamps accepted_at +
- * prep_minutes, sends the customer the approval message with the ETA.
+ * Business approves an order.
+ *
+ * Immediate orders (`new`) → preparing, with the prep-time ETA to the customer.
+ * Pre-orders (`scheduled`) stay `scheduled` — approving one means "we commit to
+ * making it at that time"; the scheduler promotes it to preparing at
+ * scheduled_for − prep_lead_time. Either way accepted_at + prep_minutes are
+ * stamped, so an unaccepted pre-order is distinguishable from an approved one.
+ *
+ * Idempotent: an already-accepted order returns unchanged with no second
+ * customer message (the dashboard, the KDS and the WhatsApp button can race).
  */
 async function accept(orderId, { prepMinutes = null, by = 'dashboard', lang = 'he' } = {}) {
   const prep = Number(prepMinutes) || null;
+  const now  = new Date().toISOString();
 
+  const { data: existing, error: readErr } = await supabase
+    .from('orders').select('*').eq('id', orderId).single();
+  if (readErr || !existing) throw _err('ORDER_NOT_FOUND', 'הזמנה לא נמצאה');
+  if (existing.accepted_at) return existing;
+
+  const { sendMessage } = require('./greenapi');
+  const tenantId = existing.tenant_id || DEFAULT_TENANT_ID;
+
+  // ── Pre-order: approve in place, no status change ──────────────────────────
+  if (existing.status === 'scheduled') {
+    const history = Array.isArray(existing.status_history) ? [...existing.status_history] : [];
+    history.push({ status: 'accepted', at: now, by });
+
+    const { data: rows, error } = await supabase
+      .from('orders')
+      .update({ accepted_at: now, updated_at: now, status_history: history, ...(prep ? { prep_minutes: prep } : {}) })
+      .eq('id', orderId)
+      .eq('status', 'scheduled')
+      .is('accepted_at', null)
+      .select('*');
+    if (error) throw new Error('order-state accept(scheduled): ' + error.message);
+    if (!rows || !rows.length) {
+      throw _err('CONFLICT', 'ההזמנה עודכנה במקביל על ידי גורם אחר — רענן ונסה שוב');
+    }
+
+    const order = rows[0];
+    sse.broadcast(tenantId, 'order_updated', order);
+
+    const timeStr = scheduledTimeLabel(order);
+    const msg = lang === 'en'
+      ? `✅ Order *#${order.order_number}* is confirmed${timeStr ? ` for ${timeStr}` : ''} — we'll have it ready on time.`
+      : `✅ הזמנה מספר *${order.order_number}* אושרה${timeStr ? ` לשעה ${timeStr}` : ''} — נכין אותה בזמן.`;
+    await sendMessage(order.phone, msg, tenantId)
+      .catch((err) => console.error('[order-state] accept notify error:', err.message));
+
+    console.log(`[order-state] #${order.order_number} accepted (scheduled${timeStr ? ` ${timeStr}` : ''})${by ? ` by ${by}` : ''}`);
+    return order;
+  }
+
+  // ── Immediate order: straight to the kitchen ───────────────────────────────
   const { order, changed } = await transition(orderId, 'preparing', {
     by,
     notify: false, // custom approval message below instead of the generic "preparing"
-    extra: { accepted_at: new Date().toISOString(), ...(prep ? { prep_minutes: prep } : {}) },
+    extra: { accepted_at: now, ...(prep ? { prep_minutes: prep } : {}) },
   });
 
   if (changed) {
-    const tenantId = order.tenant_id || DEFAULT_TENANT_ID;
     const effectivePrep = prep || order.prep_minutes || null;
-    const { sendMessage } = require('./greenapi');
 
     const etaHe = effectivePrep
       ? (order.delivery_method === 'pickup'
@@ -142,6 +197,50 @@ async function accept(orderId, { prepMinutes = null, by = 'dashboard', lang = 'h
   }
 
   return order;
+}
+
+/**
+ * Mark a cash/Bit order as paid — the single path for the dashboard button,
+ * the admin-bot CONFIRM_PAYMENT action and the WhatsApp confirm button.
+ * Guarded on payment_status so two confirmations can't double-fire the
+ * customer message; in auto-acceptance tenants this is what releases a Bit
+ * order into the kitchen (its auto-accept was deferred until payment).
+ */
+async function confirmPayment(orderId, { by = 'dashboard' } = {}) {
+  const now = new Date().toISOString();
+
+  const { data: rows, error } = await supabase
+    .from('orders')
+    .update({ payment_status: 'paid', updated_at: now })
+    .eq('id', orderId)
+    .neq('payment_status', 'paid')
+    .select('*');
+  if (error) throw new Error('order-state confirmPayment: ' + error.message);
+
+  if (!rows || !rows.length) {
+    const { data: existing } = await supabase.from('orders').select('*').eq('id', orderId).single();
+    if (!existing) throw _err('ORDER_NOT_FOUND', 'הזמנה לא נמצאה');
+    return { order: existing, changed: false };
+  }
+
+  const order    = rows[0];
+  const tenantId = order.tenant_id || DEFAULT_TENANT_ID;
+  sse.broadcast(tenantId, 'order_updated', order);
+
+  const mode = await afterCreate(order).catch(() => 'manual');
+
+  const method  = order.payment_method === 'bit' ? 'Bit' : 'מזומן';
+  const pending = ['new', 'scheduled'].includes(order.status) && !order.accepted_at && mode === 'manual';
+  const tail    = pending
+    ? 'ההזמנה ממתינה לאישור המסעדה — נעדכן אותך ברגע שתאושר.'
+    : 'ההזמנה בהכנה 🍕';
+
+  const { sendMessage } = require('./greenapi');
+  await sendMessage(order.phone, `✅ קיבלנו את התשלום ב${method}! (הזמנה מספר *${order.order_number}*)\n${tail}`, tenantId)
+    .catch((err) => console.error('[order-state] confirmPayment notify error:', err.message));
+
+  console.log(`[order-state] #${order.order_number} payment confirmed (${method}, by ${by})`);
+  return { order, changed: true };
 }
 
 /** Per-tenant acceptance mode: 'manual' (default) | 'auto'. */
@@ -176,12 +275,18 @@ async function notifyAdminsNewOrder(order) {
     return `• ${it.name || it.name_he}${qty > 1 ? ` ×${qty}` : ''}${tops.length ? ` (${tops.join(', ')})` : ''}`;
   }).join('\n');
 
-  const payLine = order.payment_status === 'pending'
-    ? '💳 *ממתין לתשלום Bit*'
+  const awaitingBit = order.payment_status === 'pending' && order.payment_method === 'bit';
+  const payLine = awaitingBit
+    ? `💳 *ממתין לתשלום Bit — ₪${order.total_price}*`
     : order.payment_method === 'cash' ? `💵 מזומן — ₪${order.total_price}` : `💳 שולם — ₪${order.total_price}`;
 
+  const timeStr = scheduledTimeLabel(order);
+  const header  = timeStr
+    ? `🔔 *הזמנה מתוזמנת #${order.order_number} לשעה ${timeStr} — ממתינה לאישור*`
+    : `🔔 *הזמנה חדשה #${order.order_number} — ממתינה לאישור*`;
+
   const body = [
-    `🔔 *הזמנה חדשה #${order.order_number} — ממתינה לאישור*`,
+    header,
     `👤 ${order.customer_name || 'לקוח'}`,
     order.delivery_method === 'pickup' ? '🏠 איסוף עצמי' : `🛵 משלוח — ${order.address || ''}`,
     '',
@@ -191,18 +296,66 @@ async function notifyAdminsNewOrder(order) {
     payLine,
   ].filter((l) => l !== null).join('\n');
 
-  const buttons = [
-    { id: `accept:${order.id}`,     title: `✅ אשר (${prep} דק')` },
-    { id: `accepttime:${order.id}`, title: '⏱️ אשר עם זמן אחר' },
-    { id: `orderissue:${order.id}`, title: '⚠️ בעיה בהזמנה' },
-  ];
-  const fallback = body + `\n\nלאישור השב: *אשר ${order.order_number}*\nלאישור עם זמן: *אשר ${order.order_number} 45 דק*\nלבעיה/ביטול — כתוב חופשי.`;
+  // For an unpaid Bit order the first useful action is confirming the transfer
+  // arrived, not approving the order — Meta allows three buttons, so swap it in.
+  const acceptTitle = timeStr ? '✅ אשר הזמנה' : `✅ אשר (${prep} דק')`;
+  const buttons = awaitingBit
+    ? [
+        { id: `confirmpay:${order.id}`, title: '💰 קיבלתי תשלום' },
+        { id: `accept:${order.id}`,     title: acceptTitle },
+        { id: `orderissue:${order.id}`, title: '⚠️ בעיה בהזמנה' },
+      ]
+    : [
+        { id: `accept:${order.id}`,     title: acceptTitle },
+        { id: `accepttime:${order.id}`, title: '⏱️ אשר עם זמן אחר' },
+        { id: `orderissue:${order.id}`, title: '⚠️ בעיה בהזמנה' },
+      ];
+
+  const fallback = body +
+    `\n\nלאישור השב: *אשר ${order.order_number}*` +
+    `\nלאישור עם זמן: *אשר ${order.order_number} 45 דק*` +
+    (awaitingBit ? `\nלאישור קבלת התשלום: *שולם ${order.order_number}*` : '') +
+    `\nלבעיה/ביטול — כתוב חופשי.`;
 
   for (const admin of admins) {
     await sendInteractiveButtons(admin.phone, body, buttons, tenantId, fallback)
       .catch((err) => console.error(`[order-state] admin notify failed (${admin.phone}):`, err.message));
   }
   console.log(`[order-state] #${order.order_number} approval request sent to ${admins.length} admin(s)`);
+}
+
+/**
+ * The customer says they sent the Bit transfer. We cannot verify that, so this
+ * only asks the admins to confirm — it never marks the order paid on its own.
+ */
+async function notifyAdminsPaymentClaim(order) {
+  const tenantId = order.tenant_id || DEFAULT_TENANT_ID;
+  const { getAdminUsers } = require('./supabase');
+  const { sendInteractiveButtons } = require('./greenapi');
+
+  const admins = await getAdminUsers(tenantId);
+  if (!admins.length) return false;
+
+  const body = [
+    `💰 *הלקוח מדווח ששילם — הזמנה #${order.order_number}*`,
+    `👤 ${order.customer_name || 'לקוח'} — ${order.customer_phone || order.phone}`,
+    `סכום: ₪${order.total_price} ב-Bit`,
+    '',
+    'בדקו שהתשלום התקבל ואשרו — רק אז הלקוח יקבל אישור.',
+  ].join('\n');
+
+  const buttons = [
+    { id: `confirmpay:${order.id}`, title: '💰 קיבלתי תשלום' },
+    { id: `orderissue:${order.id}`, title: '⚠️ לא התקבל' },
+  ];
+  const fallback = body + `\n\nלאישור השב: *שולם ${order.order_number}*`;
+
+  for (const admin of admins) {
+    await sendInteractiveButtons(admin.phone, body, buttons, tenantId, fallback)
+      .catch((err) => console.error(`[order-state] payment-claim notify failed (${admin.phone}):`, err.message));
+  }
+  console.log(`[order-state] #${order.order_number} payment claim relayed to ${admins.length} admin(s)`);
+  return true;
 }
 
 /**
@@ -217,17 +370,26 @@ async function afterCreate(order, { lang = 'he', notifyAdmins = false } = {}) {
   const tenantId = order.tenant_id || DEFAULT_TENANT_ID;
   const mode = await getAcceptanceMode(tenantId);
 
-  // Bit orders await payment confirmation first — auto-accept fires from the
-  // confirm-payment path once payment_status becomes 'paid'.
-  if (mode === 'auto' && order.status === 'new' && order.payment_status !== 'pending') {
+  // Both immediate and scheduled orders need approval; an order already
+  // accepted (or past those states) is nothing to do here.
+  const awaitingApproval = ['new', 'scheduled'].includes(order.status) && !order.accepted_at;
+  if (!awaitingApproval) return mode;
+
+  // Bit orders await payment confirmation first — auto-accept fires from
+  // confirmPayment() once the money is confirmed.
+  if (mode === 'auto' && order.payment_status !== 'pending') {
     const prep = await getDefaultPrepMinutes(tenantId);
     await accept(order.id, { prepMinutes: prep, by: 'auto-accept', lang })
       .catch((err) => console.error('[order-state] auto-accept error:', err.message));
-  } else if (mode === 'manual' && order.status === 'new' && notifyAdmins) {
+  } else if (mode === 'manual' && notifyAdmins) {
     await notifyAdminsNewOrder(order)
       .catch((err) => console.error('[order-state] notifyAdminsNewOrder error:', err.message));
   }
   return mode;
 }
 
-module.exports = { TRANSITIONS, STATUSES, transition, accept, afterCreate, notifyAdminsNewOrder, getAcceptanceMode, getDefaultPrepMinutes };
+module.exports = {
+  TRANSITIONS, STATUSES, transition, accept, confirmPayment, afterCreate,
+  notifyAdminsNewOrder, notifyAdminsPaymentClaim, scheduledTimeLabel,
+  getAcceptanceMode, getDefaultPrepMinutes,
+};

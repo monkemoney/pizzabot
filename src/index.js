@@ -232,12 +232,38 @@ setInterval(autoCompleteDeliveredOrders, 60 * 60 * 1000);
 setInterval(pruneOldSessions, 24 * 60 * 60 * 1000); // daily
 
 // ─── Scheduled orders — check every minute ───────────────────────────────────
+// Each tenant's own prep_lead_time decides when its pre-orders enter the
+// kitchen, so we fetch with the widest supported window and filter per order —
+// reading one tenant's setting and applying it to everyone was the old bug.
+const MAX_LEAD_MINUTES  = 120;
+const STALE_ORDER_HOURS = 6;   // past this, a due pre-order is not started blindly
+
 async function processScheduledOrders() {
   try {
-    const lead = (await settings.get('prep_lead_time')) ?? 45;
-    const due  = await getScheduledOrdersDue(Number(lead));
+    const orderState = require('./services/order-state');
+    const { sendMessage } = require('./services/greenapi');
+    const due = await getScheduledOrdersDue(MAX_LEAD_MINUTES);
+
     for (const order of due) {
-      const orderState = require('./services/order-state');
+      const tenantId = order.tenant_id || DEFAULT_TENANT_ID;
+      const lead     = Number(await settings.get('prep_lead_time', tenantId).catch(() => null)) || 45;
+      const minsUntil = (new Date(order.scheduled_for).getTime() - Date.now()) / 60000;
+
+      if (minsUntil > lead) continue;                    // not this tenant's turn yet
+
+      // Post-outage guard: never fire yesterday's dinner into today's kitchen.
+      if (minsUntil < -STALE_ORDER_HOURS * 60) {
+        console.warn(`[scheduler] #${order.order_number} is ${Math.round(-minsUntil / 60)}h past its slot — skipping (needs manual handling)`);
+        continue;
+      }
+
+      // In manual mode a pre-order the business never approved must not start
+      // itself; the escalation loop is already chasing the admins for it.
+      if (!order.accepted_at) {
+        const mode = await orderState.getAcceptanceMode(tenantId);
+        if (mode === 'manual') continue;
+      }
+
       let updated;
       try {
         ({ order: updated } = await orderState.transition(order.id, 'preparing', {
@@ -248,13 +274,11 @@ async function processScheduledOrders() {
         console.warn(`[scheduler] skip #${order.order_number}: ${err.message}`);
         continue;
       }
-      const { sendMessage } = require('./services/greenapi');
-      const timeStr = order.scheduled_for
-        ? new Date(order.scheduled_for).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem', hour12: false })
-        : '';
-      await sendMessage(order.phone, `🍕 הזמנה מספר *${order.order_number}* נכנסה להכנה${timeStr ? ` לקראת השעה ${timeStr}` : ''}!`, order.tenant_id)
+
+      const timeStr = orderState.scheduledTimeLabel(order);
+      await sendMessage(order.phone, `🍕 הזמנה מספר *${order.order_number}* נכנסה להכנה${timeStr ? ` לקראת השעה ${timeStr}` : ''}!`, tenantId)
         .catch(e => console.error('[scheduler] WhatsApp notify error:', e.message));
-      console.log(`[scheduler] order #${order.order_number} → preparing`);
+      console.log(`[scheduler] order #${order.order_number} → preparing (tenant lead ${lead}m)`);
     }
   } catch (err) {
     console.error('[scheduler] error:', err.message);
@@ -273,51 +297,88 @@ async function escalateUnacceptedOrders() {
     const sb = createSB(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const { data: waiting, error } = await sb
       .from('orders').select('*')
-      .eq('status', 'new')
+      .in('status', ['new', 'scheduled'])
+      .is('accepted_at', null)
       .lt('escalation_level', 2)
-      .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+      .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
     if (error || !waiting?.length) return;
 
     const { getAdminUsers } = require('./services/supabase');
     const { sendMessage }   = require('./services/greenapi');
     const pushNotifier      = require('./services/push-notifier');
+    const orderState        = require('./services/order-state');
 
     for (const order of waiting) {
       const tenantId  = order.tenant_id || DEFAULT_TENANT_ID;
-      const ageMin    = (Date.now() - new Date(order.created_at).getTime()) / 60000;
       const remindMin = Number(await settings.get('accept_reminder_minutes', tenantId).catch(() => null)) || 3;
+      const isScheduled = order.status === 'scheduled';
+      const awaitingBit = order.payment_status === 'pending' && order.payment_method === 'bit';
 
-      const targetLevel = ageMin >= remindMin * 3 ? 2 : ageMin >= remindMin ? 1 : 0;
+      // Immediate orders escalate on how long the customer has been waiting;
+      // pre-orders only become urgent as their slot approaches — nagging about
+      // tomorrow's booking three minutes after it was placed is noise.
+      let targetLevel, ageMin = (Date.now() - new Date(order.created_at).getTime()) / 60000, minsUntil = null;
+      if (isScheduled) {
+        if (!order.scheduled_for) continue;
+        const lead = Number(await settings.get('prep_lead_time', tenantId).catch(() => null)) || 45;
+        minsUntil  = (new Date(order.scheduled_for).getTime() - Date.now()) / 60000;
+        targetLevel = minsUntil <= lead ? 2 : minsUntil <= lead + 30 ? 1 : 0;
+      } else {
+        targetLevel = ageMin >= remindMin * 3 ? 2 : ageMin >= remindMin ? 1 : 0;
+      }
       if (targetLevel <= (order.escalation_level || 0)) continue;
 
       // Guarded write — only one process/interval wins the escalation
       const { data: claimed } = await sb.from('orders')
         .update({ escalation_level: targetLevel, updated_at: new Date().toISOString() })
-        .eq('id', order.id).eq('status', 'new')
+        .eq('id', order.id).eq('status', order.status)
         .eq('escalation_level', order.escalation_level || 0)
         .select('id');
       if (!claimed?.length) continue;
 
-      const itemsShort = (order.items || []).map(it => `${it.name || it.name_he}${(it.quantity || it.qty || 1) > 1 ? ` ×${it.quantity || it.qty}` : ''}`).join(', ');
-      const adminMsg = targetLevel === 1
-        ? `🔔 *הזמנה #${order.order_number} ממתינה לאישור כבר ${Math.round(ageMin)} דקות*\n${order.customer_name || 'לקוח'} — ₪${order.total_price}\n${itemsShort}\n\nהיכנסו לדשבורד לאישור ההזמנה 👨‍🍳`
-        : `🚨 *הזמנה #${order.order_number} עדיין לא אושרה (${Math.round(ageMin)} דקות!)*\nהלקוח ממתין — אנא אשרו או בטלו את ההזמנה עכשיו.\n${order.customer_name || 'לקוח'} — ₪${order.total_price}`;
-
       const admins = await getAdminUsers(tenantId);
+      if (!admins.length) {
+        console.warn(`[escalation] #${order.order_number} reached level ${targetLevel} but tenant ${tenantId} has no admin_users`);
+      }
+
+      const itemsShort = (order.items || []).map(it => `${it.name || it.name_he}${(it.quantity || it.qty || 1) > 1 ? ` ×${it.quantity || it.qty}` : ''}`).join(', ');
+      const who        = `${order.customer_name || 'לקוח'} — ₪${order.total_price}`;
+      const timeStr    = orderState.scheduledTimeLabel(order);
+
+      // An unpaid Bit order is waiting on the customer's money, not on the
+      // owner's approval — saying "approve it" would be wrong on both ends.
+      let adminMsg;
+      if (awaitingBit) {
+        adminMsg = targetLevel === 1
+          ? `💳 *הזמנה #${order.order_number} — התשלום ב-Bit טרם התקבל (${Math.round(ageMin)} דקות)*\n${who}\n${itemsShort}\n\nאם הכסף התקבל — השב *שולם ${order.order_number}*.`
+          : `💳 *הזמנה #${order.order_number} עדיין ללא תשלום Bit (${Math.round(ageMin)} דקות)*\n${who}\nשווה לבדוק מול הלקוח או לבטל את ההזמנה.`;
+      } else if (isScheduled) {
+        adminMsg = targetLevel === 1
+          ? `🔔 *הזמנה מתוזמנת #${order.order_number} לשעה ${timeStr} ממתינה לאישור*\n${who}\n${itemsShort}\n\nאשרו כדי שנוכל להתחיל בזמן — השב *אשר ${order.order_number}*.`
+          : `🚨 *הזמנה מתוזמנת #${order.order_number} לשעה ${timeStr} עדיין לא אושרה!*\nזמן ההכנה מתחיל עכשיו — אשרו או בטלו מיד.\n${who}`;
+      } else {
+        adminMsg = targetLevel === 1
+          ? `🔔 *הזמנה #${order.order_number} ממתינה לאישור כבר ${Math.round(ageMin)} דקות*\n${who}\n${itemsShort}\n\nהיכנסו לדשבורד לאישור ההזמנה 👨‍🍳`
+          : `🚨 *הזמנה #${order.order_number} עדיין לא אושרה (${Math.round(ageMin)} דקות!)*\nהלקוח ממתין — אנא אשרו או בטלו את ההזמנה עכשיו.\n${who}`;
+      }
+
       for (const admin of admins) {
         await sendMessage(admin.phone, adminMsg, tenantId).catch(() => {});
       }
 
-      pushNotifier.notifyNewOrder({ ...order, customer_name: `⏰ ממתינה לאישור — ${order.customer_name || 'לקוח'}` }).catch(() => {});
+      const pushLabel = awaitingBit ? '💳 ממתינה לתשלום' : '⏰ ממתינה לאישור';
+      pushNotifier.notifyNewOrder({ ...order, customer_name: `${pushLabel} — ${order.customer_name || 'לקוח'}` }).catch(() => {});
 
       if (targetLevel === 2) {
-        await sendMessage(order.phone,
-          `היי${order.customer_name ? ` ${order.customer_name}` : ''} 🙏 ההזמנה שלך (מספר *${order.order_number}*) התקבלה והעסק יאשר אותה ממש בקרוב. תודה על הסבלנות!`,
-          tenantId
-        ).catch(() => {});
+        // Level 2 reaches the customer — but only with something true for them:
+        // an unpaid Bit order needs a payment nudge, not a "we'll confirm soon".
+        const customerMsg = awaitingBit
+          ? `היי${order.customer_name ? ` ${order.customer_name}` : ''} 🙏 עדיין לא קיבלנו את התשלום ב-Bit להזמנה *#${order.order_number}* (₪${order.total_price}).\nההזמנה ממתינה — ברגע שהתשלום יתקבל נתחיל להכין.`
+          : `היי${order.customer_name ? ` ${order.customer_name}` : ''} 🙏 ההזמנה שלך (מספר *${order.order_number}*) התקבלה והעסק יאשר אותה ממש בקרוב. תודה על הסבלנות!`;
+        await sendMessage(order.phone, customerMsg, tenantId).catch(() => {});
       }
 
-      console.log(`[escalation] order #${order.order_number} → level ${targetLevel} (${Math.round(ageMin)}m, ${admins.length} admins notified)`);
+      console.log(`[escalation] #${order.order_number} → level ${targetLevel} (${isScheduled ? `${Math.round(minsUntil)}m to slot` : `${Math.round(ageMin)}m old`}${awaitingBit ? ', unpaid Bit' : ''}, ${admins.length} admins)`);
     }
   } catch (err) {
     console.error('[escalation] error:', err.message);

@@ -10,7 +10,7 @@ const { signDashboard, requireAuth, requireAdmin, requireVendor, requireKitchenO
 const sse = require('../services/sse');
 const { cancelDeal } = require('../services/cardcom');
 const { getOrders, getOrderById, updateOrderStatus, updateOrder, updateSession,
-        autoCompleteDeliveredOrders, getInboxSessions, setBotActive, markInboxRead } = require('../services/supabase');
+        getInboxSessions, setBotActive, markInboxRead } = require('../services/supabase');
 const { notifyStatusChange }              = require('../services/status-notifier');
 const orderState                          = require('../services/order-state');
 const settings                            = require('../services/settings');
@@ -94,7 +94,8 @@ router.post('/auth/login', loginLimiter, async (req, res) => {
 
 router.get('/orders', requireAuth, async (req, res) => {
   try {
-    await autoCompleteDeliveredOrders();
+    // The delivered→done sweep runs on its own hourly schedule (index.js) —
+    // it used to run here too, i.e. twice a minute per open dashboard.
 
     let query = supabase.from('orders').select('*')
       .eq('tenant_id', tid(req))
@@ -272,30 +273,20 @@ router.post('/orders/:id/cancel-refund', requireAdmin, async (req, res) => {
 router.post('/orders/:id/confirm-payment', requireAdmin, async (req, res) => {
   const order = await getOrderById(req.params.id);
   if (!order || !assertTenant(order, req)) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
-  if (order.payment_status === 'paid') return res.status(400).json({ error: 'ההזמנה כבר שולמה' });
 
-  const { data: paidOrder, error } = await supabase.from('orders').update({
-    payment_status: 'paid',
-    updated_at:     new Date().toISOString(),
-  }).eq('id', order.id).select('*').single();
-
-  if (error) return res.status(500).json({ error: error.message });
-
-  sse.broadcast(tid(req), 'order_updated', paidOrder);
-
-  // Auto-acceptance tenants: a Bit order deferred its auto-accept until payment
-  // confirmation — fire it now (no-op for manual tenants / non-new statuses).
-  const acceptMode = await orderState.afterCreate(paidOrder).catch(() => 'manual');
-
-  // Notify customer — wording depends on whether the order awaits approval
-  const method  = order.payment_method === 'bit' ? 'Bit' : 'מזומן';
-  const tailMsg = (paidOrder.status === 'new' && acceptMode === 'manual')
-    ? 'ההזמנה ממתינה לאישור המסעדה — נעדכן אותך ברגע שתאושר.'
-    : 'ההזמנה בהכנה 🍕';
-  await sendMessage(order.phone, `✅ קיבלנו את התשלום ב${method}! (הזמנה מספר *${order.order_number}*)\n${tailMsg}`, tid(req)).catch(() => {});
-
-  console.log(`[confirm-payment] Order #${order.order_number} payment confirmed by admin`);
-  res.json({ success: true });
+  try {
+    // Single path (shared with the admin bot and the WhatsApp button): marks
+    // paid, broadcasts SSE, notifies the customer, and in auto-acceptance
+    // tenants releases the Bit order whose accept was deferred until payment.
+    const { order: paidOrder, changed } = await orderState.confirmPayment(order.id, {
+      by: req.user.role || 'dashboard',
+    });
+    if (!changed) return res.status(400).json({ error: 'ההזמנה כבר שולמה' });
+    res.json({ success: true, order: paidOrder });
+  } catch (err) {
+    if (err.code === 'ORDER_NOT_FOUND') return res.status(404).json({ error: err.message });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── Item Dispute ─────────────────────────────────────────────────────────────

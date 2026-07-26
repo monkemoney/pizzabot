@@ -325,16 +325,27 @@ async function markInboxRead(phone, tenantId = DEFAULT_TENANT_ID) {
   await updateSession(phone, { unread_count: 0 }, tenantId);
 }
 
-// Auto-complete delivered orders older than 1 hour
+// Auto-complete delivered orders older than 1 hour.
+// Goes through the state machine one order at a time: the old bulk UPDATE had
+// no tenant filter (every open dashboard mutated every tenant's orders), wrote
+// no status_history and broadcast no SSE. Volume here is a handful per sweep.
 async function autoCompleteDeliveredOrders() {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('orders')
-    .update({ status: 'done', updated_at: new Date().toISOString() })
+    .select('id, order_number')
     .eq('status', 'delivered')
     .lt('updated_at', oneHourAgo);
 
-  if (error) console.error('[supabase] autoComplete error:', error.message);
+  if (error) { console.error('[supabase] autoComplete query error:', error.message); return; }
+  if (!data?.length) return;
+
+  const orderState = require('./order-state');
+  for (const row of data) {
+    await orderState.transition(row.id, 'done', { by: 'auto-complete', notify: false })
+      .catch((err) => console.error(`[supabase] autoComplete #${row.order_number}:`, err.message));
+  }
+  console.log(`[supabase] autoComplete: ${data.length} delivered order(s) → done`);
 }
 
 module.exports = {
@@ -368,9 +379,11 @@ module.exports = {
 
 async function getScheduledOrdersDue(leadMinutes) {
   const cutoff = new Date(Date.now() + leadMinutes * 60 * 1000).toISOString();
+  // Full row — the scheduler needs accepted_at (approval gate) and tenant_id
+  // (per-tenant lead time) as well as the notification fields.
   const { data, error } = await supabase
     .from('orders')
-    .select('id, order_number, phone, tenant_id, scheduled_for')
+    .select('*')
     .eq('status', 'scheduled')
     .lte('scheduled_for', cutoff);
   if (error) { console.error('[scheduler] query error:', error.message); return []; }

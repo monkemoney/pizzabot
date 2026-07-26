@@ -43,11 +43,16 @@ jest.mock('@supabase/supabase-js', () => ({
         },
         update: (vals) => {
           _updateVals = vals;
+          const preds = [];
           const u = {
-            eq: (col, val) => { _filters[col] = val; return u; },
+            eq:  (col, val) => { _filters[col] = val; preds.push((r) => r[col] === val); return u; },
+            neq: (col, val) => { preds.push((r) => r[col] !== val); return u; },
+            is:  (col, val) => {
+              preds.push((r) => (val === null ? (r[col] === null || r[col] === undefined) : r[col] === val));
+              return u;
+            },
             select: async () => {
-              const row = Object.values(mockOrders).find(r =>
-                Object.entries(_filters).every(([k, v]) => r[k] === v));
+              const row = Object.values(mockOrders).find((r) => preds.every((p) => p(r)));
               mockUpdateCalls.push({ vals: { ..._updateVals }, filters: { ..._filters } });
               if (!row) return { data: [], error: null };
               Object.assign(row, _updateVals);
@@ -66,9 +71,6 @@ const mockSseBroadcast = jest.fn();
 jest.mock('../src/services/sse', () => ({ broadcast: (...a) => mockSseBroadcast(...a) }));
 
 const mockSendLog = [];
-jest.mock('../src/services/greenapi', () => ({
-  sendMessage: jest.fn(async (phone, text) => { mockSendLog.push({ phone, text }); }),
-}));
 
 const mockNotify = jest.fn(async () => {});
 jest.mock('../src/services/status-notifier', () => ({
@@ -80,13 +82,28 @@ jest.mock('../src/services/settings', () => ({
   get: jest.fn(async (key) => mockSettingsValues[key] ?? null),
 }));
 
+let mockAdmins = [];
+jest.mock('../src/services/supabase', () => ({
+  getAdminUsers: jest.fn(async () => mockAdmins),
+}));
+
+const mockButtonLog = [];
+jest.mock('../src/services/greenapi', () => ({
+  sendMessage: jest.fn(async (phone, text) => { mockSendLog.push({ phone, text }); }),
+  sendInteractiveButtons: jest.fn(async (phone, body, buttons) => {
+    mockButtonLog.push({ phone, body, ids: buttons.map((b) => b.id.split(':')[0]) });
+  }),
+}), { virtual: false });
+
 const orderState = require('../src/services/order-state');
 
 beforeEach(() => {
   for (const k of Object.keys(mockOrders)) delete mockOrders[k];
   mockUpdateCalls = [];
   mockSendLog.length = 0;
+  mockButtonLog.length = 0;
   mockSettingsValues = {};
+  mockAdmins = [];
   mockSseBroadcast.mockClear();
   mockNotify.mockClear();
 });
@@ -171,6 +188,107 @@ describe('accept', () => {
     const o = seedOrder({ status: 'cancelled' });
     await expect(orderState.accept(o.id, { prepMinutes: 30 }))
       .rejects.toMatchObject({ code: 'INVALID_TRANSITION' });
+  });
+
+  test('accepting a pre-order stamps it but keeps status scheduled', async () => {
+    const at = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const o = seedOrder({ status: 'scheduled', scheduled_for: at });
+
+    const order = await orderState.accept(o.id, { prepMinutes: 35, by: 'dashboard' });
+
+    expect(order.status).toBe('scheduled');          // the scheduler promotes it, not accept()
+    expect(order.accepted_at).toBeTruthy();
+    expect(order.prep_minutes).toBe(35);
+    expect(order.status_history.at(-1)).toMatchObject({ status: 'accepted', by: 'dashboard' });
+    expect(mockSseBroadcast).toHaveBeenCalled();
+    expect(mockSendLog[0].text).toContain('אושרה');
+    expect(mockSendLog[0].text).not.toContain('התחלנו להכין');
+  });
+
+  test('accept is idempotent — a second call sends no second message', async () => {
+    const o = seedOrder();
+    await orderState.accept(o.id, { prepMinutes: 30 });
+    expect(mockSendLog).toHaveLength(1);
+
+    const again = await orderState.accept(o.id, { prepMinutes: 45 });
+    expect(mockSendLog).toHaveLength(1);
+    expect(again.prep_minutes).toBe(30);             // first decision stands
+  });
+});
+
+// ── confirmPayment ───────────────────────────────────────────────────────────
+
+describe('confirmPayment', () => {
+  test('marks a pending Bit order paid, broadcasts and tells the customer it awaits approval', async () => {
+    const o = seedOrder({ payment_method: 'bit', payment_status: 'pending' });
+    const { order, changed } = await orderState.confirmPayment(o.id, { by: 'dashboard' });
+
+    expect(changed).toBe(true);
+    expect(order.payment_status).toBe('paid');
+    expect(mockSseBroadcast).toHaveBeenCalled();
+    expect(mockSendLog[0].text).toContain('קיבלנו את התשלום');
+    expect(mockSendLog[0].text).toContain('ממתינה לאישור');
+  });
+
+  test('is idempotent — an already-paid order reports changed:false and sends nothing', async () => {
+    const o = seedOrder({ payment_method: 'bit', payment_status: 'paid' });
+    const { changed } = await orderState.confirmPayment(o.id);
+    expect(changed).toBe(false);
+    expect(mockSendLog).toHaveLength(0);
+  });
+
+  test('auto mode: confirming payment releases the deferred accept', async () => {
+    mockSettingsValues.order_acceptance = 'auto';
+    mockSettingsValues.default_prep_minutes = 20;
+    const o = seedOrder({ payment_method: 'bit', payment_status: 'pending' });
+
+    await orderState.confirmPayment(o.id);
+
+    expect(mockOrders[o.id].status).toBe('preparing');
+    expect(mockOrders[o.id].prep_minutes).toBe(20);
+  });
+});
+
+// ── admin notifications ──────────────────────────────────────────────────────
+
+describe('admin approval requests', () => {
+  test('unpaid Bit orders lead with the payment-confirmation button', async () => {
+    mockAdmins = [{ phone: '972502222222' }];
+    const o = seedOrder({ payment_method: 'bit', payment_status: 'pending' });
+
+    await orderState.notifyAdminsNewOrder(o);
+
+    expect(mockButtonLog).toHaveLength(1);
+    expect(mockButtonLog[0].ids[0]).toBe('confirmpay');
+    expect(mockButtonLog[0].body).toContain('ממתין לתשלום Bit');
+  });
+
+  test('pre-orders announce their slot in the header', async () => {
+    mockAdmins = [{ phone: '972502222222' }];
+    const at = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const o = seedOrder({ status: 'scheduled', scheduled_for: at });
+
+    await orderState.notifyAdminsNewOrder(o);
+
+    expect(mockButtonLog[0].body).toContain('מתוזמנת');
+    expect(mockButtonLog[0].ids).toEqual(['accept', 'accepttime', 'orderissue']);
+  });
+
+  test('a payment claim only asks admins to verify — it never marks the order paid', async () => {
+    mockAdmins = [{ phone: '972502222222' }];
+    const o = seedOrder({ payment_method: 'bit', payment_status: 'pending' });
+
+    const relayed = await orderState.notifyAdminsPaymentClaim(o);
+
+    expect(relayed).toBe(true);
+    expect(mockButtonLog[0].ids).toContain('confirmpay');
+    expect(mockOrders[o.id].payment_status).toBe('pending');
+  });
+
+  test('no admins configured is reported, not silently swallowed', async () => {
+    mockAdmins = [];
+    const o = seedOrder({ payment_method: 'bit', payment_status: 'pending' });
+    expect(await orderState.notifyAdminsPaymentClaim(o)).toBe(false);
   });
 });
 
