@@ -33,15 +33,29 @@ async function apiFetch(path, opts = {}) {
 let _orders = {};   // id → order
 
 // ── Render ────────────────────────────────────────────────────────────────────
-function elapsedLabel(createdAt) {
-  const mins = Math.floor((Date.now() - new Date(createdAt)) / 60000);
+// Timer basis (aligned with the dashboard kitchen tab): preparing/ready count
+// from the moment the order entered 'preparing' (status_history), so the timer
+// measures kitchen time — not how long the customer waited for approval.
+// 'new' orders count from creation (that IS the approval wait).
+function timerBase(order) {
+  if (order.status !== 'new') {
+    const hist = Array.isArray(order.status_history) ? order.status_history : [];
+    const prep = hist.filter(h => h.status === 'preparing').pop();
+    if (prep?.at) return prep.at;
+  }
+  return order.created_at;
+}
+
+function elapsedLabel(since) {
+  const mins = Math.floor((Date.now() - new Date(since)) / 60000);
   if (mins < 1)  return TR('הרגע');
   if (mins < 60) return `${mins} ${TR("דק'")}`;
   return `${Math.floor(mins / 60)}${TR("ש'")} ${mins % 60}${TR("דק'")}`;
 }
 
 function renderCard(order) {
-  const isUrgent = (Date.now() - new Date(order.created_at)) > 20 * 60000;
+  const base = timerBase(order);
+  const isUrgent = (Date.now() - new Date(base)) > (order.status === 'new' ? 5 : 20) * 60000;
   const items = (order.items || []).map(it => {
     const qty   = it.quantity || it.qty || 1;
     const tops  = (it.toppings || []).map(t => t.name || t.name_he).filter(Boolean).join(', ');
@@ -66,7 +80,9 @@ function renderCard(order) {
 
   let actions = '';
   if (order.status === 'new') {
-    actions = `<button class="btn-action btn-prep" onclick="setStatus('${order.id}','preparing')">${ICO_FLAME} ${TR('בתנור')}</button>`;
+    // Accepting from the KDS is a real approval: customer gets the
+    // confirmation + prep-time message, accepted_at is stamped.
+    actions = `<button class="btn-action btn-prep" onclick="acceptOrder('${order.id}')">${ICO_CHECK} ${TR('אשר והתחל הכנה')}</button>`;
   } else if (order.status === 'preparing') {
     actions = `<button class="btn-action btn-ready" onclick="setStatus('${order.id}','ready')">${ICO_CHECK} ${TR('מוכן')}</button>`;
   }
@@ -75,7 +91,7 @@ function renderCard(order) {
     <div class="order-card" id="card-${order.id}">
       <div class="card-head">
         <span class="card-num">#${order.order_number}</span>
-        <span class="card-timer ${isUrgent ? 'urgent' : ''}">${elapsedLabel(order.created_at)}</span>
+        <span class="card-timer ${isUrgent ? 'urgent' : ''}">${elapsedLabel(base)}</span>
       </div>
       <span class="card-method ${methodClass}">${methodLabel}</span>
       <ul class="card-items">${items || '<li>—</li>'}</ul>
@@ -102,6 +118,18 @@ function renderAll() {
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
+async function acceptOrder(id) {
+  const btn = document.querySelector(`#card-${id} .btn-action`);
+  if (btn) btn.disabled = true;
+
+  const data = await apiFetch(`/api/orders/${id}/accept`, { method: 'POST', body: JSON.stringify({}) });
+  if (!data) return;
+  if (data.error) { showToast(TR('שגיאה') + ': ' + data.error); if (btn) btn.disabled = false; return; }
+
+  if (data.order) { _orders[id] = data.order; renderAll(); }
+  showToast(TR('הזמנה אושרה — הלקוח עודכן'));
+}
+
 async function setStatus(id, status) {
   const btn = document.querySelector(`#card-${id} .btn-action`);
   if (btn) btn.disabled = true;
@@ -202,9 +230,10 @@ async function init() {
       const id = card.id.replace('card-', '');
       const o  = _orders[id];
       if (!o) return;
-      const mins = Math.floor((Date.now() - new Date(o.created_at)) / 60000);
-      el.textContent = elapsedLabel(o.created_at);
-      el.classList.toggle('urgent', mins > 20);
+      const base = timerBase(o);
+      const mins = Math.floor((Date.now() - new Date(base)) / 60000);
+      el.textContent = elapsedLabel(base);
+      el.classList.toggle('urgent', mins > (o.status === 'new' ? 5 : 20));
     });
   }, 60_000);
 }

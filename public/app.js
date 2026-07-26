@@ -2902,11 +2902,16 @@ function _kitchenCard(o) {
     ? `<button onclick="kitchenSetStatus('${o.id}','ready')" style="width:100%;padding:20px;border:none;border-radius:12px;background:#16a34a;color:#fff;font-size:1.4rem;font-weight:800;cursor:pointer;font-family:inherit">${TR('מוכן')}</button>`
     : '';
 
+  const methodPill = o.delivery_method === 'pickup'
+    ? `<span style="font-size:.95rem;font-weight:700;color:#374151;background:#f3f4f6;border-radius:8px;padding:4px 12px;white-space:nowrap">${SVG.home} ${TR('איסוף')}</span>`
+    : `<span style="font-size:.95rem;font-weight:700;color:#005faa;background:#eff6ff;border-radius:8px;padding:4px 12px;white-space:nowrap">${SVG.truck} ${TR('משלוח')}</span>`;
+
   return `<div id="kitchen-card-${o.id}" style="background:#fff;border-radius:14px;border-right:6px solid ${statusColor};box-shadow:0 2px 10px rgba(0,0,0,.09);padding:20px 24px;margin-bottom:18px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;border-bottom:2px solid #f3f3f3;padding-bottom:14px">
-      <div style="display:flex;align-items:baseline;gap:14px">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
         <span style="font-size:2.2rem;font-weight:900;color:#111;line-height:1">#${o.order_number}</span>
         ${o.customer_name ? `<span style="font-size:1.15rem;color:#666;font-weight:600">${o.customer_name}</span>` : ''}
+        ${methodPill}
       </div>
       <span style="font-size:1.15rem;font-weight:800;color:${t.color};background:${t.bg};border-radius:8px;padding:6px 14px;white-space:nowrap">${t.min > 99 ? '+99' : t.min} ${TR("דק'")}</span>
     </div>
@@ -2945,7 +2950,8 @@ async function loadKitchenOrders() {
     const data = await api('GET', '/kitchen/orders');
     if (!Array.isArray(data)) return;
     _kitchenOrders = {};
-    for (const o of data) _kitchenOrders[o.id] = o;
+    // The dashboard feed shows kitchen work only — approval happens in the orders tab
+    for (const o of data) if (['preparing','ready'].includes(o.status)) _kitchenOrders[o.id] = o;
     renderKitchen();
   } catch (e) {
     console.error('[kitchen] loadKitchenOrders:', e.message);

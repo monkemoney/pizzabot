@@ -865,14 +865,16 @@ router.post('/customers/broadcast', requireAdmin, async (req, res) => {
 
 // ─── Kitchen Window ───────────────────────────────────────────────────────────
 
-// GET /api/kitchen/orders — orders in active kitchen statuses (preparing, ready)
+// GET /api/kitchen/orders — active kitchen statuses. 'new' (awaiting approval)
+// is included for the standalone KDS incoming column; the dashboard kitchen tab
+// filters it out client-side (approval lives in the orders tab there).
 router.get('/kitchen/orders', requireKitchenOrAdmin, async (req, res) => {
   const tid = req.user.tenant_id;
   const { data, error } = await supabase
     .from('orders')
     .select('*')
     .eq('tenant_id', tid)
-    .in('status', ['preparing', 'ready'])
+    .in('status', ['new', 'preparing', 'ready'])
     .order('created_at', { ascending: true });
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);

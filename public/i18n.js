@@ -64,6 +64,8 @@ const HE2EN = {
   'זמן הכנה': 'Prep time',
   'דחה': 'Reject',
   'אזל במלאי': 'Out of stock',
+  'אשר והתחל הכנה': 'Accept & start',
+  'הזמנה אושרה — הלקוח עודכן': 'Order accepted — customer notified',
   'ממתין לתשלום': 'Awaiting payment',
   'אושרה — נשלחה למטבח': 'accepted — sent to kitchen',
   'הזמנה חדשה': 'New order',
