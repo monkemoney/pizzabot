@@ -21,7 +21,7 @@ self.addEventListener('push', (e) => {
       tag:   'new-order-' + orderId,
       renotify: true,
       vibrate:  [200, 100, 200],
-      data: { url: '/?tab=orders' },
+      data: { url: '/dashboard.html?tab=orders' },
       actions: [
         { action: 'open',    title: 'פתח דשבורד' },
         { action: 'dismiss', title: 'סגור'        },

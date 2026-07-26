@@ -497,6 +497,11 @@ input[type=time] { direction: ltr; }
 }
 
 [data-theme="dark"] .sidebar-overlay { background: rgba(0,0,0,.6); }
+/* Incoming-orders pulse dot */
+@keyframes incomingPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: .45; transform: scale(.8); }
+}
 </style>
 </head>
 <body>
@@ -623,6 +628,12 @@ input[type=time] { direction: ltr; }
       </div>
     </div>
 
+    <!-- Push opt-in nudge -->
+    <div id="pushNudge" style="display:none"></div>
+
+    <!-- Incoming orders awaiting approval -->
+    <div id="incomingOrders" style="display:none"></div>
+
     <!-- Status summary strip -->
     <div id="orderStatusCards" class="order-kpi-strip"></div>
 
@@ -634,7 +645,9 @@ input[type=time] { direction: ltr; }
       <select id="statusFilter" class="filter-select" style="font-size:.84rem" onchange="filterOrders()">
         <option value="all" data-tr>כל הסטטוסים</option>
         <option value="new" data-tr>חדשות</option>
+        <option value="scheduled" data-tr>מתוזמנות</option>
         <option value="preparing" data-tr>בהכנה</option>
+        <option value="ready" data-tr>מוכנות</option>
         <option value="out_for_delivery" data-tr>בדרך</option>
         <option value="delivered" data-tr>נמסרו</option>
         <option value="done" data-tr>הסתיימו</option>
@@ -649,6 +662,7 @@ input[type=time] { direction: ltr; }
         <option value="all" data-tr>כל התשלומים</option>
         <option value="cash" data-tr>מזומן</option>
         <option value="credit" data-tr>אשראי</option>
+        <option value="bit" data-tr>ביט</option>
       </select>
       <div class="date-range-row">
         <span class="date-label" data-tr>מ:</span>

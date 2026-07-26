@@ -323,7 +323,14 @@ async function escalateUnacceptedOrders() {
     console.error('[escalation] error:', err.message);
   }
 }
-setInterval(escalateUnacceptedOrders, 60 * 1000);
+// Only on the real deployment (Render sets RENDER=true) — a local dev server
+// pointed at the production DB must never WhatsApp real admins/customers.
+// Local override for testing: ENABLE_ESCALATION=1.
+if (process.env.RENDER || process.env.ENABLE_ESCALATION) {
+  setInterval(escalateUnacceptedOrders, 60 * 1000);
+} else {
+  console.log('[escalation] disabled (not on Render; set ENABLE_ESCALATION=1 to enable locally)');
+}
 
 // ─── Pending payment watchdog (every 2 min) ──────────────────────────────────
 // A pending_payments row only proves a payment LINK was generated — not that the

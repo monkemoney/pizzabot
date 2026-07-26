@@ -57,6 +57,35 @@ const I18N = {
 // tr('עברית') returns the English translation in EN mode, the input otherwise.
 // Missing entries fall back to the Hebrew input — safe to add strings gradually.
 const HE2EN = {
+  // Order acceptance (incoming zone + settings)
+  'ממתינות לאישור': 'Awaiting approval',
+  'הזמנות ממתינות': 'Orders waiting',
+  'אשר הזמנה': 'Accept order',
+  'זמן הכנה': 'Prep time',
+  'דחה': 'Reject',
+  'אזל במלאי': 'Out of stock',
+  'ממתין לתשלום': 'Awaiting payment',
+  'אושרה — נשלחה למטבח': 'accepted — sent to kitchen',
+  'הזמנה חדשה': 'New order',
+  'מתוזמנות': 'Scheduled',
+  'מוכנות': 'Ready',
+  'ביט': 'Bit',
+  'לקוח': 'Customer',
+  'הפעל התראות כדי לא לפספס הזמנות': 'Enable notifications so you never miss an order',
+  'בלי התראות push לא תקבל עדכון על הזמנות חדשות כשהדשבורד סגור': "Without push notifications you won't hear about new orders when the dashboard is closed",
+  'הפעל התראות': 'Enable notifications',
+  'לא עכשיו': 'Not now',
+  'אישור הזמנות': 'Order approval',
+  'אישור ידני (מומלץ)': 'Manual approval (recommended)',
+  'כל הזמנה חדשה ממתינה לאישור שלך. הלקוח מקבל "ההזמנה נשלחה לאישור המסעדה", ורק אחרי שתאשר — הודעת אישור עם זמן הכנה וההזמנה עוברת למטבח.':
+    'Every new order waits for your approval. The customer is told "sent to the restaurant for approval", and only after you accept do they get a confirmation with prep time and the order moves to the kitchen.',
+  'אישור אוטומטי': 'Auto approval',
+  '⚠️ שים לב: כל הזמנה תאושר ללקוח מיד וללא בדיקה שלך, ותעבור ישר למטבח. ודא שהתפריט והמלאי מעודכנים תמיד — הזמנה שאושרה מחייבת אותך כלפי הלקוח.':
+    '⚠️ Note: every order is confirmed to the customer immediately without your review, and goes straight to the kitchen. Keep your menu and stock always up to date — a confirmed order is a commitment to the customer.',
+  'זמן הכנה — ברירת מחדל': 'Default prep time',
+  'דקות': 'minutes',
+  'תזכורת אם הזמנה לא אושרה תוך': 'Remind if an order is not accepted within',
+  'דקות (push + וואטסאפ למנהלים)': 'minutes (push + WhatsApp to admins)',
   // Shared / status
   'חדשה': 'New', 'מתוזמנת': 'Scheduled', 'בהכנה': 'Preparing', 'מוכן': 'Ready',
   'יצא למשלוח': 'Out for delivery', 'נמסרה': 'Delivered', 'הסתיימה': 'Done', 'בוטלה': 'Cancelled',

@@ -175,9 +175,8 @@ async function loadOrders() {
   try {
     const data = await api('GET', '/orders');
     currentOrders = data.orders || [];
-    renderStatusSummaryCards(currentOrders);
-    updateNotifBadge();
-    filterOrders();
+    if (currentOrders.some(o => o.status === 'new')) await _loadAvailability();
+    _orderUIRefresh();
   } catch (err) {
     container.innerHTML = `<div style="padding:20px;color:red">${err.message}</div>`;
   }
@@ -569,15 +568,292 @@ function renderOrdersTable(orders) {
 
 async function updateOrderStatus(orderId, status, orderNumber) {
   try {
-    await api('PATCH', `/orders/${orderId}/status`, { status });
-    const o = currentOrders.find(x => x.id === orderId);
-    if (o) o.status = status;
-    renderStatusSummaryCards(currentOrders);
-    filterOrders();
+    // force: the status <select> is an explicit staff override control
+    const data = await api('PATCH', `/orders/${orderId}/status`, { status, force: true });
+    const i = currentOrders.findIndex(x => x.id === orderId);
+    if (i >= 0 && data?.order) currentOrders[i] = data.order;
+    _orderUIRefresh();
   } catch (err) {
     alert(TR('שגיאה') + ': ' + err.message);
     loadOrders();
   }
+}
+
+// ─── INCOMING ORDERS — awaiting business approval ────────────────────────────
+// New orders surface as full cards above the list: items visible without
+// expanding, aging timer, one-tap accept with prep-time quick picks.
+
+let _prepChoice  = {};    // orderId → chosen prep minutes
+let _defaultPrep = 30;    // overridden from settings (admins) at boot
+
+const PREP_CHOICES = [15, 30, 45, 60];
+
+// Product/topping availability by lowercase name — flags items that went out
+// of stock between the bot conversation and the acceptance moment.
+let _availability   = null;
+let _availabilityAt = 0;
+
+async function _loadAvailability() {
+  if (_availability && Date.now() - _availabilityAt < 30_000) return;
+  try {
+    const data = await api('GET', '/products');
+    const map = {};
+    (data.products || []).forEach(p => {
+      const n = (p.name_he || p.name_en || '').trim().toLowerCase();
+      if (n) map[n] = p.is_available !== false;
+    });
+    (data.additions || []).forEach(a => {
+      const n = (a.name || '').trim().toLowerCase();
+      if (n && a.is_available === false) map[n] = false;
+    });
+    _availability = map;
+    _availabilityAt = Date.now();
+  } catch { _availability = _availability || {}; }
+}
+
+function _incomingAge(o) {
+  const min = Math.max(0, Math.floor((Date.now() - new Date(o.created_at).getTime()) / 60000));
+  const color = min >= 6 ? '#dc2626' : min >= 3 ? '#d97706' : '#16a34a';
+  const bg    = min >= 6 ? '#fef2f2' : min >= 3 ? '#fffbeb' : '#f0fdf4';
+  return { min, color, bg };
+}
+
+function _unavailableTag(name) {
+  if (!_availability) return '';
+  const avail = _availability[(name || '').trim().toLowerCase()];
+  return avail === false
+    ? ` <span style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:999px;padding:1px 8px;font-size:.66rem;font-weight:800;white-space:nowrap">${TR('אזל במלאי')}</span>`
+    : '';
+}
+
+function _incomingCard(o) {
+  const age = _incomingAge(o);
+  const chosen = _prepChoice[o.id] || _defaultPrep;
+
+  const items = (o.items || []).map(it => {
+    const qty  = it.quantity || it.qty || 1;
+    const tops = (it.toppings || []).map(t => t.name || t.name_he || '').filter(Boolean);
+    return `<div style="padding:7px 0;border-bottom:1px solid var(--border);font-size:.9rem">
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <span style="font-weight:800;color:var(--text);min-width:30px">×${qty}</span>
+        <span style="font-weight:700">${it.name || it.name_he || TR('פריט')}</span>${_unavailableTag(it.name || it.name_he)}
+      </div>
+      ${tops.length ? `<div style="font-size:.76rem;color:var(--text-muted);margin-inline-start:38px">+ ${tops.map(t => t + _unavailableTag(t)).join(', ')}</div>` : ''}
+    </div>`;
+  }).join('') || `<div style="color:var(--text-muted);font-size:.82rem">${TR('אין פריטים')}</div>`;
+
+  const notes = o.notes
+    ? `<div style="margin-top:8px;padding:8px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:.8rem;font-weight:600;color:#92400e">${SVG.notes} ${o.notes}</div>` : '';
+
+  const payBadge = `<span class="badge ${o.payment_status==='paid'?'badge-paid':o.payment_method==='bit'?'badge-bit-pending':'badge-pending-pay'}" style="display:inline-flex;align-items:center;gap:3px">
+      ${o.payment_status==='paid'?`${SVG.check} ${TR('שולם')}`:o.payment_method==='bit'?`${SVG.phone} ${TR('ממתין לBit')}`:`${SVG.clock} ${TR('ממתין לתשלום')}`}
+    </span>`;
+  const methodBadge = `<span class="badge ${o.delivery_method==='delivery'?'badge-delivery':'badge-done'}" style="display:inline-flex;align-items:center;gap:4px">
+      ${o.delivery_method==='delivery'?`${SVG.truck} ${TR('משלוח')}`:`${SVG.home} ${TR('איסוף')}`}
+    </span>`;
+
+  const chips = PREP_CHOICES.map(m =>
+    `<button onclick="setPrepChoice('${o.id}',${m})"
+      style="border-radius:999px;padding:5px 13px;font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit;transition:all .12s;
+        border:1.5px solid ${m===chosen?'var(--primary)':'var(--border)'};
+        background:${m===chosen?'var(--primary)':'var(--white)'};
+        color:${m===chosen?'#fff':'var(--text-muted)'}">${m} ${TR("דק'")}</button>`).join('');
+
+  return `<div class="card incoming-card" id="incoming-${o.id}"
+    style="border-inline-start:4px solid var(--primary);padding:16px 18px;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">
+      <div style="display:flex;align-items:baseline;gap:10px;min-width:0">
+        <span style="font-weight:900;font-size:1.35rem;color:var(--primary);line-height:1">#${o.order_number}</span>
+        <span style="font-weight:700;font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.customer_name || TR('לקוח')}</span>
+      </div>
+      <span style="font-size:.8rem;font-weight:800;color:${age.color};background:${age.bg};border-radius:8px;padding:4px 10px;white-space:nowrap">${age.min} ${TR("דק'")}</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+      ${methodBadge}${payBadge}
+      ${o.address ? `<span style="font-size:.74rem;color:var(--text-muted);display:inline-flex;align-items:center;gap:3px">${SVG.pin} ${o.address.slice(0,34)}</span>` : ''}
+    </div>
+    <div style="flex:1;margin-bottom:6px">${items}</div>
+    ${notes}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 8px">
+      <span style="font-size:.76rem;font-weight:700;color:var(--text-muted)">${TR('זמן הכנה')}</span>
+      <span style="font-weight:800;font-size:1rem">₪${(parseFloat(o.total_price)||0).toFixed(0)}</span>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${chips}</div>
+    <button onclick="acceptOrder('${o.id}')" class="btn btn-primary"
+      style="width:100%;padding:12px;font-size:1rem;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px">
+      ${SVG.checkCircle} ${TR('אשר הזמנה')}
+    </button>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button onclick="openDisputeModal('${o.id}')" class="btn btn-sm"
+        style="flex:1;background:#fffbeb;border:1px solid #fcd34d;color:#d97706;gap:5px;justify-content:center">${SVG.alertTriangle} ${TR('פריט חסר')}</button>
+      <button onclick="openCancelRefundModal('${o.id}')" class="btn btn-sm"
+        style="flex:1;background:#fff0f6;border:1px solid #ffd0e6;color:#e0004d;gap:5px;justify-content:center">${SVG.xCircle} ${TR('דחה')}</button>
+    </div>
+  </div>`;
+}
+
+function renderIncomingOrders() {
+  const zone = document.getElementById('incomingOrders');
+  if (!zone) return;
+  const incoming = currentOrders
+    .filter(o => o.status === 'new')
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+  if (!incoming.length) { zone.style.display = 'none'; zone.innerHTML = ''; return; }
+
+  zone.style.display = 'block';
+  zone.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <span style="width:10px;height:10px;border-radius:50%;background:var(--primary);animation:incomingPulse 1.4s ease-in-out infinite"></span>
+      <span style="font-size:1.05rem;font-weight:800">${TR('ממתינות לאישור')}</span>
+      <span style="background:var(--primary);color:#fff;border-radius:999px;min-width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:.76rem;font-weight:800;padding:0 7px">${incoming.length}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px;margin-bottom:20px">
+      ${incoming.map(_incomingCard).join('')}
+    </div>`;
+}
+
+function setPrepChoice(orderId, minutes) {
+  _prepChoice[orderId] = minutes;
+  renderIncomingOrders();
+}
+
+async function acceptOrder(orderId) {
+  const card = document.getElementById(`incoming-${orderId}`);
+  if (card) card.style.opacity = '.5';
+  try {
+    const data = await api('POST', `/orders/${orderId}/accept`, {
+      prep_minutes: _prepChoice[orderId] || _defaultPrep,
+    });
+    const i = currentOrders.findIndex(x => x.id === orderId);
+    if (i >= 0 && data?.order) currentOrders[i] = data.order;
+    delete _prepChoice[orderId];
+    _orderUIRefresh();
+    showToast(`${TR('הזמנה')} #${data?.order?.order_number || ''} ${TR('אושרה — נשלחה למטבח')}`);
+  } catch (err) {
+    if (card) card.style.opacity = '1';
+    showToast(TR('שגיאה') + ': ' + err.message);
+    loadOrders();
+  }
+}
+
+// One refresh point for every order-data change (poll, SSE, action)
+function _orderUIRefresh() {
+  renderStatusSummaryCards(currentOrders);
+  updateNotifBadge();
+  renderIncomingOrders();
+  filterOrders();
+  _titleFlashSync();
+}
+
+// ─── Live updates: SSE + sound + title flash ─────────────────────────────────
+
+let _ordersSSE = null;
+let _ordersSSERetry = null;
+
+function _ordersConnectSSE() {
+  if (_ordersSSE) { try { _ordersSSE.close(); } catch {} }
+  const es = new EventSource(`/api/sse?token=${encodeURIComponent(token || '')}`);
+  _ordersSSE = es;
+
+  es.addEventListener('new_order', (e) => {
+    const o = JSON.parse(e.data);
+    if (!currentOrders.find(x => x.id === o.id)) currentOrders.unshift(o);
+    _loadAvailability().then(_orderUIRefresh);
+    _orderUIRefresh();
+    if (o.status === 'new') {
+      _chime();
+      showToast(`🔔 ${TR('הזמנה חדשה')} #${o.order_number}`);
+    }
+  });
+
+  es.addEventListener('order_updated', (e) => {
+    const o = JSON.parse(e.data);
+    const i = currentOrders.findIndex(x => x.id === o.id);
+    if (i >= 0) currentOrders[i] = o; else currentOrders.unshift(o);
+    _orderUIRefresh();
+  });
+
+  es.onerror = () => {
+    try { es.close(); } catch {}
+    clearTimeout(_ordersSSERetry);
+    _ordersSSERetry = setTimeout(_ordersConnectSSE, 5000);
+  };
+}
+
+// Soft two-tone chime via WebAudio — no asset file needed. Browsers require a
+// user gesture before audio; the first click on the page unlocks it.
+let _audioCtx = null;
+document.addEventListener('click', () => {
+  try {
+    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (_audioCtx.state === 'suspended') _audioCtx.resume();
+  } catch {}
+}, { capture: true });
+
+function _chime() {
+  try {
+    if (!_audioCtx || _audioCtx.state !== 'running') return;
+    const ding = (freq, at) => {
+      const osc  = _audioCtx.createOscillator();
+      const gain = _audioCtx.createGain();
+      osc.type = 'sine'; osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(0.28, at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.5);
+      osc.connect(gain).connect(_audioCtx.destination);
+      osc.start(at); osc.stop(at + 0.55);
+    };
+    const t = _audioCtx.currentTime;
+    ding(880, t); ding(1174.7, t + 0.18);          // ding-dong
+    ding(880, t + 0.9); ding(1174.7, t + 1.08);    // repeat
+  } catch {}
+}
+
+let _titleTimer = null;
+const _origTitle = document.title;
+function _titleFlashSync() {
+  const n = currentOrders.filter(o => o.status === 'new').length;
+  if (n > 0 && !_titleTimer) {
+    let flip = false;
+    _titleTimer = setInterval(() => {
+      flip = !flip;
+      const count = currentOrders.filter(o => o.status === 'new').length;
+      document.title = flip && count > 0 ? `🔔 (${count}) ${TR('הזמנות ממתינות')}` : _origTitle;
+    }, 1500);
+  } else if (n === 0 && _titleTimer) {
+    clearInterval(_titleTimer); _titleTimer = null;
+    document.title = _origTitle;
+  }
+}
+
+// ─── Push opt-in nudge ───────────────────────────────────────────────────────
+// Without push, a closed tab means zero notifications — surface that clearly
+// instead of hiding it behind the small bell icon.
+
+function renderPushNudge() {
+  const el = document.getElementById('pushNudge');
+  if (!el) return;
+  const supported = 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window;
+  const dismissed = localStorage.getItem('pushNudgeDismissed');
+  if (!supported || dismissed || Notification.permission === 'granted') {
+    el.style.display = 'none'; el.innerHTML = ''; return;
+  }
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div class="card" style="display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:16px;border-inline-start:4px solid var(--color-warning);flex-wrap:wrap">
+      <div style="width:38px;height:38px;border-radius:10px;background:#fffbeb;display:flex;align-items:center;justify-content:center;color:#d97706;flex-shrink:0">
+        ${S('<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>', 18)}
+      </div>
+      <div style="flex:1;min-width:200px">
+        <div style="font-weight:700;font-size:.9rem">${TR('הפעל התראות כדי לא לפספס הזמנות')}</div>
+        <div style="font-size:.78rem;color:var(--text-muted)">${TR('בלי התראות push לא תקבל עדכון על הזמנות חדשות כשהדשבורד סגור')}</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="togglePushSubscription().then(()=>renderPushNudge())" class="btn btn-primary btn-sm">${TR('הפעל התראות')}</button>
+        <button onclick="localStorage.setItem('pushNudgeDismissed','1');renderPushNudge()" class="btn btn-ghost btn-sm">${TR('לא עכשיו')}</button>
+      </div>
+    </div>`;
 }
 
 // ─── STATS ────────────────────────────────────────────────────────────────────
@@ -2136,7 +2412,7 @@ function renderSettingsForm(s) {
     phone: ico('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>'),
   };
 
-  const NAV_LABELS = ['פרטי העסק','תשלום','סוגי הזמנה','מתוזמנות','שינויי הזמנות','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים','שיחות שלא נענו'];
+  const NAV_LABELS = ['פרטי העסק','תשלום','סוגי הזמנה','אישור הזמנות','מתוזמנות','שינויי הזמנות','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים','שיחות שלא נענו'];
 
   _sCardSeq = 0;
   document.getElementById('settingsForm').innerHTML = `
@@ -2169,6 +2445,36 @@ function renderSettingsForm(s) {
       ${sToggle('pickup_enabled',   'איסוף עצמי מאופשר', s.pickup_enabled   !== false, '', 'הבוט יציע איסוף מכתובת העסק')}
       ${sToggle('is_open',          'בוט פתוח לקבלת הזמנות', s.is_open !== false,      '', 'כיבוי עוצר מיידית קבלת הזמנות חדשות')}
       ${saveBtn('saveOrderTypes')}
+    `)}
+
+    ${sCard(ICONS.bag, 'אישור הזמנות', 'איך הזמנה חדשה מאושרת ועוברת להכנה במטבח', `
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+        <label style="display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border:1.5px solid ${(s.order_acceptance||'manual')!=='auto'?'var(--primary)':'var(--border)'};border-radius:var(--radius-md);cursor:pointer;background:${(s.order_acceptance||'manual')!=='auto'?'var(--color-sidebar-active)':'var(--white)'}">
+          <input type="radio" name="acceptMode" value="manual" ${(s.order_acceptance||'manual')!=='auto'?'checked':''} style="margin-top:3px;accent-color:var(--primary)">
+          <span>
+            <span style="font-weight:700;font-size:.9rem;display:block">${TR('אישור ידני (מומלץ)')}</span>
+            <span style="font-size:.78rem;color:var(--text-muted)">${TR('כל הזמנה חדשה ממתינה לאישור שלך. הלקוח מקבל "ההזמנה נשלחה לאישור המסעדה", ורק אחרי שתאשר — הודעת אישור עם זמן הכנה וההזמנה עוברת למטבח.')}</span>
+          </span>
+        </label>
+        <label style="display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border:1.5px solid ${(s.order_acceptance||'manual')==='auto'?'var(--primary)':'var(--border)'};border-radius:var(--radius-md);cursor:pointer;background:${(s.order_acceptance||'manual')==='auto'?'var(--color-sidebar-active)':'var(--white)'}">
+          <input type="radio" name="acceptMode" value="auto" ${(s.order_acceptance||'manual')==='auto'?'checked':''} style="margin-top:3px;accent-color:var(--primary)">
+          <span>
+            <span style="font-weight:700;font-size:.9rem;display:block">${TR('אישור אוטומטי')}</span>
+            <span style="font-size:.78rem;color:#b45309">${TR('⚠️ שים לב: כל הזמנה תאושר ללקוח מיד וללא בדיקה שלך, ותעבור ישר למטבח. ודא שהתפריט והמלאי מעודכנים תמיד — הזמנה שאושרה מחייבת אותך כלפי הלקוח.')}</span>
+          </span>
+        </label>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+        <label style="font-size:.84rem;font-weight:600;min-width:190px">${TR('זמן הכנה — ברירת מחדל')}</label>
+        <input type="number" id="defaultPrepMinutes" value="${s.default_prep_minutes ?? 30}" min="5" max="120" style="width:90px;font-weight:700;text-align:center">
+        <span style="font-size:.84rem;color:var(--text-muted)">${TR('דקות')}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <label style="font-size:.84rem;font-weight:600;min-width:190px">${TR('תזכורת אם הזמנה לא אושרה תוך')}</label>
+        <input type="number" id="acceptReminderMinutes" value="${s.accept_reminder_minutes ?? 3}" min="1" max="30" style="width:90px;font-weight:700;text-align:center">
+        <span style="font-size:.84rem;color:var(--text-muted)">${TR('דקות (push + וואטסאפ למנהלים)')}</span>
+      </div>
+      ${saveBtn('saveAcceptance')}
     `)}
 
     ${sCard(ICONS.clock, 'הזמנות מתוזמנות', 'כמה דקות לפני השעה המבוקשת להעביר את ההזמנה להכנה', `
@@ -2298,6 +2604,19 @@ async function savePayments() {
   const bitPhone = document.getElementById('bit_phone')?.value?.trim();
   if (bitPhone !== undefined) updates.bit_phone = bitPhone;
   await saveSection(updates);
+}
+
+async function saveAcceptance() {
+  const mode = document.querySelector('input[name="acceptMode"]:checked')?.value || 'manual';
+  const prep = parseInt(document.getElementById('defaultPrepMinutes')?.value) || 30;
+  const remind = parseInt(document.getElementById('acceptReminderMinutes')?.value) || 3;
+  await saveSection({
+    order_acceptance:        mode === 'auto' ? 'auto' : 'manual',
+    default_prep_minutes:    Math.max(5, Math.min(120, prep)),
+    accept_reminder_minutes: Math.max(1, Math.min(30, remind)),
+  });
+  _defaultPrep = Math.max(5, Math.min(120, prep));
+  renderSettingsForm(_currentSettings = { ..._currentSettings, order_acceptance: mode, default_prep_minutes: prep, accept_reminder_minutes: remind });
 }
 
 async function savePrepLeadTime() {
@@ -2898,12 +3217,26 @@ document.addEventListener('DOMContentLoaded', () => {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 initTheme();
-// Init: show orders tab
-showTab('orders');
-// Auto-refresh orders every 30s
+// Deep link (?tab=orders — used by push-notification clicks), default: orders
+const _urlTab = new URLSearchParams(location.search).get('tab');
+showTab(TABS.includes(_urlTab) ? _urlTab : 'orders');
+
+// Live updates via SSE; 30s polling stays as fallback
+_ordersConnectSSE();
+renderPushNudge();
 setInterval(() => {
-  if (!document.getElementById('page-orders').classList.contains('hidden')) loadOrders();
+  if (document.getElementById('page-orders').style.display !== 'none') loadOrders();
 }, 30_000);
+// Refresh incoming-card aging timers every 30s even without data changes
+setInterval(() => { if (currentOrders.some(o => o.status === 'new')) renderIncomingOrders(); }, 30_000);
+
+// Default prep-time for the accept quick-picks (settings are admin-only; managers get the default)
+if (role === 'admin') {
+  api('GET', '/settings').then(s => {
+    const n = parseInt(s?.default_prep_minutes, 10);
+    if (Number.isFinite(n) && n > 0) _defaultPrep = n;
+  }).catch(() => {});
+}
 
 // Re-render on resize (mobile↔desktop layout switch)
 let _resizeTimer;

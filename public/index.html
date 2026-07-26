@@ -98,6 +98,20 @@
   }
 </style>
 <script src="/i18n.js"></script>
+<script>
+// Already logged in → straight to the right surface (keeps push-notification
+// deep links like /dashboard.html?tab=orders working when no tab is open)
+(function () {
+  const t = localStorage.getItem('token');
+  const r = localStorage.getItem('role');
+  if (!t) return;
+  const params = new URLSearchParams(location.search);
+  const tab = params.get('tab');
+  const dest = r === 'vendor' ? '/admin' : r === 'kitchen' ? '/kitchen'
+    : '/dashboard.html' + (tab ? `?tab=${encodeURIComponent(tab)}` : '');
+  window.location.replace(dest);
+})();
+</script>
 </head>
 <body>
 <div class="card">
