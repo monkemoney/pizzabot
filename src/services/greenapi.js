@@ -229,9 +229,18 @@ async function sendCategoryPoll(phone, categoryId, lang = 'he') {
  * 1. If productName is given → look for product_additions for that product first.
  * 2. Fallback: use the global is_topping_addon category products.
  */
+// Lazy shared client for sendToppingsPoll — was created fresh on every call.
+let _pollSB = null;
+function _pollDB() {
+  if (!_pollSB) {
+    const { createClient } = require('@supabase/supabase-js');
+    _pollSB = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  }
+  return _pollSB;
+}
+
 async function sendToppingsPoll(phone, lang = 'he', productName = null, tenantId = null) {
-  const { createClient } = require('@supabase/supabase-js');
-  const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  const supabase = _pollDB();
   const { getProducts } = require('./menu-service');
   const { categories, byCategory, main } = await getProducts();
 

@@ -44,6 +44,33 @@ function makeReturnValue() {
   return 'PB-' + crypto.randomBytes(6).toString('hex').toUpperCase();
 }
 
+// ─── Tenant toppings snapshot (for the availability check) ───────────────────
+// Lazy shared Supabase client + per-tenant cache (3s TTL — same coherence model
+// as settings/menu-service: one snapshot per message, direct-DB edits picked up
+// within seconds). Replaces a fresh createClient + 2 queries on EVERY message.
+let _stockSB = null;
+function stockDB() {
+  if (!_stockSB) {
+    const { createClient } = require('@supabase/supabase-js');
+    _stockSB = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  }
+  return _stockSB;
+}
+const TOPPINGS_TTL = 3_000;
+const _toppingsCache = new Map(); // tenantId → { data: [{name_he,is_available}], time }
+async function getTenantToppings(tid) {
+  const hit = _toppingsCache.get(tid);
+  if (hit && Date.now() - hit.time < TOPPINGS_TTL) return hit.data;
+  const sb = stockDB();
+  const { data: tenantProds } = await sb.from('products').select('id').eq('tenant_id', tid);
+  const productIds = (tenantProds || []).map((p) => p.id);
+  const { data } = productIds.length
+    ? await sb.from('product_additions').select('name_he, is_available').in('product_id', productIds)
+    : { data: [] };
+  _toppingsCache.set(tid, { data: data || [], time: Date.now() });
+  return data || [];
+}
+
 // ─── Item dispute response handler ───────────────────────────────────────────
 
 async function handleDisputeResponse(phone, userMessage, session, tenantId) {
@@ -71,7 +98,9 @@ async function handleDisputeResponse(phone, userMessage, session, tenantId) {
     await updateOrder(order.id, { dispute_status: 'resolved', dispute_resolution: 'replaced' });
     await updateSession(phone, { pending_dispute: null }, tenantId);
     await reply(phone, `מעולה! בודקים אפשרות להחלפה — ${msg}. נחזור אליך מיד.`, tenantId);
-    await handleMessage(phone, `רוצה לשנות ${missingItems.map(d=>d.name).join(' ו')} ל: ${msg}`, tenantId);
+    // NOTE: must call the INNER handler — we're already inside this phone's
+    // serialized slot; going through the queued wrapper would deadlock.
+    await handleMessageInner(phone, `רוצה לשנות ${missingItems.map(d=>d.name).join(' ו')} ל: ${msg}`, tenantId);
     return;
   }
 
@@ -153,7 +182,7 @@ async function handleDisputeResponse(phone, userMessage, session, tenantId) {
 
 // ─── Main handler ────────────────────────────────────────────────────────────
 
-async function handleMessage(phone, userMessage, tenantId = null) {
+async function handleMessageInner(phone, userMessage, tenantId = null) {
   const tid = tenantId || settings.DEFAULT_TENANT_ID;
   const session = await getSession(phone, tid);
 
@@ -206,8 +235,10 @@ async function handleMessage(phone, userMessage, tenantId = null) {
   console.log(`[ai-handler] phone=${phone} tenant=${tid} historyLen=${history.length} msg="${userMessage.slice(0, 80)}"`);
 
   if (history.length === 0) {
-    const lastOrder = await getLastOrderByPhone(phone, tid);
-    const editsAllowed = await settings.get('allow_order_edits', tid);
+    const [lastOrder, editsAllowed] = await Promise.all([
+      getLastOrderByPhone(phone, tid),
+      settings.get('allow_order_edits', tid),
+    ]);
     // Editable only while the order hasn't started preparing yet ('new' or 'scheduled').
     // The moment the kitchen moves it to 'preparing', the customer can no longer change/cancel it.
     if (lastOrder && ['new', 'scheduled'].includes(lastOrder.status) && editsAllowed !== false) {
@@ -253,6 +284,10 @@ async function handleMessage(phone, userMessage, tenantId = null) {
     }
   }
 
+  // Start the toppings snapshot early — independent of the profile→prompt chain,
+  // so the two DB paths run in parallel instead of stacking round-trips.
+  const toppingsPromise = getTenantToppings(tid).catch(() => []);
+
   const customerProfile = await getCustomerProfile(phone, tid).catch(() => null);
 
   let systemPrompt;
@@ -274,21 +309,12 @@ async function handleMessage(phone, userMessage, tenantId = null) {
         userMessage,
       ].join(' ').toLowerCase();
 
-      // Fetch all topping names mentioned by customer that now have is_available=false
-      const { createClient: mkSB } = require('@supabase/supabase-js');
-      const sb = mkSB(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-
-      // Step 1: product IDs for this tenant
-      const { data: tenantProds } = await sb
-        .from('products').select('id').eq('tenant_id', tid);
-      const productIds = (tenantProds || []).map(p => p.id);
-
-      // Step 2: all toppings for those products, both available and not —
-      // stale history ("X ran out") must not override a topping that came back in stock
-      const { data: allToppings } = productIds.length
-        ? await sb.from('product_additions').select('name_he, is_available')
-            .in('product_id', productIds)
-        : { data: [] };
+      // All toppings for this tenant, both available and not — stale history
+      // ("X ran out") must not override a topping that came back in stock.
+      // Cached per tenant (3s TTL, same coherence model as menu-service) —
+      // previously this created a fresh Supabase client + 2 queries per message,
+      // a measurable latency hit under concurrent load.
+      const allToppings = await toppingsPromise;
 
       const mentioned = new Map(); // name → is_available (unavailable wins if mixed across products)
       for (const a of allToppings || []) {
@@ -509,6 +535,24 @@ async function handleMessage(phone, userMessage, tenantId = null) {
   }
 
   await updateSession(phone, { conversation_history: updatedHistory }, tid);
+}
+
+// ─── Per-conversation serialization ──────────────────────────────────────────
+// Two concurrent messages from the same phone used to race on the session row:
+// both handlers read the same conversation_history, both appended, and the
+// last upsert won — silently dropping a turn (measured: 100% loss under true
+// concurrency in the bootcamp race test). Production runs a single instance,
+// so an in-process FIFO per (tenant, phone) fully serializes each conversation.
+// Different customers are unaffected — their queues are independent.
+const _convQueues = new Map(); // key → tail promise (never rejects)
+function handleMessage(phone, userMessage, tenantId = null) {
+  const key = `${tenantId || settings.DEFAULT_TENANT_ID}:${phone}`;
+  const prev = _convQueues.get(key) || Promise.resolve();
+  const run = prev.then(() => handleMessageInner(phone, userMessage, tenantId));
+  const tail = run.catch(() => {}); // an error must not poison the queue
+  _convQueues.set(key, tail);
+  tail.then(() => { if (_convQueues.get(key) === tail) _convQueues.delete(key); });
+  return run; // caller still sees this call's own success/failure
 }
 
 module.exports = { handleMessage, stripAction, detectLang, parsePayload };
