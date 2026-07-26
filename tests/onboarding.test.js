@@ -37,74 +37,148 @@ function makeSession(token, overrides = {}) {
 }
 
 // ── Supabase mock ─────────────────────────────────────────────────────────────
+// A small in-memory PostgREST-shaped query builder. The provisioning flow uses
+// upsert, in(), count/head selects, maybeSingle and embedded selects, so a
+// stub that only understands select/eq/single cannot exercise it at all — and
+// this is the one endpoint in the system that can duplicate a client's menu.
+let mockFailOn = {};   // `${table}:${mode}` → error message, consumed once
+
+function mockRowsOf(table) {
+  if (!tables[table]) tables[table] = {};
+  return tables[table];
+}
+
 jest.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     from: (table) => {
-      const store = tables[table] || {};
-      let _mode    = 'select';
-      let _filters = {};
-      let _updateData = null;
-      let _insertData = null;
+      const store = mockRowsOf(table);
+      const preds = [];
+      let mode = 'select';
+      let payload = null;
+      let wantCount = false, headOnly = false, limitN = null, conflictCols = null;
+
+      const matching = () => Object.values(store).filter((r) => preds.every((p) => p(r)));
+      const newId = () => `${table}-${Object.keys(store).length + 1}-${Math.random().toString(36).slice(2, 6)}`;
+
+      const injected = () => {
+        const key = `${table}:${mode}`;
+        if (mockFailOn[key]) { const msg = mockFailOn[key]; delete mockFailOn[key]; return { message: msg }; }
+        return null;
+      };
+
+      async function exec() {
+        const err = injected();
+        if (err) return { data: null, count: null, error: err };
+
+        if (mode === 'select') {
+          let out = matching();
+          if (limitN !== null) out = out.slice(0, limitN);
+          return { data: headOnly ? null : out, count: wantCount ? matching().length : null, error: null };
+        }
+        if (mode === 'update') {
+          const hit = matching();
+          hit.forEach((r) => Object.assign(r, payload));
+          updateLog.push({ table, data: payload });
+          return { data: hit, error: null };
+        }
+        if (mode === 'insert') {
+          const list = Array.isArray(payload) ? payload : [payload];
+          const created = list.map((row) => {
+            const id = row.id || newId();
+            store[id] = { id, token: `tok-${id}`, ...row };
+            insertLog.push({ table, data: row });
+            return store[id];
+          });
+          return { data: created, error: null };
+        }
+        if (mode === 'upsert') {
+          const cols = (conflictCols || 'id').split(',').map((c) => c.trim());
+          const existing = Object.values(store).find((r) => cols.every((c) => r[c] === payload[c]));
+          if (existing) {
+            Object.assign(existing, payload);
+            updateLog.push({ table, data: payload });
+            return { data: [existing], error: null };
+          }
+          const id = payload.id || newId();
+          store[id] = { id, ...payload };
+          insertLog.push({ table, data: payload });
+          return { data: [store[id]], error: null };
+        }
+        if (mode === 'delete') {
+          const hit = matching();
+          hit.forEach((r) => { delete store[r.id]; });
+          return { data: hit, error: null };
+        }
+        return { data: null, error: null };
+      }
 
       const b = {
-        select: () => { _mode = 'select'; return b; },
-
-        insert: (data) => {
-          _insertData = Array.isArray(data) ? data[0] : data;
-          _mode = 'insert';
-          insertLog.push({ table, data: _insertData });
-          const id    = `auto-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-          const token = `tok-${Math.random().toString(36).slice(2)}`;
-          const record = { id, token, ..._insertData };
-          if (tables[table]) tables[table][id] = record;
-          return {
-            select: () => ({
-              single: async () => ({ data: record, error: null }),
-            }),
-          };
-        },
-
-        update: (data) => {
-          _updateData = data;
-          _mode = 'update';
-          return {
-            eq: (col, val) => {
-              // Apply update to matching rows
-              const updated = Object.values(store).find(r => r[col] === val);
-              if (updated) Object.assign(updated, data);
-              updateLog.push({ table, data, filter: { [col]: val } });
-              return Promise.resolve({ error: null, data: updated || null });
-            },
-          };
-        },
-
-        eq: (col, val) => {
-          _filters[col] = val;
+        select: (_cols, opts) => {
+          if (mode === 'select') { wantCount = opts?.count === 'exact'; headOnly = !!opts?.head; }
           return b;
         },
+        insert: (data) => { mode = 'insert'; payload = data; return b; },
+        update: (data) => { mode = 'update'; payload = data; return b; },
+        upsert: (data, opts) => { mode = 'upsert'; payload = Array.isArray(data) ? data[0] : data; conflictCols = opts?.onConflict; return b; },
+        delete: () => { mode = 'delete'; return b; },
+
+        eq:  (c, v) => { preds.push((r) => r[c] === v); return b; },
+        neq: (c, v) => { preds.push((r) => r[c] !== v); return b; },
+        in:  (c, vs) => { preds.push((r) => vs.includes(r[c])); return b; },
+        is:  (c, v) => { preds.push((r) => (v === null ? r[c] == null : r[c] === v)); return b; },
+        gt:  (c, v) => { preds.push((r) => r[c] > v); return b; },
+        gte: (c, v) => { preds.push((r) => r[c] >= v); return b; },
+        lt:  (c, v) => { preds.push((r) => r[c] < v); return b; },
+        not: () => b,
+        order: () => b,
+        limit: (n) => { limitN = n; return b; },
 
         single: async () => {
-          const row = Object.values(store).find(r =>
-            Object.entries(_filters).every(([k, v]) => r[k] === v)
-          ) || null;
-          return { data: row, error: row ? null : { code: 'PGRST116', message: 'Not found' } };
+          const { data, error } = await exec();
+          if (error) return { data: null, error };
+          const row = Array.isArray(data) ? data[0] : data;
+          return { data: row || null, error: row ? null : { code: 'PGRST116', message: 'Not found' } };
         },
-
-        order:  () => b,
-        neq:    () => b,
-        limit:  async (n) => ({ data: Object.values(store).slice(0, n) }),
+        maybeSingle: async () => {
+          const { data, error } = await exec();
+          const row = Array.isArray(data) ? data[0] : data;
+          return { data: row || null, error: error || null };
+        },
+        then: (resolve, reject) => exec().then(resolve, reject),
       };
       return b;
     },
   }),
 }));
 
-// ── Other mocks ───────────────────────────────────────────────────────────────
 jest.mock('../src/services/vendor-alerts', () => ({
   alert: jest.fn(async () => {}),
-  alerts: { onboardingComplete: jest.fn(async () => {}), serverError: jest.fn(async () => {}), serverRestart: jest.fn(async () => {}) },
+  alerts: {
+    onboardingComplete: jest.fn(async () => {}),
+    serverError:        jest.fn(async () => {}),
+    serverRestart:      jest.fn(async () => {}),
+    provisioningFailed: jest.fn(async () => {}),
+  },
 }));
-jest.mock('../src/services/greenapi',      () => ({ sendMessage: jest.fn(async () => {}), formatPhone: (r) => r.replace(/[^0-9]/g, ''), toChatId: (p) => `${p}@c.us` }));
+jest.mock('../src/services/greenapi',      () => ({
+  sendMessage: jest.fn(async () => {}),
+  setWebhook:  jest.fn(async () => ({ ok: true })),
+  formatPhone: (r) => r.replace(/[^0-9]/g, ''),
+  toChatId:    (p) => `${p}@c.us`,
+}));
+jest.mock('../src/services/meta-whatsapp', () => ({
+  subscribeWaba: jest.fn(async () => ({ success: true })),
+  sendMessage:   jest.fn(async () => {}),
+  formatPhone:   (r) => r.replace(/[^0-9]/g, ''),
+  parseIncoming: () => null,
+  verifyWebhook: () => null,
+  verifySignature: () => 'unconfigured',
+  ENV_CREDS: {},
+}));
+jest.mock('../src/services/slug', () => ({
+  assignSlug: jest.fn(async () => 'test-slug'),
+  resolveTenantBySlug: jest.fn(async () => null),
+}));
 jest.mock('../src/services/settings',      () => ({ loadAll: jest.fn(async () => ({})), get: jest.fn(async ()=>null), isOpen: jest.fn(async ()=>true), _clearCache: jest.fn(), set: jest.fn(async ()=>{}), DEFAULT_TENANT_ID: 'aaaaaaaa-0000-0000-0000-000000000001' }));
 jest.mock('../src/services/menu-service',  () => ({ getMenu: jest.fn(async () => []), invalidateCache: jest.fn() }));
 jest.mock('../src/services/status-notifier', () => ({ notifyStatusChange: jest.fn(async () => {}) }));
@@ -411,5 +485,164 @@ describe('POST /api/vendor/onboarding/:id/approve — guards', () => {
   test('requires vendor auth', async () => {
     const s = withClient({ status: 'pending_vendor' });
     await request(app).post(`/api/vendor/onboarding/${s.id}/approve`).expect(401);
+  });
+});
+
+// ── Vendor side: the provisioning transaction itself ─────────────────────────
+describe('POST /api/vendor/onboarding/:id/approve — provisioning', () => {
+  const TENANT = 'tenant-prov-1';
+  const DEFAULT = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+  function seedSourceMenu() {
+    tables.categories = {
+      'c-src-1': { id: 'c-src-1', tenant_id: DEFAULT, name_he: 'פיצות', sort_order: 1 },
+      'c-src-2': { id: 'c-src-2', tenant_id: DEFAULT, name_he: 'שתייה', sort_order: 2 },
+    };
+    tables.products = {
+      'p-src-1': { id: 'p-src-1', tenant_id: DEFAULT, category_id: 'c-src-1', name_he: 'משפחתית', price: 58,
+                   product_additions: [{ id: 'a-1', product_id: 'p-src-1', name_he: 'זיתים', price: 3 }] },
+      'p-src-2': { id: 'p-src-2', tenant_id: DEFAULT, category_id: 'c-src-2', name_he: 'קולה', price: 12,
+                   product_additions: [] },
+    };
+    tables.product_additions = {};
+    tables.admin_users = {};
+    tables.settings = {};
+  }
+
+  function readySession(over = {}) {
+    return makeSession(`prov-${Math.random().toString(36).slice(2)}`, {
+      status: 'pending_vendor',
+      business_name: 'פיצה בדיקה',
+      admin_phones: [{ name: 'בעלים', phone: '972501234567' }],
+      meta_waba_id: 'WABA-1',
+      meta_access_token: 'META-TOKEN',
+      clients: { id: 'client-prov-1', tenant_id: TENANT, name: 'פיצה בדיקה' },
+      ...over,
+    });
+  }
+
+  const approve = (id) => request(app)
+    .post(`/api/vendor/onboarding/${id}/approve`)
+    .set('Authorization', `Bearer ${vendorToken}`);
+
+  beforeEach(() => {
+    seedSourceMenu();
+    tables.tenant_users = {};
+    mockFailOn = {};
+  });
+
+  test('provisions everything and reports the credentials once', async () => {
+    const s = readySession();
+    const res = await approve(s.id).expect(200);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.username).toMatch(/^client-/);
+    expect(res.body.password).toBeTruthy();
+    expect(res.body).toHaveProperty('credentialsDelivered');
+
+    // settings seeded for THIS tenant
+    const seeded = Object.values(tables.settings).filter(r => r.tenant_id === TENANT);
+    expect(seeded.find(r => r.key === 'business_name').value).toBe('פיצה בדיקה');
+
+    // menu copied once, under the new tenant, with additions re-pointed
+    const cats  = Object.values(tables.categories).filter(r => r.tenant_id === TENANT);
+    const prods = Object.values(tables.products).filter(r => r.tenant_id === TENANT);
+    expect(cats).toHaveLength(2);
+    expect(prods).toHaveLength(2);
+    expect(Object.values(tables.product_additions)).toHaveLength(1);
+
+    // admin + login exist, session approved, client active
+    expect(Object.values(tables.admin_users).filter(r => r.tenant_id === TENANT)).toHaveLength(1);
+    expect(Object.values(tables.tenant_users).filter(r => r.tenant_id === TENANT)).toHaveLength(1);
+    expect(tables.onboarding_sessions[s.id].status).toBe('approved');
+  });
+
+  test('a second approve cannot duplicate the menu or mint a second login', async () => {
+    const s = readySession();
+    await approve(s.id).expect(200);
+
+    const catsAfterFirst  = Object.values(tables.categories).filter(r => r.tenant_id === TENANT).length;
+    const usersAfterFirst = Object.values(tables.tenant_users).filter(r => r.tenant_id === TENANT).length;
+
+    await approve(s.id).expect(409);
+
+    expect(Object.values(tables.categories).filter(r => r.tenant_id === TENANT)).toHaveLength(catsAfterFirst);
+    expect(Object.values(tables.tenant_users).filter(r => r.tenant_id === TENANT)).toHaveLength(usersAfterFirst);
+  });
+
+  test('a failing step aborts with its name and leaves the session retryable', async () => {
+    const s = readySession();
+    mockFailOn['admin_users:upsert'] = 'permission denied';
+
+    const res = await approve(s.id).expect(500);
+    expect(res.body.step).toBe('admins');
+    expect(res.body.resumable).toBe(true);
+
+    const after = tables.onboarding_sessions[s.id];
+    expect(after.status).toBe('pending_vendor');        // not left mid-flight
+    expect(after.provisioning.failed_step).toBe('admins');
+    expect(after.provisioning.settings).toBe(true);      // earlier steps recorded
+    expect(after.provisioning.menu).toBe(true);
+  });
+
+  test('the retry after a failure resumes instead of re-copying the menu', async () => {
+    const s = readySession();
+    mockFailOn['admin_users:upsert'] = 'transient';
+    await approve(s.id).expect(500);
+
+    const catsAfterFailure = Object.values(tables.categories).filter(r => r.tenant_id === TENANT).length;
+    expect(catsAfterFailure).toBe(2);
+
+    await approve(s.id).expect(200);
+
+    expect(Object.values(tables.categories).filter(r => r.tenant_id === TENANT)).toHaveLength(2);
+    expect(tables.onboarding_sessions[s.id].status).toBe('approved');
+  });
+
+  test('a dead WhatsApp channel fails the approval instead of marking the client live', async () => {
+    const { subscribeWaba } = require('../src/services/meta-whatsapp');
+    subscribeWaba.mockRejectedValueOnce(new Error('waba not found'));
+
+    const s = readySession();
+    const res = await approve(s.id).expect(500);
+
+    expect(res.body.step).toBe('channel');
+    expect(tables.onboarding_sessions[s.id].status).not.toBe('approved');
+  });
+
+  test('a session with no admin phone is refused — nobody would ever get an order alert', async () => {
+    const s = readySession({ admin_phones: [] });
+    const res = await approve(s.id).expect(500);
+    expect(res.body.step).toBe('admins');
+  });
+});
+
+// ── Credential recovery ───────────────────────────────────────────────────────
+describe('POST /api/vendor/onboarding/:id/reset-credentials', () => {
+  test('issues a new password for an approved client', async () => {
+    const TENANT = 'tenant-reset-1';
+    tables.tenant_users = {
+      'u-1': { id: 'u-1', tenant_id: TENANT, username: 'client-abc', password: 'old-hash', role: 'admin' },
+    };
+    const s = makeSession('reset-tok', {
+      status: 'approved',
+      approved_username: 'client-abc',
+      admin_phones: [{ phone: '972501234567' }],
+      clients: { id: 'c-r', tenant_id: TENANT, name: 'לקוח' },
+    });
+
+    const res = await request(app)
+      .post(`/api/vendor/onboarding/${s.id}/reset-credentials`)
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .expect(200);
+
+    expect(res.body.username).toBe('client-abc');
+    expect(res.body.password).toBeTruthy();
+    expect(tables.tenant_users['u-1'].password).not.toBe('old-hash');
+  });
+
+  test('requires vendor auth', async () => {
+    const s = makeSession('reset-tok-2', { status: 'approved', clients: { tenant_id: 't', id: 'c' } });
+    await request(app).post(`/api/vendor/onboarding/${s.id}/reset-credentials`).expect(401);
   });
 });
