@@ -556,7 +556,14 @@ process.on('unhandledRejection', (reason) => {
 });
 
 // Express error middleware
-app.use((err, _req, res, _next) => {
+app.use((err, req, res, _next) => {
+  // A malformed request body is the caller's problem, not a server fault.
+  // It used to return 500 and fire a "server error" alert to the vendor, so
+  // anyone could page them by POSTing broken JSON at a public webhook.
+  if (err.type === 'entity.parse.failed' || err instanceof SyntaxError) {
+    console.warn(`[express] malformed body on ${req.method} ${req.path}`);
+    return res.status(400).json({ error: 'Malformed request body' });
+  }
   console.error('[express-error]', err);
   vendorAlerts.alerts.serverError(err).catch(() => {});
   res.status(500).json({ error: 'Internal server error' });
