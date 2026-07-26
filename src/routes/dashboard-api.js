@@ -832,6 +832,12 @@ router.delete('/customers/:phone', requireAdmin, async (req, res) => {
   res.json({ success: true });
 });
 
+// Commercial messaging, so two things are non-negotiable: recipients who asked
+// to be left alone are suppressed, and every message carries a way out. The
+// failures are reported per recipient too — a bare count gave the operator no
+// way to tell a rejected send from a wrong number, and nothing to retry with.
+const OPT_OUT_FOOTER = '\n\n_להסרה מרשימת הדיוור השב *הסר*_';
+
 router.post('/customers/broadcast', requireAdmin, async (req, res) => {
   const { phones, message } = req.body;
   if (!Array.isArray(phones) || !message) {
@@ -841,16 +847,26 @@ router.post('/customers/broadcast', requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'Maximum 50 recipients per broadcast' });
   }
 
-  const results = { sent: 0, failed: 0 };
-  for (const phone of phones) {
+  const { getOptedOutPhones } = require('../services/supabase');
+  const normalised = phones.map((p) => String(p).replace(/\D/g, '')).filter(Boolean);
+  const optedOut = await getOptedOutPhones(normalised, tid(req));
+  const recipients = normalised.filter((p) => !optedOut.has(p));
+
+  const body = message.includes('הסר') ? message : message + OPT_OUT_FOOTER;
+
+  const results = { sent: 0, failed: 0, skipped: optedOut.size, failures: [] };
+  for (const phone of recipients) {
     try {
-      await sendMessage(phone, message, tid(req));
+      await sendMessage(phone, body, tid(req));
       results.sent++;
       await new Promise((r) => setTimeout(r, 300)); // gentle rate limiting
-    } catch {
+    } catch (err) {
       results.failed++;
+      results.failures.push({ phone, error: (err.message || 'send failed').slice(0, 120) });
     }
   }
+
+  console.log(`[broadcast] tenant ${tid(req)}: sent=${results.sent} failed=${results.failed} skipped(opted-out)=${results.skipped}`);
   res.json(results);
 });
 

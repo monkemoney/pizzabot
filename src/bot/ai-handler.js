@@ -182,9 +182,39 @@ async function handleDisputeResponse(phone, userMessage, session, tenantId) {
 
 // ─── Main handler ────────────────────────────────────────────────────────────
 
+// Opt-out is answered before anything else — it has to work while a human has
+// the conversation, while a dispute is open, and outside business hours.
+// Handled deterministically: an unsubscribe request is not something to leave
+// to the model's judgement.
+const OPT_OUT_WORDS = ['הסר', 'הסירו', 'הסירי', 'להסיר', 'תסירו', 'הפסיקו לשלוח', 'אל תשלחו',
+                       'stop', 'unsubscribe', 'remove me'];
+const OPT_IN_WORDS  = ['הצטרף', 'הצטרפי', 'חזרו לשלוח', 'הרשם', 'הירשם', 'start', 'subscribe'];
+
+function _matchesWord(text, words) {
+  const t = (text || '').trim().toLowerCase();
+  // Exact or near-exact only: "הסר" inside "תסיר לי את הזיתים" is not an
+  // unsubscribe, and silently opting that customer out would be worse than
+  // missing the keyword.
+  return words.some((w) => t === w || t === `*${w}*` || t === `${w}.` || t === `${w}!`);
+}
+
 async function handleMessageInner(phone, userMessage, tenantId = null) {
   const tid = tenantId || settings.DEFAULT_TENANT_ID;
   const session = await getSession(phone, tid);
+
+  if (_matchesWord(userMessage, OPT_OUT_WORDS)) {
+    const { setOptedOut } = require('../services/supabase');
+    await setOptedOut(phone, true, tid);
+    console.log(`[opt-out] ${phone} unsubscribed from marketing (tenant ${tid})`);
+    await reply(phone, 'הוסרת מרשימת הדיוור ולא נשלח אליך יותר תוכן שיווקי. עדכונים על הזמנות שביצעת ימשיכו להישלח.\nלחזרה שלח *הצטרף*.', tid);
+    return;
+  }
+  if (session.opted_out && _matchesWord(userMessage, OPT_IN_WORDS)) {
+    const { setOptedOut } = require('../services/supabase');
+    await setOptedOut(phone, false, tid);
+    await reply(phone, 'חזרת לרשימת הדיוור 🎉', tid);
+    return;
+  }
 
   if (session.pending_dispute) {
     return handleDisputeResponse(phone, userMessage, session, tid);

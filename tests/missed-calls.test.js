@@ -22,8 +22,11 @@ let   mockSettingsStore = {};
 jest.mock('../src/bot/ai-handler',    () => ({ handleMessage:      jest.fn(async () => {}) }));
 jest.mock('../src/bot/admin-handler', () => ({ handleAdminMessage: jest.fn(async () => {}) }));
 
+const mockOptedOut = new Set();   // phones that asked to be left alone
+
 jest.mock('../src/services/supabase', () => ({
   getAdminUser:               mockGetAdminUser,
+  getOptedOutPhones:          jest.fn(async (phones) => new Set(phones.filter(p => mockOptedOut.has(p)))),
   resolveTenantByMetaPhoneId: jest.fn(async () => null),
   getSession:                 jest.fn(async () => ({ conversation_history: [], pending_order: {} })),
   updateSession:              jest.fn(async () => {}),
@@ -376,5 +379,32 @@ describe('route mounting order', () => {
   test('GET /webhook/calls/:tenantId answers the sanity check (not Meta verify 403)', async () => {
     const res = await request(app).get(`/webhook/calls/${TENANT}`).expect(200);
     expect(res.body.service).toBe('call-events');
+  });
+});
+
+// ── Opt-out ───────────────────────────────────────────────────────────────────
+// Recovery is business-initiated marketing, so a caller who asked to be removed
+// must not receive it — the same suppression list the broadcast honours.
+describe('marketing opt-out', () => {
+  beforeEach(() => mockOptedOut.clear());
+  afterEach(() => mockOptedOut.clear());
+
+  test('a caller who opted out gets no recovery message', async () => {
+    mockOptedOut.add('972501111111');
+
+    await post(cdrBody('+972501111111'));
+    await flush();
+
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+    expect(mockSendSms).not.toHaveBeenCalled();
+  });
+
+  test('other callers are unaffected by someone else opting out', async () => {
+    mockOptedOut.add('972509999999');
+
+    await post(cdrBody('+972501111111'));
+    await flush();
+
+    expect(mockSendTemplate).toHaveBeenCalledTimes(1);
   });
 });

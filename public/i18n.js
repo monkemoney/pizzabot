@@ -63,6 +63,11 @@ const HE2EN = {
   'אשר הזמנה': 'Accept order',
   'אשר הזמנה מתוזמנת': 'Confirm pre-order',
   'שיחה עם נציג': 'Human handoff',
+  'שורת הסרה ("להסרה השב הסר") תתווסף אוטומטית, ולקוחות שביקשו הסרה ידולגו.':
+    'An opt-out line is appended automatically, and customers who asked to be removed are skipped.',
+  'דילגנו (ביקשו הסרה)': 'Skipped (opted out)',
+  'נכשלו:': 'Failed:',
+  'שולח...': 'Sending...',
   'כשמעבירים שיחה לנציג הבוט מפסיק לענות ללקוח. אם אף אחד לא ממשיך את השיחה, הלקוח נשאר תקוע — לכן היא חוזרת לבוט אוטומטית.':
     'Handing a chat to an agent stops the bot from answering that customer. If nobody picks it up they are stuck, so it returns to the bot automatically.',
   'התראה למנהלים אם לקוח ממתין': 'Alert admins if a customer waits',

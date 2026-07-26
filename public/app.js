@@ -2251,17 +2251,37 @@ function openBroadcastModal() {
   openModal('broadcastModal');
 }
 
+let _broadcastInFlight = false;
+
 async function sendBroadcast() {
   const message = document.getElementById('broadcastMessage').value.trim();
   if (!message) { alert(TR('יש לכתוב הודעה')); return; }
+  // 50 recipients take ~20s; a second click used to resend the whole batch.
+  if (_broadcastInFlight) return;
+  _broadcastInFlight = true;
+
+  const btn = document.querySelector('#broadcastModal .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = TR('שולח...'); }
+
   try {
     const result = await api('POST', '/customers/broadcast', {
       phones:  [...selectedPhones],
       message,
     });
-    alert(`${TR('נשלח')}: ${result.sent} | ${TR('נכשל')}: ${result.failed}`);
+    const lines = [`${TR('נשלח')}: ${result.sent}`, `${TR('נכשל')}: ${result.failed}`];
+    if (result.skipped) lines.push(`${TR('דילגנו (ביקשו הסרה)')}: ${result.skipped}`);
+    if (result.failures?.length) {
+      lines.push('', TR('נכשלו:'));
+      result.failures.slice(0, 10).forEach(f => lines.push(`${f.phone} — ${f.error}`));
+    }
+    alert(lines.join('\n'));
     closeModal('broadcastModal');
-  } catch (err) { alert(err.message); }
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    _broadcastInFlight = false;
+    if (btn) { btn.disabled = false; btn.textContent = TR('שלח'); }
+  }
 }
 
 // ─── SETTINGS ─────────────────────────────────────────────────────────────────

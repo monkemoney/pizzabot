@@ -145,6 +145,14 @@ async function processCallEvents(tenantId, events) {
       continue;
     }
 
+    // Recovery is business-initiated marketing, so it honours the opt-out list.
+    const { getOptedOutPhones } = require('../services/supabase');
+    const suppressed = await getOptedOutPhones([caller], tenantId).catch(() => new Set());
+    if (suppressed.has(caller)) {
+      console.log(`[calls:${tenantId}] ${caller} opted out of marketing — skipping recovery message`);
+      continue;
+    }
+
     const key = _throttleKey(tenantId, caller);
     const last = _lastNotified.get(key);
     if (last && Date.now() - last < throttleMs) {

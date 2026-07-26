@@ -31,6 +31,8 @@ jest.mock('../src/services/supabase', () => ({
   autoCompleteDeliveredOrders: jest.fn(async () => {}),
   pruneOldSessions:            jest.fn(async () => {}),
   getLastOrderByPhone:         jest.fn(async () => null),
+  setOptedOut:                 jest.fn(async () => {}),
+  getOptedOutPhones:           jest.fn(async () => new Set()),
   saveOrder:                   jest.fn(async () => ({ orderNumber: 1001 })),
   savePendingPayment:          jest.fn(async () => {}),
   saveCustomerProfile:         jest.fn(async () => {}),
@@ -218,5 +220,52 @@ describe('handoff is explained to the customer', () => {
     // and other agents see it
     expect(mockBroadcast).toHaveBeenCalledWith(TID, 'inbox_message',
       expect.objectContaining({ from: 'agent' }));
+  });
+});
+
+// ── Marketing opt-out ─────────────────────────────────────────────────────────
+// Commercial messaging with no way out is a legal exposure, not just bad UX.
+// The keyword is handled deterministically and before everything else: it has
+// to work while an agent holds the conversation and outside business hours.
+describe('opt-out keyword', () => {
+  const { handleMessage } = require('../src/bot/ai-handler');
+  const supa = require('../src/services/supabase');
+
+  test('"הסר" opts the customer out and confirms, without reaching Claude', async () => {
+    mockGetSession.mockResolvedValue({ phone: '972501111111', conversation_history: [], pending_order: {} });
+
+    await handleMessage('972501111111', 'הסר', TID);
+
+    expect(supa.setOptedOut).toHaveBeenCalledWith('972501111111', true, TID);
+    const msg = mockSendMessage.mock.calls.find(c => c[0] === '972501111111');
+    expect(msg[1]).toContain('הוסרת');
+  });
+
+  test('opt-out works even while a human agent holds the conversation', async () => {
+    mockGetSession.mockResolvedValue({
+      phone: '972501111111', conversation_history: [], pending_order: {}, is_bot_active: false,
+    });
+
+    await handleMessage('972501111111', 'stop', TID);
+
+    expect(supa.setOptedOut).toHaveBeenCalledWith('972501111111', true, TID);
+  });
+
+  test('"הסר" inside a sentence is NOT an unsubscribe', async () => {
+    mockGetSession.mockResolvedValue({ phone: '972501111111', conversation_history: [], pending_order: {} });
+
+    await handleMessage('972501111111', 'תסיר לי את הזיתים מהפיצה', TID);
+
+    expect(supa.setOptedOut).not.toHaveBeenCalled();
+  });
+
+  test('an opted-out customer can come back with "הצטרף"', async () => {
+    mockGetSession.mockResolvedValue({
+      phone: '972501111111', conversation_history: [], pending_order: {}, opted_out: true,
+    });
+
+    await handleMessage('972501111111', 'הצטרף', TID);
+
+    expect(supa.setOptedOut).toHaveBeenCalledWith('972501111111', false, TID);
   });
 });

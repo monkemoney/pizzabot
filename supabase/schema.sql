@@ -158,6 +158,10 @@ CREATE TABLE IF NOT EXISTS pending_payments (
 ALTER TABLE pending_payments ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'open';  -- open | expired
 -- Per-step provisioning progress, so approve() is resumable (2026-07-27)
 ALTER TABLE onboarding_sessions ADD COLUMN IF NOT EXISTS provisioning JSONB DEFAULT '{}'::jsonb;
+-- Marketing opt-out (2026-07-27) — suppresses broadcasts + missed-call recovery,
+-- never transactional order updates
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS opted_out    BOOLEAN DEFAULT FALSE;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS opted_out_at TIMESTAMPTZ;
 -- Human handoff needs a clock, otherwise agent mode has no exit (2026-07-27)
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS handoff_at         TIMESTAMPTZ;
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS handoff_alerted_at TIMESTAMPTZ;

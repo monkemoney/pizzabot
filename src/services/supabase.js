@@ -358,6 +358,35 @@ async function setBotActive(phone, isActive, tenantId = DEFAULT_TENANT_ID) {
   await updateSession(phone, patch, tenantId);
 }
 
+// ─── Marketing opt-out ────────────────────────────────────────────────────────
+// Business-initiated messages (broadcasts, missed-call recovery) need a way out;
+// transactional order updates the customer's own order triggered do not.
+
+/** Record a customer's opt-out. Creates the session row if they never messaged. */
+async function setOptedOut(phone, optedOut, tenantId = DEFAULT_TENANT_ID) {
+  await updateSession(phone, {
+    opted_out: optedOut,
+    opted_out_at: optedOut ? new Date().toISOString() : null,
+  }, tenantId);
+}
+
+/** Phones that opted out, from a candidate list — the suppression list. */
+async function getOptedOutPhones(phones, tenantId = DEFAULT_TENANT_ID) {
+  if (!phones?.length) return new Set();
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('phone')
+    .eq('tenant_id', tenantId)
+    .eq('opted_out', true)
+    .in('phone', phones);
+  if (error) {
+    // Fail closed: if we cannot prove consent, do not send.
+    console.error('[supabase] getOptedOutPhones error:', error.message);
+    return new Set(phones);
+  }
+  return new Set((data || []).map((r) => r.phone));
+}
+
 /** Conversations sitting in agent mode — the input to the handoff watchdog. */
 async function getHandedOffSessions() {
   const { data, error } = await supabase
@@ -423,6 +452,8 @@ module.exports = {
   getInboxSessions,
   setBotActive,
   getHandedOffSessions,
+  setOptedOut,
+  getOptedOutPhones,
   markInboxRead,
   resolveTenantByMetaPhoneId,
 };
