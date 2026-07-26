@@ -26,10 +26,35 @@ function parsePayload(jsonStr) {
   }
 }
 
-function reply(phone, text, tenantId) {
-  if (!text) return Promise.resolve();
-  return sendMessage(phone, text, tenantId)
-    .catch((err) => console.error(`[ai-handler] send failed ${phone}:`, err.message));
+// Whether the last reply() actually reached the customer, keyed by phone.
+// The handler is serialized per conversation, so one slot per phone is enough.
+const _lastDelivery = new Map(); // phone → boolean
+
+/**
+ * Send a message to the customer and REPORT whether it landed.
+ *
+ * This used to swallow every failure, so a rejected send still had its text
+ * written into conversation_history as though the customer had read it — the
+ * bot's own record of the conversation then disagreed with reality, and Claude
+ * reasoned from the fiction on the next turn.
+ */
+async function reply(phone, text, tenantId) {
+  if (!text) return true;
+  try {
+    await sendMessage(phone, text, tenantId);
+    _lastDelivery.set(phone, true);
+    return true;
+  } catch (err) {
+    _lastDelivery.set(phone, false);
+    console.error(`[ai-handler] send FAILED ${phone} (tenant ${tenantId}):`, err.message);
+    require('../services/vendor-alerts').alerts
+      .deliveryFailed(phone, err.message).catch(() => {});
+    return false;
+  }
+}
+
+function lastReplyDelivered(phone) {
+  return _lastDelivery.get(phone) !== false;
 }
 
 function detectLang(lastMessage, history) {
@@ -417,10 +442,14 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
     await reply(phone, cleanText, tid);
   }
 
+  // History records what the customer actually received. If the send failed,
+  // the assistant turn is left out so the next turn re-states it instead of
+  // building on something the customer never saw.
+  const delivered = lastReplyDelivered(phone);
   const updatedHistory = [
     ...history,
-    { role: 'user',      content: userMessage   },
-    { role: 'assistant', content: assistantText },
+    { role: 'user', content: userMessage },
+    ...(delivered ? [{ role: 'assistant', content: assistantText }] : []),
   ].slice(-40);
 
   if (!match) {
@@ -530,6 +559,20 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
           ? `Order *#${orderNumber}* received and sent to the restaurant for approval ✅\nWe'll update you the moment it's confirmed.`
           : `הזמנה מספר *${orderNumber}* התקבלה ונשלחה למסעדה לאישור ✅\nנעדכן אותך ברגע שההזמנה תאושר ותיכנס להכנה.`;
         await reply(phone, confirmMsg, tid);
+      }
+
+      // The order row exists either way. If the customer never got the
+      // confirmation they do not know that — so the business is told, because
+      // they are the ones who can pick up the phone.
+      if (!lastReplyDelivered(phone)) {
+        console.error(`[ai-handler] order #${orderNumber} created but the confirmation did not reach ${phone}`);
+        const { getAdminUsers } = require('../services/supabase');
+        const admins = await getAdminUsers(tid).catch(() => []);
+        for (const admin of admins) {
+          await sendMessage(admin.phone,
+            `⚠️ *הזמנה #${orderNumber} נקלטה אך הלקוח לא קיבל אישור*\n${payload.customer_name || ''} ${payload.customer_phone || phone}\nשליחת ההודעה בוואטסאפ נכשלה — שווה ליצור קשר טלפוני.`,
+            tid).catch(() => {});
+        }
       }
 
       await updateSession(phone, { conversation_history: [], pending_order: {} }, tid);

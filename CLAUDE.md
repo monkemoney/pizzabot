@@ -287,6 +287,12 @@ Sender in `admin_users` → admin bot on the same WhatsApp number (sessions keye
 
 ACTION blocks: `SET_AVAILABLE` (checks ALL occurrences of a name — standalone product + per-pizza topping; limits 500/100 to avoid silent truncation; logs updated row ids), `ORDER_STATUS`, `CANCEL_ORDER`, `DISPUTE`, `SET`, `SET_DELIVERY_HOURS`, `UPDATE_PRICE`, `LIST_ORDERS`, `CONFIRM_PAYMENT` (Bit).
 
+### Message Delivery Integrity (2026-07-27)
+
+`reply()` in ai-handler used to swallow every send failure, so a rejected message still had its text written into `conversation_history` as though the customer had read it — the bot's record then disagreed with reality and Claude reasoned from the fiction on the next turn. Now `reply()` returns whether the send landed; **the assistant turn is only appended to history when it was actually delivered**, so the next turn re-states it instead of building on something the customer never saw. A failure raises the `deliveryFailed` vendor alert, and when it is an *order confirmation* that failed, the tenant's admins are WhatsApped directly — the order row exists, the customer does not know it, and only the business can pick up the phone.
+
+**Push subscriptions are owned and revocable.** `push_subscriptions.username` records who created it (order notifications carry the customer's name and total, so a device that once logged in kept receiving them forever with no way to stop short of hand-written SQL); `GET/DELETE /api/push-subscriptions[/:id]` list and revoke, tenant-scoped. Delivery counting is honest: **403 `VapidPkHashMismatch`** — what the 2026-07 VAPID rotation left behind — is now treated as dead alongside 404/410 instead of being counted as a success, `last_ok_at` records real deliveries, and the subscription-lookup error is no longer discarded (push could be entirely dead with zero log output).
+
 ### Marketing Opt-Out (2026-07-27)
 
 Business-initiated messaging needs a way out — there was none anywhere in the product. `sessions.opted_out` + `opted_out_at` hold it. The keyword intercept lives at the very top of `handleMessageInner`, before the dispute, handoff and business-hours branches, because an unsubscribe has to work while a human holds the conversation and outside opening hours; it is matched **exactly** (`הסר`, `stop`, `unsubscribe`, …) rather than by substring, since "תסיר לי את הזיתים" must not silently unsubscribe a customer. `הצטרף`/`start` re-subscribes.

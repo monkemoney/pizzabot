@@ -963,10 +963,28 @@ router.get('/push-vapid-key', requireAuth, (_req, res) => {
   res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || '' });
 });
 
-// Save a new push subscription
+// Save a new push subscription — recorded against the user who created it, so
+// it can be revoked when they leave (order notifications carry the customer's
+// name and order total).
 router.post('/push-subscribe', requireAuth, async (req, res) => {
   try {
-    await pushNotifier.saveSubscription(req.body, req.headers['user-agent'] || '', tid(req));
+    await pushNotifier.saveSubscription(
+      req.body, req.headers['user-agent'] || '', tid(req), req.user?.username || null);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Who currently receives this tenant's order notifications
+router.get('/push-subscriptions', requireAdmin, async (req, res) => {
+  res.json(await pushNotifier.listSubscriptions(tid(req)));
+});
+
+router.delete('/push-subscriptions/:id', requireAdmin, async (req, res) => {
+  try {
+    const removed = await pushNotifier.revokeSubscription(req.params.id, tid(req));
+    if (!removed) return res.status(404).json({ error: 'לא נמצא' });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

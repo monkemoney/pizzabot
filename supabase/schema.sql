@@ -158,6 +158,9 @@ CREATE TABLE IF NOT EXISTS pending_payments (
 ALTER TABLE pending_payments ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'open';  -- open | expired
 -- Per-step provisioning progress, so approve() is resumable (2026-07-27)
 ALTER TABLE onboarding_sessions ADD COLUMN IF NOT EXISTS provisioning JSONB DEFAULT '{}'::jsonb;
+-- Push subscriptions need an owner to be revocable, and a health signal (2026-07-27)
+ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS username   TEXT;
+ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS last_ok_at TIMESTAMPTZ;
 -- Marketing opt-out (2026-07-27) — suppresses broadcasts + missed-call recovery,
 -- never transactional order updates
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS opted_out    BOOLEAN DEFAULT FALSE;

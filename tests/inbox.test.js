@@ -54,6 +54,7 @@ jest.mock('../src/services/sse',           () => ({ broadcast: mockBroadcast, su
 jest.mock('../src/services/vendor-alerts', () => ({
   alert: jest.fn(async () => {}),
   alerts: { serverError: jest.fn(async () => {}), serverRestart: jest.fn(async () => {}),
+            deliveryFailed: jest.fn(async () => {}),
             botError: jest.fn(async () => {}), onboardingComplete: jest.fn(async () => {}) },
 }));
 jest.mock('../src/services/settings', () => ({
@@ -267,5 +268,41 @@ describe('opt-out keyword', () => {
     await handleMessage('972501111111', 'הצטרף', TID);
 
     expect(supa.setOptedOut).toHaveBeenCalledWith('972501111111', false, TID);
+  });
+});
+
+// ── Delivery integrity ────────────────────────────────────────────────────────
+// reply() used to swallow every send failure, so a rejected message still had
+// its text written into conversation_history as though the customer had read
+// it — and Claude reasoned from that fiction on the next turn.
+describe('a failed send is not recorded as delivered', () => {
+  const { handleMessage } = require('../src/bot/ai-handler');
+  const { callClaude } = require('../src/services/claude');
+
+  test('the assistant turn is left out of history when the send fails', async () => {
+    mockGetSession.mockResolvedValue({ phone: '972501111111', conversation_history: [{ role: 'user', content: 'קודם' }], pending_order: {}, updated_at: new Date().toISOString() });
+    callClaude.mockResolvedValue('הנה התפריט שלנו');
+    mockSendMessage.mockRejectedValueOnce(new Error('#131026 recipient not on WhatsApp'));
+
+    await handleMessage('972501111111', 'מה יש לכם?', TID);
+
+    const withHistory = mockUpdateSession.mock.calls.map(c => c[1]).filter(u => u.conversation_history);
+    const saved = withHistory.at(-1);
+    expect(saved).toBeDefined();
+    const roles = saved.conversation_history.map(m => m.role);
+    expect(roles.filter(r => r === 'assistant')).toHaveLength(0);
+    expect(saved.conversation_history.at(-1)).toEqual({ role: 'user', content: 'מה יש לכם?' });
+  });
+
+  test('a successful send is recorded normally', async () => {
+    mockGetSession.mockResolvedValue({ phone: '972501111111', conversation_history: [{ role: 'user', content: 'קודם' }], pending_order: {}, updated_at: new Date().toISOString() });
+    callClaude.mockResolvedValue('הנה התפריט שלנו');
+    mockSendMessage.mockResolvedValue(undefined);
+
+    await handleMessage('972501111111', 'מה יש לכם?', TID);
+
+    const withHistory = mockUpdateSession.mock.calls.map(c => c[1]).filter(u => u.conversation_history);
+    const saved = withHistory.at(-1);
+    expect(saved.conversation_history.at(-1)).toEqual({ role: 'assistant', content: 'הנה התפריט שלנו' });
   });
 });

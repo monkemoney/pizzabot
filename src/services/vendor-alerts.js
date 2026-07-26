@@ -100,6 +100,8 @@ const alerts = {
   stalePayment:  (phone, total) => alert(`payment_stale_${phone}`, '💳', 'תשלום ממתין ללא אישור',
     `לקוח: ${phone}${total ? ` | סכום: ₪${total}` : ''}\nלינק תשלום נוצר אך לא התקבל אישור מכרטקום. אם התשלום מופיע בפורטל כרטקום — ההזמנה לא נקלטה אוטומטית וצריך ליצור אותה ידנית.`),
   botError:      (phone, err)  => alert('bot_error',   '🤖', 'שגיאת בוט', `לקוח: ${phone}\n${err?.message || err}`),
+  deliveryFailed: (phone, err) => alert(`delivery_${phone}`, '📵', 'הודעה ללקוח לא נשלחה',
+    `לקוח: ${phone}\n${String(err).slice(0, 200)}\nהשיחה מבחינת הלקוח נראית כאילו הבוט השתתק.`),
   newOrder:      (num, total)  => alert('new_order',   '🍕', `הזמנה #${num} התקבלה`, `סכום: ₪${total}`),
   serverRestart: ()       => alert('restart',      '🔄', 'שרת אותחל', 'pizzabot-jasell.onrender.com'),
   lowBalance:    (bal)    => alert('low_balance',  '⚠️', 'יתרת Green API נמוכה', `${bal} הודעות נותרו`),
