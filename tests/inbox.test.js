@@ -126,6 +126,24 @@ describe('ai-handler — human handoff intercept', () => {
     await handleMessage('972501111111', 'מה בתפריט?', TID);
     expect(mockCallClaude).toHaveBeenCalled();
   });
+
+  test('bot-handled message ALSO stamps the feed + broadcasts — without unread increment', async () => {
+    mockGetSession.mockResolvedValue({
+      phone: '972501111111', is_bot_active: true, unread_count: 2,
+      conversation_history: [], updated_at: new Date().toISOString(),
+    });
+
+    await handleMessage('972501111111', 'מה בתפריט?', TID);
+
+    const stamp = mockUpdateSession.mock.calls.find(c => c[1].last_customer_message);
+    expect(stamp).toBeDefined();
+    expect(stamp[1].last_customer_message).toBe('מה בתפריט?');
+    expect(stamp[1].last_message_at).toBeTruthy();
+    expect(stamp[1].unread_count).toBeUndefined(); // bot answered it — not "unread"
+
+    expect(mockBroadcast).toHaveBeenCalledWith(TID, 'inbox_message',
+      expect.objectContaining({ phone: '972501111111', is_bot_active: true, unread_count: 2 }));
+  });
 });
 
 // ── Inbox API ─────────────────────────────────────────────────────────────────

@@ -797,17 +797,65 @@ function _orderUIRefresh() {
   _titleFlashSync();
 }
 
-// ─── Live updates: SSE + sound + title flash ─────────────────────────────────
+// ─── Live updates: ONE supervised SSE connection (failure class 10) ──────────
+// Consumers (orders, kitchen tab, inbox) register listeners with sseOn() and
+// gap-recovery with sseOnReconnect() — nobody constructs their own
+// EventSource, so a new consumer cannot "forget" supervision. Death is
+// detected three ways: onerror + backoff retry (EventSource stops retrying by
+// itself on fatal HTTP errors — e.g. the 5xx window of every deploy), a
+// heartbeat watchdog on the server's 25s ping (a handle in a variable is not
+// a live connection), and resync callbacks on every reconnect (reattaching
+// the stream loses whatever happened during the gap).
 
-let _ordersSSE = null;
-let _ordersSSERetry = null;
+let _sse = null;
+let _sseRetryTimer = null;
+let _sseEverOpened = false;
+let _sseLastSignal = 0;
+const _sseHandlers  = new Map(); // event name -> Set<handler>
+const _sseResyncFns = new Set(); // run after reconnect — reload what SSE may have missed
+const _sseStatusFns = new Set(); // connection up/down listeners (kitchen dot)
+const SSE_DEAD_MS = 90_000;      // 3 missed 25s server pings + margin
+
+function sseOn(event, fn) {
+  if (!_sseHandlers.has(event)) _sseHandlers.set(event, new Set());
+  _sseHandlers.get(event).add(fn);
+  if (_sse) _sse.addEventListener(event, fn);
+}
+function sseOnReconnect(fn) { _sseResyncFns.add(fn); }
+function sseOnStatus(fn)    { _sseStatusFns.add(fn); }
+
+function sseConnect() {
+  clearTimeout(_sseRetryTimer);
+  if (_sse) { try { _sse.close(); } catch {} }
+  const es = new EventSource(`/api/sse?token=${encodeURIComponent(token || '')}`);
+  _sse = es;
+  _sseLastSignal = Date.now();
+  for (const [event, fns] of _sseHandlers) for (const fn of fns) es.addEventListener(event, fn);
+  es.addEventListener('ping', () => { _sseLastSignal = Date.now(); });
+  es.onopen = () => {
+    _sseLastSignal = Date.now();
+    _sseStatusFns.forEach(fn => { try { fn(true); } catch {} });
+    if (_sseEverOpened) _sseResyncFns.forEach(fn => { try { fn(); } catch {} });
+    _sseEverOpened = true;
+  };
+  es.onerror = () => {
+    _sseStatusFns.forEach(fn => { try { fn(false); } catch {} });
+    try { es.close(); } catch {}
+    clearTimeout(_sseRetryTimer);
+    _sseRetryTimer = setTimeout(sseConnect, 5_000 + Math.random() * 5_000);
+  };
+}
+
+setInterval(() => {
+  if (_sse && Date.now() - _sseLastSignal > SSE_DEAD_MS) {
+    console.warn('[sse] heartbeat lost — forcing reconnect');
+    _sseStatusFns.forEach(fn => { try { fn(false); } catch {} });
+    sseConnect();
+  }
+}, 30_000);
 
 function _ordersConnectSSE() {
-  if (_ordersSSE) { try { _ordersSSE.close(); } catch {} }
-  const es = new EventSource(`/api/sse?token=${encodeURIComponent(token || '')}`);
-  _ordersSSE = es;
-
-  es.addEventListener('new_order', (e) => {
+  sseOn('new_order', (e) => {
     const o = JSON.parse(e.data);
     if (!currentOrders.find(x => x.id === o.id)) currentOrders.unshift(o);
     _loadAvailability().then(_orderUIRefresh);
@@ -818,18 +866,15 @@ function _ordersConnectSSE() {
     }
   });
 
-  es.addEventListener('order_updated', (e) => {
+  sseOn('order_updated', (e) => {
     const o = JSON.parse(e.data);
     const i = currentOrders.findIndex(x => x.id === o.id);
     if (i >= 0) currentOrders[i] = o; else currentOrders.unshift(o);
     _orderUIRefresh();
   });
 
-  es.onerror = () => {
-    try { es.close(); } catch {}
-    clearTimeout(_ordersSSERetry);
-    _ordersSSERetry = setTimeout(_ordersConnectSSE, 5000);
-  };
+  sseOnReconnect(() => loadOrders());
+  sseConnect();
 }
 
 // Soft two-tone chime via WebAudio — no asset file needed. Browsers require a
@@ -3018,7 +3063,6 @@ function toggleNotifPanel() {
 // ─── Kitchen Window ───────────────────────────────────────────────────────────
 
 let _kitchenOrders = {};
-let _kitchenSSE    = null;
 let _kitchenInited = false;
 
 // Elapsed time since the order entered preparing (falls back to created_at).
@@ -3110,31 +3154,23 @@ async function loadKitchenOrders() {
 }
 
 function _kitchenConnectSSE() {
-  if (_kitchenSSE) { _kitchenSSE.close(); _kitchenSSE = null; }
-  const es = new EventSource(`/api/sse?token=${encodeURIComponent(token || '')}`);
-  _kitchenSSE = es;
-  es.addEventListener('new_order', (e) => {
+  sseOn('new_order', (e) => {
     const o = JSON.parse(e.data);
     if (['preparing','ready'].includes(o.status)) { _kitchenOrders[o.id] = o; renderKitchen(); showToast(`${TR('הזמנה')} #${o.order_number} ${TR('עברה להכנה')}`); }
   });
-  es.addEventListener('order_updated', (e) => {
+  sseOn('order_updated', (e) => {
     const o = JSON.parse(e.data);
     if (['preparing','ready'].includes(o.status)) _kitchenOrders[o.id] = o;
     else delete _kitchenOrders[o.id];
     renderKitchen();
   });
-  es.onopen = () => {
+  sseOnStatus((up) => {
     const dot = document.getElementById('kitchen-dot');
     const lbl = document.getElementById('kitchen-conn');
-    if (dot) dot.style.background = '#22c55e';
-    if (lbl) lbl.textContent = TR('מחובר');
-  };
-  es.onerror = () => {
-    const dot = document.getElementById('kitchen-dot');
-    const lbl = document.getElementById('kitchen-conn');
-    if (dot) dot.style.background = '#ef4444';
-    if (lbl) lbl.textContent = TR('מתחבר מחדש…');
-  };
+    if (dot) dot.style.background = up ? '#22c55e' : '#ef4444';
+    if (lbl) lbl.textContent = up ? TR('מחובר') : TR('מתחבר מחדש…');
+  });
+  sseOnReconnect(() => loadKitchenOrders());
 }
 
 function initKitchen() {
@@ -3149,14 +3185,14 @@ function initKitchen() {
 
 let _inboxSessions = [];
 let _inboxPhone = null;
-let _inboxSSE = null;
+let _inboxWired = false;
 
 async function loadInbox() {
   try {
     _inboxSessions = await api('GET', '/inbox');
     renderInboxList();
     _updateInboxBadge();
-    if (!_inboxSSE) _inboxConnectSSE();
+    if (!_inboxWired) { _inboxWired = true; _inboxConnectSSE(); }
   } catch (err) {
     console.error('[inbox] load error:', err);
   }
@@ -3333,26 +3369,28 @@ async function inboxSendReply() {
 }
 
 function _inboxConnectSSE() {
-  if (_inboxSSE) { _inboxSSE.close(); _inboxSSE = null; }
-  const es = new EventSource(`/api/sse?token=${encodeURIComponent(token || '')}`);
-  _inboxSSE = es;
-  es.addEventListener('inbox_message', (e) => {
-    const { phone, message, unread_count } = JSON.parse(e.data);
+  sseOnReconnect(() => loadInbox());
+  sseOn('inbox_message', (e) => {
+    // is_bot_active comes from the payload — bot-handled messages broadcast
+    // too now, and assuming agent-mode here painted them with the amber dot.
+    const { phone, message, unread_count, is_bot_active } = JSON.parse(e.data);
     let s = _inboxSessions.find(x => x.phone === phone);
     if (!s) {
-      s = { phone, is_bot_active: false, unread_count, last_customer_message: message, conversation_history: [] };
+      s = { phone, is_bot_active: is_bot_active !== false, unread_count, last_customer_message: message, conversation_history: [] };
       _inboxSessions.unshift(s);
     } else {
+      s.is_bot_active = is_bot_active !== false;
       s.unread_count = unread_count;
       s.last_customer_message = message;
       if (!Array.isArray(s.conversation_history)) s.conversation_history = [];
       s.conversation_history.push({ role: 'user', content: message });
     }
+    s.last_message_at = new Date().toISOString();
     _updateInboxBadge();
     renderInboxList();
     if (_inboxPhone === phone) renderInboxThread(phone);
   });
-  es.addEventListener('inbox_update', (e) => {
+  sseOn('inbox_update', (e) => {
     const { phone, is_bot_active } = JSON.parse(e.data);
     const s = _inboxSessions.find(x => x.phone === phone);
     if (s) s.is_bot_active = is_bot_active;
@@ -3389,6 +3427,11 @@ setInterval(() => {
 }, 30_000);
 // Refresh incoming-card aging timers every 30s even without data changes
 setInterval(() => { if (currentOrders.some(_awaitingApproval)) renderIncomingOrders(); }, 30_000);
+// Inbox polling fallback — SSE is supervised now, but the feed gets the same
+// safety net orders always had (only when the tab was ever opened + visible)
+setInterval(() => {
+  if (_inboxWired && document.getElementById('page-inbox')?.style.display !== 'none') loadInbox();
+}, 30_000);
 
 // Default prep-time for the accept quick-picks (settings are admin-only; managers get the default)
 if (role === 'admin') {

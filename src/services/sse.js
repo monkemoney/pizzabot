@@ -18,8 +18,11 @@ function subscribe(tenantId, res) {
   const set = _getClients(tenantId);
   set.add(res);
 
-  // Keepalive every 25s to prevent proxy/Render idle timeout
-  const ping = setInterval(() => res.write(': ping\n\n'), 25_000);
+  // Keepalive every 25s: prevents proxy/Render idle timeout AND doubles as a
+  // client-side heartbeat. A real event (not an SSE comment) on purpose —
+  // comments are invisible to EventSource, so clients could never watchdog on
+  // them; listeners that don't subscribe to 'ping' still ignore it for free.
+  const ping = setInterval(() => res.write('event: ping\ndata: {}\n\n'), 25_000);
 
   return () => {
     clearInterval(ping);

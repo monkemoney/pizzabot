@@ -223,6 +223,30 @@ function _matchesWord(text, words) {
   return words.some((w) => t === w || t === `*${w}*` || t === `${w}.` || t === `${w}!`);
 }
 
+// The ONE place an inbound customer message reaches the dashboard feed —
+// fields (preview line, timestamp) AND the SSE broadcast, whether the bot or a
+// human holds the conversation. The broadcast used to exist only on the
+// agent-mode path (failure class 7), so bot conversations never moved in the
+// inbox and their preview/timestamp froze at the last agent-mode message.
+// unread_count increments only in agent mode: a message the bot answered is
+// handled, and a badge counting answered messages becomes permanent noise.
+async function recordInboundForInbox(phone, userMessage, session, tid, extraFields = {}) {
+  const agentMode = session.is_bot_active === false;
+  const unread = (session.unread_count || 0) + (agentMode ? 1 : 0);
+  await updateSession(phone, {
+    ...extraFields,
+    last_customer_message: userMessage,
+    last_message_at: new Date().toISOString(),
+    ...(agentMode ? { unread_count: unread } : {}),
+  }, tid);
+  sse.broadcast(tid, 'inbox_message', {
+    phone,
+    message: userMessage,
+    unread_count: unread,
+    is_bot_active: !agentMode,
+  });
+}
+
 async function handleMessageInner(phone, userMessage, tenantId = null) {
   const tid = tenantId || settings.DEFAULT_TENANT_ID;
   const session = await getSession(phone, tid);
@@ -249,15 +273,15 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
   if (session.is_bot_active === false) {
     const newHistory = Array.isArray(session.conversation_history) ? session.conversation_history : [];
     newHistory.push({ role: 'user', content: userMessage });
-    await updateSession(phone, {
+    await recordInboundForInbox(phone, userMessage, session, tid, {
       conversation_history: newHistory.slice(-40),
-      unread_count: (session.unread_count || 0) + 1,
-      last_customer_message: userMessage,
-      last_message_at: new Date().toISOString(),
-    }, tid);
-    sse.broadcast(tid, 'inbox_message', { phone, message: userMessage, unread_count: (session.unread_count || 0) + 1 });
+    });
     return;
   }
+
+  // Bot-handled messages hit the feed too (dispute responses above are the one
+  // small gap — their conversation already surfaced via earlier messages).
+  await recordInboundForInbox(phone, userMessage, session, tid);
 
   const open = await settings.isOpen(tid);
   if (!open) {

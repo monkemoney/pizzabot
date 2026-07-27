@@ -163,10 +163,24 @@ function showToast(msg) {
 // Auth via ?token= query param — EventSource doesn't support custom headers
 let _es = null;
 let _reconnectTimer = null;
+let _sseEverOpened = false;
+let _sseLastSignal = 0;
+
+// Full board reload — used at boot and as gap-recovery after an SSE reconnect
+// (reattaching the stream loses whatever happened while it was down).
+async function resyncOrders() {
+  const orders = await apiFetch('/api/kitchen/orders');
+  if (!orders) return;
+  for (const k of Object.keys(_orders)) delete _orders[k];
+  for (const o of orders) _orders[o.id] = o;
+  renderAll();
+}
 
 function connectSSE() {
   if (_es) _es.close();
   _es = new EventSource(`/api/sse?token=${encodeURIComponent(getToken())}`);
+  _sseLastSignal = Date.now();
+  _es.addEventListener('ping', () => { _sseLastSignal = Date.now(); });
 
   _es.addEventListener('new_order', (e) => {
     const order = JSON.parse(e.data);
@@ -192,8 +206,11 @@ function connectSSE() {
   });
 
   _es.onopen = () => {
+    _sseLastSignal = Date.now();
     document.getElementById('dot').classList.add('connected');
     document.getElementById('connLabel').textContent = TR('מחובר');
+    if (_sseEverOpened) resyncOrders();
+    _sseEverOpened = true;
   };
 
   _es.onerror = () => {
@@ -203,6 +220,15 @@ function connectSSE() {
     _reconnectTimer = setTimeout(connectSSE, 4000);
   };
 }
+
+// Heartbeat watchdog: a handle in a variable is not a live connection — if the
+// server's 25s ping goes silent (dead TCP, laptop resume), force a reconnect.
+setInterval(() => {
+  if (_es && _sseLastSignal && Date.now() - _sseLastSignal > 90_000) {
+    console.warn('[kitchen] SSE heartbeat lost — reconnecting');
+    connectSSE();
+  }
+}, 30_000);
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function init() {
