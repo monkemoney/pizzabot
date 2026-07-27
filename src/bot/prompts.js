@@ -114,10 +114,20 @@ async function buildSystemPrompt(customerProfile = null, tenantId = null) {
   const defaultFee       = zones ? (zones[0]?.fee ?? 30) : (allSettings.delivery_price ?? 30);
   console.log(`[prompts] delivery zones loaded: ${allowedCitiesStr || 'none'} (${zones ? zones.length : 0} zones)`);
 
+  // Terse-questions experiment (backlog #3): open questions without enumerating
+  // options; elaborate only when the customer struggles. Payment keeps its
+  // options either way — the accepted methods are information the customer
+  // cannot guess. Gated until the A/B proves it (BOT_TERSE_QUESTIONS=true).
+  const TERSE = process.env.BOT_TERSE_QUESTIONS === 'true';
+
   const deliveryQuestion = deliveryEnabled && pickupEnabled
-    ? `משלוח (מחיר לפי אזור) או איסוף עצמי (חינם)?`
+    ? (TERSE ? `משלוח או איסוף?` : `משלוח (מחיר לפי אזור) או איסוף עצמי (חינם)?`)
     : deliveryEnabled ? `משלוח בלבד — לאיזו כתובת?`
     : `איסוף עצמי בלבד מ-${pickupAddress}.`;
+
+  const terseRule = TERSE
+    ? `\n• שאל קצר וטבעי, כמו מלצר אנושי. אל תפרט אופציות, מחירים או הסברים בתוך שאלה — שאל את השאלה בלבד. פרט אופציות רק אם הלקוח מתבלבל, שואל, או עונה תשובה שלא קשורה. (חריג: אמצעי תשלום — שם כן מציגים את האפשרויות.)`
+    : '';
 
   const paymentOptions = [
     cashEnabled && 'מזומן',
@@ -294,7 +304,7 @@ ${bitInstructions}
 ══════════════════════════════════════════
 כללים חשובים
 ══════════════════════════════════════════
-• אל תשתמש באמוג'ים בשום הודעה ללקוח, בשום שלב בשיחה.
+• אל תשתמש באמוג'ים בשום הודעה ללקוח, בשום שלב בשיחה.${terseRule}
 • "בטל" / "cancel" (לבד, ללא הקשר לפריט) → <!--ACTION:RESET-->
 • אל תחשוף JSON ללקוח לעולם.
 • אל תמציא פריטים שאינם בתפריט.

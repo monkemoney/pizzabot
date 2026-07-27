@@ -66,13 +66,31 @@ class OrderBotSession {
     const trimmed = this.history.slice(-MAX_HISTORY_MESSAGES);
     const messages = [...trimmed, { role: 'user', content: customerMessage }];
 
+    // Retry-with-backoff on transient API errors (429/529/5xx) — without this,
+    // back-to-back eval arms exhaust the org rate limit and an entire arm
+    // fails with zero bot calls (happened 2026-07-28 in the terse-questions A/B).
     const t0 = Date.now();
-    const res = await client.messages.create({
-      model: BOT_MODEL,
-      max_tokens: 1024,
-      system: [{ type: 'text', text: this.systemPrompt, cache_control: { type: 'ephemeral' } }],
-      messages,
-    });
+    let res, lastErr;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        res = await client.messages.create({
+          model: BOT_MODEL,
+          max_tokens: 1024,
+          system: [{ type: 'text', text: this.systemPrompt, cache_control: { type: 'ephemeral' } }],
+          messages,
+        });
+        break;
+      } catch (err) {
+        lastErr = err;
+        const s = err?.status || err?.response?.status;
+        if (s === 429 || s === 529 || (s >= 500 && s < 600)) {
+          await new Promise((r) => setTimeout(r, 1500 * Math.pow(2, attempt)));
+          continue;
+        }
+        throw err;
+      }
+    }
+    if (!res) throw lastErr;
     this.latencies.push(Date.now() - t0);
     const raw = res.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
 
