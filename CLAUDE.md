@@ -461,7 +461,11 @@ Order status flow: `new (awaiting approval) → preparing → ready → out_for_
 
 ## Operational Rules
 
-1. **Backup before infra change:** `node scripts/backup-render-env.js`
+1. **Backup before infra change:** `node scripts/backup-render-env.js`. And note that **`sync-render-env.js` does NOT apply the change** — it writes the vars and tells you to redeploy. Until a deploy runs, the process is still using the old environment, and the startup banner will keep reporting the old state. Trigger one explicitly:
+   ```bash
+   curl -s -X POST "https://api.render.com/v1/services/srv-d831jc8js32c73ef8mng/deploys" \
+     -H "Authorization: Bearer $RENDER_API_KEY" -H "Content-Type: application/json" -d '{}'
+   ```
 2. **Schema changes only via Supabase Management API** (or SQL editor from desktop). Never direct `pg` — see DB access lesson. **After changing schema.sql, run the drift check** — it is no longer a manual habit:
    ```bash
    SUPABASE_MGMT_TOKEN=sbp_... node scripts/check-schema.js
