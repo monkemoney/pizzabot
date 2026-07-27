@@ -20,6 +20,12 @@ function stripAdminActions(text) {
 
 const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
 
+function fmtOverrideUntil(untilIso) {
+  return new Date(untilIso).toLocaleString('he-IL', {
+    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem', hour12: false,
+  });
+}
+
 function reply(phone, text, tenantId) {
   if (!text) return Promise.resolve();
   return sendMessage(phone, text, tenantId)
@@ -28,10 +34,13 @@ function reply(phone, text, tenantId) {
 
 // ── Build admin system prompt ─────────────────────────────────────────────────
 async function buildAdminPrompt(adminUser, tenantId = DEFAULT_TENANT_ID) {
-  const [allSettings, activeOrders] = await Promise.all([
+  const [allSettings, effectiveOpen, effectiveDelivery, activeOrders] = await Promise.all([
     settings.loadAll(tenantId),
+    settings.isOpen(tenantId),
+    settings.isDeliveryOpen(tenantId),
     supabase.from('orders').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(50).then(r => (r.data || []).filter(o => !['done','cancelled'].includes(o.status)).slice(0, 20)),
   ]);
+  const override = settings.activeOverride(allSettings);
 
   // Load products for this tenant
   const { data: products } = await supabase
@@ -108,8 +117,9 @@ async function buildAdminPrompt(adminUser, tenantId = DEFAULT_TENANT_ID) {
 סטטוס ופעולות
 ══════════════════════════
 • עכשיו: יום ${DAY_HE[todayKey]}, ${nowStr} (שעון ישראל) — ענה על שאלות שעה/תאריך לפי שורה זו בלבד
-• בוט: ${allSettings.is_open !== false ? 'פתוח ✅' : 'סגור ❌'}
-• משלוח: ${allSettings.delivery_enabled !== false ? 'כן' : 'לא'} | איסוף: ${allSettings.pickup_enabled !== false ? 'כן' : 'לא'}
+• העסק בפועל: ${effectiveOpen ? 'פתוח ✅ — מקבל הזמנות עכשיו' : 'סגור ❌ — לקוחות מקבלים "סגור" עכשיו'}${override ? ` (חריגה ידנית עד ${fmtOverrideUntil(override.until)})` : !effectiveOpen && allSettings.is_open !== false ? ' (מחוץ לשעות הפעילות)' : ''}
+• דגל ראשי is_open: ${allSettings.is_open !== false ? 'דלוק' : 'כבוי'} — זה לא מצב העסק בפועל; המצב בפועל בשורה למעלה
+• משלוח בפועל: ${effectiveDelivery ? 'פתוח' : 'סגור'} (דגל: ${allSettings.delivery_enabled !== false ? 'כן' : 'לא'}) | איסוף: ${allSettings.pickup_enabled !== false ? 'כן' : 'לא'}
 • תשלום: מזומן=${allSettings.payment_cash !== false ? '✅' : '❌'} אשראי=${allSettings.payment_credit !== false ? '✅' : '❌'} Bit=${allSettings.payment_bit ? '✅' : '❌'}${allSettings.payment_bit && allSettings.bit_phone ? ` (${allSettings.bit_phone})` : ''}
 
 ══════════════════════════
@@ -163,6 +173,11 @@ ${orderList}
 **פתח/סגור מחלוקת:**
 <!--ADMIN:DISPUTE:{"order_number":<מספר>,"missing":["<פריט1>","<פריט2>"]}-->
 
+**פתיחה/סגירה זמנית עכשיו (עוקפת את שעות הפעילות, פגה אוטומטית):**
+<!--ADMIN:OVERRIDE:{"state":true|false,"hours":<מספר שעות, אפשר שבר כמו 1.5>}-->
+**ביטול חריגה זמנית (חזרה ללוח השעות הרגיל):**
+<!--ADMIN:OVERRIDE:{"cancel":true}-->
+
 **הגדרה (toggle):**
 <!--ADMIN:SET:{"key":"is_open|delivery_enabled|pickup_enabled|payment_cash|payment_credit|payment_bit|payment_paybox","value":true|false}-->
 
@@ -191,8 +206,12 @@ ${orderList}
 • "נגמרה X" = SET_AVAILABLE available:false
 • "חזרה X" / "יש X" = SET_AVAILABLE available:true
 • שם תוספת (כמו "בולגרית") יכול להופיע מספר פעמים ברשימה — פעם אחת כמוצר עצמאי ופעם נוספת כתוספת מקוננת תחת כל פיצה בנפרד. לפני שאתה אומר "כבר זמין, אין צורך לעדכן" — בדוק את **כל** המופעים של השם בכל הרשימה (מוצר + כל תוספת מקוננת תחת כל מוצר). אם ולו מופע אחד מסומן ❌ — חובה לשלוח SET_AVAILABLE עם type:"topping" כדי לתקן את כולם (הפעולה מעדכנת את כל הרשומות התואמות בבת אחת). אל תניח שמוצר עצמאי זמין ✅ אומר שגם התוספת בכל הפיצות זמינה.
-• "סגור" / "צאו" = SET is_open:false
-• "פתח" = SET is_open:true
+• **פתיחה/סגירה — קודם תבדוק את "העסק בפועל" למעלה, ותבחר לפי הכוונה:**
+  - בקשה זמנית או מחוץ לשעות הפעילות ("פתח עכשיו", "תפתח לעוד 3 שעות", "פתח אותו, אמצע הלילה") = OVERRIDE state:true עם hours (ברירת מחדל 3). SET is_open:true לא יעזור מחוץ לשעות — אל תשתמש בו לזה.
+  - "סגור לשעה" / "סגור להמשך היום" (סגירה זמנית באמצע יום) = OVERRIDE state:false עם hours מתאים (חשב עד סוף היום מהשעה הנוכחית אם אמרו "להיום").
+  - "בטל את החריגה" / "תחזור לשעות הרגילות" = OVERRIDE cancel:true
+  - "סגור" / "צאו" בלי הגבלת זמן = SET is_open:false (כיבוי קבוע עד שידליקו)
+  - "פתח" כשהעסק סגור בגלל הדגל (בתוך שעות הפעילות) = SET is_open:true
 • "קיבלתי Bit" / "שילמו" / "אשר תשלום" + מספר הזמנה = CONFIRM_PAYMENT
 • "אשר הזמנה 1026" / "קבל את 1026" / "תתחילו להכין את 1026" = ACCEPT_ORDER (להזמנה שממתינה לאישור)
 • "משלוח עד 22:00" / "פתח משלוח מ-12:00" = SET_DELIVERY_HOURS עם day:today
@@ -205,6 +224,11 @@ ${orderList}
 // ── Dispatch admin actions ────────────────────────────────────────────────────
 async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT_ID) {
   const results = [];
+  // Any action that touches the open/delivery state triggers a read-back of the
+  // EFFECTIVE state after the loop — success is reported from the outcome, not
+  // the write (failure class 9: an is_open write outside the hours window
+  // changes nothing, and "בוצע ✅" would be a lie).
+  let verifyOpenState = false;
   let match;
   const re = new RegExp(ADMIN_ACTION_RE.source, 'g');
 
@@ -343,6 +367,35 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
           settings._clearCache(tenantId);
           const labels = { is_open:'בוט', delivery_enabled:'משלוח', pickup_enabled:'איסוף', payment_cash:'מזומן', payment_credit:'אשראי', payment_bit:'Bit', payment_paybox:'Paybox', courier_notify_enabled:'התראות שליח' };
           results.push(`${value ? '✅' : '❌'} *${labels[key] || key}* — ${value ? 'פועל' : 'מושבת'}`);
+          if (key === 'is_open' || key === 'delivery_enabled') verifyOpenState = true;
+          if (key === 'courier_notify_enabled' && value) {
+            const couriers = (await settings.get('couriers', tenantId)) || [];
+            if (!Array.isArray(couriers) || !couriers.filter(c => c?.phone).length) {
+              results.push('⚠️ אין שליחים מוגדרים — ההתראות לא יישלחו לאף אחד עד שיוגדר שליח בדשבורד');
+            }
+          }
+          break;
+        }
+
+        case 'OVERRIDE': {
+          if (payload.cancel) {
+            // settings.value is JSONB NOT NULL — false is the "no override" marker
+            await settings.set('open_override', false, tenantId);
+            settings._clearCache(tenantId);
+            results.push('✅ החריגה בוטלה — חוזרים ללוח השעות הרגיל');
+            verifyOpenState = true;
+            break;
+          }
+          const state = payload.state === true || payload.state === 'true';
+          const rawHours = Number(payload.hours);
+          const hours = Number.isFinite(rawHours) && rawHours > 0 ? Math.min(rawHours, 24) : 3;
+          const until = new Date(Date.now() + hours * 3_600_000);
+          await settings.set('open_override', { state, until: until.toISOString(), set_by: phone }, tenantId);
+          settings._clearCache(tenantId);
+          results.push(state
+            ? `✅ העסק נפתח זמנית — עד ${fmtOverrideUntil(until.toISOString())}, ואז חוזר ללוח הרגיל`
+            : `❌ העסק נסגר זמנית — עד ${fmtOverrideUntil(until.toISOString())}, ואז חוזר ללוח הרגיל`);
+          verifyOpenState = true;
           break;
         }
 
@@ -365,6 +418,7 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
           results.push(dayOpen === false
             ? `❌ יום ${dayLabel} — סגור`
             : `✅ שעות פעילות יום ${dayLabel}: ${current[targetDay].open}–${current[targetDay].close}`);
+          verifyOpenState = true;
           break;
         }
 
@@ -389,17 +443,22 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
           } else {
             results.push(`✅ שעות משלוח יום ${dayLabel}: ${current[targetDay].open}–${current[targetDay].close}`);
           }
+          verifyOpenState = true;
           break;
         }
 
         case 'UPDATE_PRICE': {
           const { name, price } = payload;
           const { data: found } = await supabase
-            .from('products').select('id,name_he').eq('tenant_id', tenantId).ilike('name_he', `%${name}%`).limit(3);
+            .from('products').select('id,name_he').eq('tenant_id', tenantId).ilike('name_he', `%${name}%`).limit(4);
           if (!found?.length) { results.push(`❌ לא נמצא "${name}"`); break; }
-          for (const p of found) {
-            await supabase.from('products').update({ price, updated_at: new Date().toISOString() }).eq('id', p.id);
+          // Multiple matches: repricing all of them silently while reporting one
+          // name is how "עדכן מחיר פיצה" reprices three products. Ask instead.
+          if (found.length > 1) {
+            results.push(`⚠️ נמצאו כמה מוצרים תואמים ל"${name}": ${found.map(p => p.name_he).join(', ')} — כתוב את השם המדויק`);
+            break;
           }
+          await supabase.from('products').update({ price, updated_at: new Date().toISOString() }).eq('id', found[0].id);
           invalidateCache(tenantId);
           results.push(`✅ *${found[0].name_he}* — מחיר עודכן ל-₪${price}`);
           break;
@@ -447,6 +506,25 @@ async function dispatchActions(text, phone, adminUser, tenantId = DEFAULT_TENANT
     } catch (err) {
       console.error(`[admin-bot] action ${action} error:`, err.message);
       results.push(`❌ שגיאה בביצוע ${action}: ${err.message}`);
+    }
+  }
+
+  if (verifyOpenState) {
+    try {
+      const [effOpen, effDelivery, all] = await Promise.all([
+        settings.isOpen(tenantId),
+        settings.isDeliveryOpen(tenantId),
+        settings.loadAll(tenantId),
+      ]);
+      const override = settings.activeOverride(all);
+      let line = `📍 מצב בפועל: העסק ${effOpen ? 'פתוח ✅' : 'סגור ❌'} | משלוח ${effDelivery ? 'פתוח' : 'סגור'}`;
+      if (override) line += ` (חריגה עד ${fmtOverrideUntil(override.until)})`;
+      results.push(line);
+      if (!effOpen && all.is_open !== false && !override) {
+        results.push('⚠️ אתם מחוץ לשעות הפעילות — כדי לפתוח עכשיו זמנית כתוב למשל: "פתח ל-3 שעות"');
+      }
+    } catch (err) {
+      console.error('[admin-bot] effective-state read-back failed:', err.message);
     }
   }
 
@@ -549,7 +627,17 @@ async function handleAdminMessage(phone, userMessage, adminUser, tenantId = DEFA
   console.log(`[admin-bot] phone=${phone} tenant=${tenantId} name="${adminUser.name}" msg="${userMessage.slice(0,60)}"${interactiveId ? ` btn=${interactiveId}` : ''}`);
 
   const session = await getSession(`admin:${phone}`, tenantId);
-  const history = Array.isArray(session.conversation_history) ? session.conversation_history : [];
+  let history = Array.isArray(session.conversation_history) ? session.conversation_history : [];
+
+  // Stale-session guard (same 3h rule as customers): a 7h-old exchange from the
+  // afternoon otherwise outweighs the live clock in the prompt — at 00:28 the
+  // bot answered "פתוח עד 23:00, עוד ~5.5 שעות" from afternoon history.
+  const STALE_MS = 3 * 60 * 60 * 1000;
+  const lastActivity = session.updated_at ? new Date(session.updated_at).getTime() : 0;
+  if (history.length && lastActivity && Date.now() - lastActivity > STALE_MS) {
+    console.log(`[admin-bot] stale session (${Math.round((Date.now() - lastActivity) / 3_600_000)}h) — resetting history for ${phone}`);
+    history = [];
+  }
 
   if (['reset','אפס','נקה'].some(k => userMessage.trim().toLowerCase() === k)) {
     await updateSession(`admin:${phone}`, { conversation_history: [] }, tenantId);

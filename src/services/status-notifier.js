@@ -64,7 +64,10 @@ async function notifyStatusChange(phone, status, lang = 'he', orderNumber, order
     if (status !== triggerStatus) return;
 
     const couriers = Array.isArray(cfg.couriers) ? cfg.couriers.filter(c => c && c.phone) : [];
-    if (!couriers.length) return;
+    if (!couriers.length) {
+      console.warn(`[notifier] courier_notify_enabled but NO couriers configured (tenant ${tid}) — notification dropped for order #${order.order_number}`);
+      return;
+    }
 
     const msg = buildCourierMessage(order);
     for (const c of couriers) {

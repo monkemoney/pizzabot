@@ -139,7 +139,7 @@ pizza-bot/
 │   │   ├── cardcom.js            # Cardcom JSON API v11 — createPaymentPage; verifyPayment is no-op
 │   │   ├── push-notifier.js      # Web Push (VAPID)
 │   │   ├── settings.js           # Live settings, 3s TTL cache; isOpen()/isDeliveryOpen() (Asia/Jerusalem,
-│   │   │                         #   overnight-window aware)
+│   │   │                         #   overnight-window aware, open_override with built-in expiry)
 │   │   ├── menu-service.js       # Live products from DB, 3s TTL cache
 │   │   ├── status-notifier.js    # Customer + courier WhatsApp notifications on status change
 │   │   ├── slug.js               # Business-name slugs for public menu URLs (Hebrew transliteration)
@@ -219,7 +219,7 @@ The tenant's business number lives at a VoIP provider (pilot: DIDWW — number o
 - **Filters before sending:** unusable caller id (anonymous), the forward-target phone (`missed_call_forward_number`), couriers, admin_users, business closed (unless `missed_call_when_closed`).
 - **Throttle:** in-memory per `tenant:caller`, `missed_call_throttle_hours` (default 3h) — also absorbs provider webhook retries/duplicates. Resets on deploy (accepted, like login rate limiting). Failed sends release the throttle key.
 - **CDR parsing** (`parseCallEvents`): DIDWW Voice IN shape `{data:[{type:'inbound-cdr',attributes:{success,duration,time_connect,src_number}}]}`; caller-field probing covers naming variants. Answered = `success===true` | `time_connect` | `duration>0`. Unparsable bodies are logged in full — calibrate against the first real event.
-- **Settings** (per tenant): `missed_call_enabled`, `missed_call_webhook_token` (required — 403 without it), template name/lang/params, text fallback, forward number, throttle hours, when-closed. Dashboard toggle: הגדרות → "שיחות שלא נענו".
+- **Settings** (per tenant): `missed_call_enabled`, `missed_call_webhook_token` (required — 403 without it; **PATCH /settings refuses to enable the toggle without a token**, since an enabled-but-tokenless tenant 403s every CDR and DIDWW retry-spams on non-2xx), template name/lang/params, text fallback, forward number, throttle hours, when-closed. Dashboard toggle: הגדרות → "שיחות שלא נענו".
 - Master switch off ⇒ webhook returns 200 (not 4xx) so the provider doesn't retry-spam.
 - **Onboarding a client onto this feature: follow `docs/ONBOARDING-PLAYBOOK.md`** — the validated ops checklist (number purchase incl. dirty-number check, WABA wiring, per-WABA template, settings seed, CDR stream config) with every production gotcha indexed.
 
@@ -284,9 +284,15 @@ Status-based, no time limit: cancellable while `status ∈ {'new','scheduled'}` 
 
 ### Admin Bot (admin-handler.js)
 
-Sender in `admin_users` → admin bot on the same WhatsApp number (sessions keyed `admin:<phone>`). System prompt carries live state: current IL date/time line (answer time questions from it only), open/delivery/payment status, full product+topping availability, active orders (Bit-pending flagged). `reset`/`אפס` clears the session.
+Sender in `admin_users` → admin bot on the same WhatsApp number (sessions keyed `admin:<phone>`). System prompt carries live state: current IL date/time line (answer time questions from it only), **the EFFECTIVE open/delivery state from `isOpen()`/`isDeliveryOpen()` (not the raw flags — the raw `is_open` line at midnight is why the bot once argued the business was open while customers got "closed")**, payment status, full product+topping availability, active orders (Bit-pending flagged). `reset`/`אפס` clears the session; **admin sessions also stale-reset after 3h** like customer ones (a 7h-old afternoon exchange used to outweigh the live clock in the prompt).
 
-ACTION blocks: `SET_AVAILABLE` (checks ALL occurrences of a name — standalone product + per-pizza topping; limits 500/100 to avoid silent truncation; logs updated row ids), `ORDER_STATUS`, `CANCEL_ORDER`, `DISPUTE`, `SET`, `SET_DELIVERY_HOURS`, `UPDATE_PRICE`, `LIST_ORDERS`, `CONFIRM_PAYMENT` (Bit).
+ACTION blocks: `SET_AVAILABLE` (checks ALL occurrences of a name — standalone product + per-pizza topping; limits 500/100 to avoid silent truncation; logs updated row ids), `ORDER_STATUS`, `CANCEL_ORDER`, `DISPUTE`, `SET`, `SET_DELIVERY_HOURS`, `UPDATE_PRICE` (multi-match → asks for the exact name instead of silently repricing every ilike hit), `LIST_ORDERS`, `CONFIRM_PAYMENT` (Bit), `OVERRIDE` (below).
+
+**Spontaneous open/close — `open_override` (2026-07-28).** "תפתח עכשיו לעוד שלוש שעות" at 00:29 used to map to `SET is_open:true` — a no-op outside the hours window, reported as "בוצע ✅" (failure class 9's founding incident). Now:
+- Setting `open_override` = `{state, until, set_by}` (JSONB; `false` = no override — the column is NOT NULL). While `now < until` it wins in `isOpen()` over both the flag and the hours window; in `isDeliveryOpen()` it wins over the hours window but NOT over `delivery_enabled:false` (structural "we don't deliver"). The expiry lives inside the value — no watchdog, nothing can stay "temporary" forever.
+- `ADMIN:OVERRIDE:{state,hours}` (≤24h, default 3) / `{cancel:true}`; prompt rules route temporary/out-of-hours requests to OVERRIDE and keep `SET is_open` for permanent kill.
+- **Closed loop:** every open/delivery-touching action (SET is_open/delivery_enabled, both HOURS actions, OVERRIDE) is followed by a read-back of the effective state, appended as "📍 מצב בפועל: …"; flag-on-but-outside-hours adds a hint to use the override. Success is reported from the outcome, never the write.
+- Dashboard: settings page shows an effective-state banner (`GET /api/settings` returns `_effective {open, delivery, override}`; `_`-prefixed keys are never persisted by PATCH) with an override chip + "בטל חריגה".
 
 ### Money Display (2026-07-27)
 
@@ -337,7 +343,7 @@ Dashboard "הודעות" tab lists all customer sessions (avatars/initials, name
 - **Escalation:** `escalateUnacceptedOrders()` (index.js, every 60s) covers **both** unaccepted `new` and unaccepted `scheduled` orders. Immediate orders escalate on age (`accept_reminder_minutes`, default 3; ×3 → level 2); pre-orders escalate on proximity to their slot (level 1 at lead+30 min, level 2 at lead) — nagging about tomorrow's booking would be noise. Wording is per-case: an unpaid Bit order is waiting on the *customer's* money, so admins are asked to confirm the transfer and the level-2 customer message is a payment reminder, not "we'll confirm shortly". `escalation_level` is persisted (no re-alert on restart). **Gated to Render** (`process.env.RENDER`) — a local dev server against the prod DB must never fire it (`ENABLE_ESCALATION=1` to override).
 - **Scheduler (`processScheduledOrders`, every 60s):** resolves `prep_lead_time` **per tenant** (it used to read one tenant's value and apply it to everyone), promotes `scheduled → preparing` at `scheduled_for − lead`, **refuses to start a pre-order the business never approved** in manual mode, and skips orders more than 6h past their slot (post-outage guard) instead of firing yesterday's dinner into today's kitchen.
 - **Refunds on cancel:** every cancel path (dashboard, admin bot, customer keyword, dispute option 1) now attempts `cancelDeal` for paid credit orders and stamps `refund_status`.
-- Cardcom creds resolve per tenant (settings `cardcom_terminal`/`cardcom_username`, env for default tenant). The pending-payments poller no longer fabricates orders — it only alerts the vendor about stale pendings and prunes expired rows.
+- Cardcom creds resolve per tenant (settings `cardcom_terminal`/`cardcom_username`, env for default tenant). **A non-default tenant with missing creds THROWS (2026-07-28)** — the old env fallback sent that tenant's customers' money into the DEFAULT tenant's terminal, silently. `verifyCreds(terminal, apiName)` does a minimal LowProfile/Create; onboarding's cardcom checklist item ticks only when it passes (field presence proves nothing — a wrong ApiName used to surface at the first real payment). The pending-payments poller no longer fabricates orders — it only alerts the vendor about stale pendings and prunes expired rows.
 
 ### Kitchen (KDS)
 
@@ -397,7 +403,7 @@ Vendor alerts use per-incident throttle keys (payment_stale_<phone> etc.) — a 
 
 Portal pages: סקירה (KPIs + clients + Claude API cost/month per tenant from `api_usage`), לקוחות (CRUD + live search), אונבורדינג, התראות. Fully isolated from the business dashboard (separate HTML/JS; no shared code — `app.js` uses `api()`, `kitchen.js` uses `apiFetch()`, don't mix).
 
-vendor-alerts.js: WhatsApp to `vendor_phone` setting; 5-min in-memory throttle per type; respects `vendor_alert_error/payment/restart` settings read at send time. Alert types: server_error, bot_error, payment_failed, new_order, restart, low_balance, onboarding_complete. Always uses DEFAULT_TENANT_ID (platform-level) — the one allowed exception to the tenantId rules. Vendor has no interactive bot — web only.
+vendor-alerts.js: WhatsApp to `vendor_phone` setting (missing phone → loud `alert DROPPED` console.error, not a silent return — the alerting system reporting to nobody is the one failure it can't page anyone about); 5-min in-memory throttle per type; respects `vendor_alert_error/payment/restart` settings read at send time. Alert types: server_error, bot_error, payment_failed, new_order, restart, low_balance, onboarding_complete. Always uses DEFAULT_TENANT_ID (platform-level) — the one allowed exception to the tenantId rules. Vendor has no interactive bot — web only.
 
 ### Design System (v2 — 2026-07 "clean light SaaS", user-approved from a v0 reference)
 
@@ -517,6 +523,7 @@ A 2026-07-26/27 session was asked to fix the order-acceptance flow. Naming *why*
 6. **A dropped `tenantId`.** A service signature with a default plus a caller that forgets. → See Tenant Isolation Rules; the defaults are the trap, not the safety net.
 7. **Notifications from one path only.** An action happens in six places and one of them broadcasts. → Route every writer through a single exit point (`order-state.js`).
 8. **Derived data diverging from its source.** The dashboard says X, the DB or the payment processor says Y, and nothing compares them. → Define the number by what it means (revenue = money received), and make the query select every field it filters on.
+9. **Success reported at the write, not at the effect.** The user's command expresses intent about an *effective state* that is a derived function of several inputs (`isOpen() = is_open ∧ hours window`); the handler writes ONE input, the write succeeds, and "בוצע ✅" is derived from the write — while another input vetoes the effect. Found 2026-07-28: admin said "תפתח את העסק עכשיו" at 00:29, bot set `is_open=true`, reported success, business stayed closed (outside the hours window). Three layers, audit all of them: (a) the handler never reads the derived state back after acting — closed-loop check missing; (b) status displays show the raw input, not the derived state, so the bot/UI argues with reality; (c) the action vocabulary can't express the intent (here: a *temporary* override), and an LLM given no fitting action picks the nearest one that type-checks and declares victory. Diagnostic question, per command/button: *"what observable outcome does the user intend, and does the handler read that outcome back after acting — or only confirm the write?"* Prior unnamed instances: subscribeWaba (webhook verified, zero POSTs), sync-render-env without deploy, rollback silently disabling auto-deploy, VapidPkHashMismatch counted as delivered. The 2026-07-28 audit found 8 more (all fixed same day): cardcom env-fallback charging the wrong tenant's terminal, vendor alerts dropped silently without vendor_phone, delivery_enabled vs isDeliveryOpen, missed-call toggle without token, raw-flag status displays, courier notify with zero couriers, cardcom checklist ticked on field presence, UPDATE_PRICE multi-match underreporting.
 
 **Two habits that made the difference, worth keeping:**
 

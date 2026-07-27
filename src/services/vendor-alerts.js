@@ -74,7 +74,12 @@ async function alert(type, emoji, title, detail = '') {
   _alertCooldowns[type] = Date.now();
 
   const phone = await getVendorPhone();
-  if (!phone) return;
+  if (!phone) {
+    // The whole alerting system silently reporting to nobody is worse than the
+    // incidents it exists to surface — make the dead-letter loud in the logs.
+    console.error(`[vendor-alerts] vendor_phone not configured — alert DROPPED: ${type} "${title}"`);
+    return;
+  }
 
   const msg = [
     `${emoji} *[Jasell Alert] ${title}*`,

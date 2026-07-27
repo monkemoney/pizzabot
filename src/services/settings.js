@@ -57,6 +57,18 @@ async function set(key, value, tenantId = DEFAULT_TENANT_ID) {
   _getCache(tenantId).time = 0;
 }
 
+// Spontaneous open/close: setting `open_override` = { state, until, set_by }.
+// While now < until it wins over the hours window (and, for isOpen, over the
+// is_open flag too) — the expiry lives inside the value itself, so no watchdog
+// is needed and nothing can get stuck "temporarily" forever.
+function activeOverride(allSettings) {
+  const o = allSettings?.open_override;
+  if (!o || typeof o.state !== 'boolean' || !o.until) return null;
+  const until = new Date(o.until).getTime();
+  if (!Number.isFinite(until) || Date.now() >= until) return null;
+  return o;
+}
+
 // Overnight-aware window check: a window whose close < open (e.g. 20:00–01:00)
 // spills into the next day. Open when either today's window contains now,
 // or yesterday's window crossed midnight and its tail still covers now.
@@ -93,10 +105,18 @@ function _inHoursWindow(hours, now) {
 }
 
 async function isOpen(tenantId = DEFAULT_TENANT_ID) {
-  const open = await get('is_open', tenantId);
+  const all = await loadAll(tenantId);
+
+  const override = activeOverride(all);
+  if (override) {
+    console.log(`[settings] isOpen (tenant ${tenantId}) — override → ${override.state} (until ${override.until})`);
+    return override.state;
+  }
+
+  const open = all.is_open;
   if (open === false || open === 'false') return false;
 
-  const hours = await get('business_hours', tenantId);
+  const hours = all.business_hours;
   if (!hours) return true;
 
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
@@ -116,9 +136,15 @@ function _checkHoursWindow(hours, _day) {
 }
 
 async function isDeliveryOpen(tenantId = DEFAULT_TENANT_ID) {
-  const deliveryEnabled = await get('delivery_enabled', tenantId);
-  if (deliveryEnabled === false) return false;
-  const hours = await get('delivery_hours', tenantId);
+  const all = await loadAll(tenantId);
+  // delivery_enabled=false is structural ("we don't deliver") — an open
+  // override must not conjure a delivery service that doesn't exist.
+  if (all.delivery_enabled === false) return false;
+
+  const override = activeOverride(all);
+  if (override) return override.state;
+
+  const hours = all.delivery_hours;
   if (!hours || Object.keys(hours).length === 0) return true;
   const days = ['sun','mon','tue','wed','thu','fri','sat'];
   const nowIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
@@ -130,4 +156,4 @@ function _clearCache(tenantId = DEFAULT_TENANT_ID) {
   _getCache(tenantId).data = {};
 }
 
-module.exports = { get, set, loadAll, isOpen, isDeliveryOpen, _clearCache, _inHoursWindow, DEFAULT_TENANT_ID };
+module.exports = { get, set, loadAll, isOpen, isDeliveryOpen, activeOverride, _clearCache, _inHoursWindow, DEFAULT_TENANT_ID };

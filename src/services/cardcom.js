@@ -11,8 +11,9 @@ const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-0000
 /**
  * Resolve Cardcom credentials per tenant: default tenant → env vars;
  * other tenants → settings cardcom_terminal / cardcom_username (seeded at
- * onboarding), with env as last-resort fallback so a missing setting fails
- * loudly at the API call rather than silently charging the wrong terminal.
+ * onboarding). A non-default tenant with missing creds THROWS — the old env
+ * fallback meant that tenant's customers paid into the DEFAULT tenant's
+ * terminal: the payment "worked" and the money landed in the wrong business.
  */
 async function _creds(tenantId) {
   if (!tenantId || tenantId === DEFAULT_TENANT_ID) {
@@ -24,8 +25,41 @@ async function _creds(tenantId) {
     settings.get('cardcom_username', tenantId).catch(() => null),
   ]);
   if (terminal && apiName) return { terminal: String(terminal), apiName: String(apiName) };
-  console.warn(`[cardcom] tenant ${tenantId} missing cardcom_terminal/cardcom_username settings — falling back to env`);
-  return { terminal: TERMINAL, apiName: API_NAME };
+  throw new Error(`tenant ${tenantId} has no Cardcom credentials configured (cardcom_terminal/cardcom_username settings)`);
+}
+
+/**
+ * Verify a terminal/ApiName pair actually works by creating a minimal
+ * LowProfile page (no charge happens — it's just a page). Used at onboarding
+ * so a wrong ApiName surfaces at setup time, not at the first customer payment.
+ * Returns { ok, error }.
+ */
+async function verifyCreds(terminal, apiName) {
+  if (!terminal || !apiName) return { ok: false, error: 'missing terminal/apiName' };
+  try {
+    const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:3000';
+    const { data } = await axios.post(
+      `${BASE_URL}/api/v11/LowProfile/Create`,
+      {
+        TerminalNumber: parseInt(terminal, 10),
+        ApiName:        String(apiName),
+        Amount:         1,
+        CoinID:         1,
+        Language:       'he',
+        ReturnValue:    'creds-verify',
+        SuccessRedirectUrl: `${PUBLIC_URL}/payment/success`,
+        FailedRedirectUrl:  `${PUBLIC_URL}/payment/failed`,
+        IndicatorUrl:       `${PUBLIC_URL}/webhook/payment`,
+        ProductName:    'בדיקת חיבור',
+        MaxPayments: 1, MinPayments: 1,
+      },
+      { headers: { 'Content-Type': 'application/json' }, timeout: 15000 }
+    );
+    if (data.ResponseCode === 0) return { ok: true };
+    return { ok: false, error: `[${data.ResponseCode}] ${data.Description || 'Unknown'}` };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 }
 
 /**
@@ -145,4 +179,4 @@ async function cancelDeal(dealNumber, tenantId) {
   }
 }
 
-module.exports = { createPaymentPage, readCallbackOutcome, cancelDeal };
+module.exports = { createPaymentPage, readCallbackOutcome, cancelDeal, verifyCreds };

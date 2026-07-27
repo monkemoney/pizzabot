@@ -670,9 +670,13 @@ async function saveTechFields(id) {
     cardcom_username:   document.getElementById('tech_cardcom_username')?.value.trim()   || '',
   };
   try {
-    await api('PATCH', `/vendor/onboarding/${id}`, fields);
+    const resp = await api('PATCH', `/vendor/onboarding/${id}`, fields);
     if (_currentSession) Object.assign(_currentSession, fields);
-    showToast('הגדרות טכניות נשמרו');
+    if (resp?.warning) {
+      alert(`⚠️ ${resp.warning}`);
+    } else {
+      showToast('הגדרות טכניות נשמרו');
+    }
     _updateApproveBtn();
   } catch (err) { alert(err.message); }
 }

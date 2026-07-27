@@ -83,6 +83,86 @@ describe('isOpen — business hours (Israel timezone)', () => {
   });
 });
 
+// ── open_override — spontaneous open/close with built-in expiry ───────────────
+describe('open_override — temporary open/close', () => {
+  const inOneHour   = () => new Date(Date.now() + 3_600_000).toISOString();
+  const oneHourAgo  = () => new Date(Date.now() - 3_600_000).toISOString();
+  const alwaysClosedHours = () => {
+    const h = {};
+    ['sun','mon','tue','wed','thu','fri','sat'].forEach(d => { h[d] = { is_open: false }; });
+    return h;
+  };
+  const alwaysOpenHours = () => {
+    const h = {};
+    ['sun','mon','tue','wed','thu','fri','sat'].forEach(d => { h[d] = { is_open: true, open: '00:00', close: '23:59' }; });
+    return h;
+  };
+
+  test('open override wins outside business hours (the midnight incident)', async () => {
+    setSettings({
+      is_open: true,
+      business_hours: alwaysClosedHours(),
+      open_override: { state: true, until: inOneHour() },
+    });
+    expect(await settings.isOpen()).toBe(true);
+  });
+
+  test('open override wins even over is_open=false', async () => {
+    setSettings({ is_open: false, open_override: { state: true, until: inOneHour() } });
+    expect(await settings.isOpen()).toBe(true);
+  });
+
+  test('close override wins inside business hours', async () => {
+    setSettings({
+      is_open: true,
+      business_hours: alwaysOpenHours(),
+      open_override: { state: false, until: inOneHour() },
+    });
+    expect(await settings.isOpen()).toBe(false);
+  });
+
+  test('expired override is ignored — schedule takes back over', async () => {
+    setSettings({
+      is_open: true,
+      business_hours: alwaysClosedHours(),
+      open_override: { state: true, until: oneHourAgo() },
+    });
+    expect(await settings.isOpen()).toBe(false);
+  });
+
+  test('malformed / cancelled override markers are ignored', async () => {
+    for (const bad of [false, {}, { state: true }, { state: 'yes', until: inOneHour() }, { state: true, until: 'garbage' }]) {
+      setSettings({ is_open: true, business_hours: alwaysClosedHours(), open_override: bad });
+      expect(await settings.isOpen()).toBe(false);
+    }
+  });
+
+  test('override opens delivery outside delivery hours', async () => {
+    setSettings({
+      is_open: true,
+      delivery_hours: alwaysClosedHours(),
+      open_override: { state: true, until: inOneHour() },
+    });
+    expect(await settings.isDeliveryOpen()).toBe(true);
+  });
+
+  test('delivery_enabled=false is structural — an open override does NOT revive it', async () => {
+    setSettings({
+      is_open: true,
+      delivery_enabled: false,
+      open_override: { state: true, until: inOneHour() },
+    });
+    expect(await settings.isDeliveryOpen()).toBe(false);
+  });
+
+  test('activeOverride returns the override only while valid', () => {
+    expect(settings.activeOverride({ open_override: { state: true, until: inOneHour() } })).toMatchObject({ state: true });
+    expect(settings.activeOverride({ open_override: { state: true, until: oneHourAgo() } })).toBeNull();
+    expect(settings.activeOverride({ open_override: false })).toBeNull();
+    expect(settings.activeOverride({})).toBeNull();
+  });
+});
+
 // ── Overnight windows (_inHoursWindow — pure, deterministic) ──────────────────
 // Added 2026-07: close < open means the window spills past midnight.
 describe('_inHoursWindow — overnight windows', () => {

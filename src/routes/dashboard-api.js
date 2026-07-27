@@ -1014,13 +1014,34 @@ router.get('/business-config', requireAuth, async (req, res) => {
 
 router.get('/settings', requireAdmin, async (req, res) => {
   const all = await settings.loadAll(tid(req));
-  res.json(all);
+  // _effective = what customers actually experience right now (isOpen is a
+  // conjunction of flag + hours + override — the raw flags alone mislead).
+  const [open, delivery] = await Promise.all([
+    settings.isOpen(tid(req)).catch(() => null),
+    settings.isDeliveryOpen(tid(req)).catch(() => null),
+  ]);
+  res.json({ ...all, _effective: { open, delivery, override: settings.activeOverride(all) } });
 });
 
 router.patch('/settings', requireAdmin, async (req, res) => {
   const updates = req.body;
+
+  // Enabling missed-call recovery without a webhook token leaves the feature
+  // "on" in the UI while every provider CDR gets a 403 (and DIDWW retry-spams
+  // on non-2xx). Refuse the write instead of persisting a dead toggle.
+  if (updates.missed_call_enabled === true || updates.missed_call_enabled === 'true') {
+    const token = updates.missed_call_webhook_token
+      || await settings.get('missed_call_webhook_token', tid(req)).catch(() => null);
+    if (!token) {
+      return res.status(400).json({
+        error: 'אי אפשר להפעיל שיחות שלא נענו לפני שהוגדר webhook token (מוגדר על ידי מנהל המערכת בזמן חיבור המספר)',
+      });
+    }
+  }
+
   try {
     for (const [key, value] of Object.entries(updates)) {
+      if (key.startsWith('_')) continue; // computed fields (e.g. _effective) are never persisted
       await settings.set(key, value, tid(req));
     }
     if ('business_name' in updates || 'business_name_en' in updates) {
@@ -1409,11 +1430,21 @@ router.patch('/vendor/onboarding/:id', requireVendor, async (req, res) => {
   const { data: cur } = await supabase.from('onboarding_sessions')
     .select('checklist,meta_phone_number_id,meta_access_token,green_api_instance,green_api_token,cardcom_terminal,cardcom_username')
     .eq('id', req.params.id).single();
+  let cardcomVerifyError = null;
   if (cur) {
     const merged = { ...cur, ...updates };
     const waDone = !!((merged.meta_phone_number_id && merged.meta_access_token) ||
                       (merged.green_api_instance && merged.green_api_token));
-    const ccDone = !!(merged.cardcom_terminal && merged.cardcom_username);
+    // Cardcom ticks only after the creds VERIFY against Cardcom's API —
+    // presence of two filled fields proves nothing, and a wrong ApiName used
+    // to surface only at the first real customer payment.
+    let ccDone = false;
+    if (merged.cardcom_terminal && merged.cardcom_username) {
+      const { verifyCreds } = require('../services/cardcom');
+      const check = await verifyCreds(merged.cardcom_terminal, merged.cardcom_username);
+      ccDone = check.ok;
+      if (!check.ok) cardcomVerifyError = check.error;
+    }
     updates.checklist = (cur.checklist || []).map(i =>
       (i.key === 'whatsapp' || i.key === 'green_api') ? { ...i, done: waDone } :
       i.key === 'cardcom' ? { ...i, done: ccDone } : i
@@ -1422,7 +1453,13 @@ router.patch('/vendor/onboarding/:id', requireVendor, async (req, res) => {
 
   const { error } = await supabase.from('onboarding_sessions').update(updates).eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
+  res.json({
+    success: true,
+    cardcom_verified: cardcomVerifyError === null ? undefined : false,
+    warning: cardcomVerifyError
+      ? `פרטי Cardcom נשמרו אבל נכשלו באימות מול Cardcom (${cardcomVerifyError}) — בדוק את מספר הטרמינל וה-ApiName`
+      : undefined,
+  });
 });
 
 // PATCH /vendor/onboarding/:id/checklist — toggle one checklist item

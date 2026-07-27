@@ -103,12 +103,33 @@ jest.mock('../src/services/supabase', () => ({
   getOrderById:      jest.fn(async (id) => dbRows.orders.find(o => o.id === id) || null),
 }));
 
-jest.mock('../src/services/settings', () => ({
-  loadAll:      jest.fn(async () => ({ is_open: true, delivery_enabled: true })),
-  set:          jest.fn(async () => {}),
-  _clearCache:  jest.fn(),
-  get:          jest.fn(async () => null),
-}));
+jest.mock('../src/services/settings', () => {
+  // Mutable mock state — set() writes land here so the post-action effective-
+  // state read-back sees them (mirrors the real conjunction just enough).
+  const state = {
+    settings: { is_open: true, delivery_enabled: true },
+    effOpen: true,       // what isOpen() returns when no override is active
+    effDelivery: true,
+  };
+  const validOverride = () => {
+    const o = state.settings.open_override;
+    return (o && typeof o.state === 'boolean' && o.until && Date.now() < new Date(o.until).getTime()) ? o : null;
+  };
+  return {
+    __state:      state,
+    loadAll:      jest.fn(async () => state.settings),
+    set:          jest.fn(async (key, value) => { state.settings[key] = value; }),
+    _clearCache:  jest.fn(),
+    get:          jest.fn(async (key) => state.settings[key] ?? null),
+    isOpen:       jest.fn(async () => { const o = validOverride(); return o ? o.state : state.effOpen; }),
+    isDeliveryOpen: jest.fn(async () => {
+      if (state.settings.delivery_enabled === false) return false;
+      const o = validOverride();
+      return o ? o.state : state.effDelivery;
+    }),
+    activeOverride: jest.fn(() => validOverride()),
+  };
+});
 
 jest.mock('../src/services/menu-service', () => ({
   invalidateCache: jest.fn(),
@@ -189,6 +210,10 @@ beforeEach(() => {
   updateLog.length                = 0;
   sendLog.length                  = 0;
   mockClaudeReturn                = '';
+  const settingsState = require('../src/services/settings').__state;
+  settingsState.settings    = { is_open: true, delivery_enabled: true };
+  settingsState.effOpen     = true;
+  settingsState.effDelivery = true;
   jest.clearAllMocks();
 });
 
@@ -431,6 +456,98 @@ describe('SET', () => {
 
     const msg = sendLog.find(s => s.text.includes('לא מורשה'));
     expect(msg).toBeDefined();
+  });
+
+  test('SET is_open outside hours warns that the business is still closed (failure class 9)', async () => {
+    const settings = require('../src/services/settings');
+    settings.__state.effOpen = false; // outside the hours window — the flag write changes nothing
+    mockClaudeReturn = '<!--ADMIN:SET:{"key":"is_open","value":true}-->';
+
+    await handleAdminMessage(PHONE, 'תפתח את העסק', ADMIN_USER, TENANT);
+
+    expect(sendLog.find(s => s.text.includes('מצב בפועל') && s.text.includes('סגור ❌'))).toBeDefined();
+    expect(sendLog.find(s => s.text.includes('מחוץ לשעות הפעילות'))).toBeDefined();
+  });
+
+  test('enabling courier notifications with no couriers warns', async () => {
+    mockClaudeReturn = '<!--ADMIN:SET:{"key":"courier_notify_enabled","value":true}-->';
+
+    await handleAdminMessage(PHONE, 'הפעל התראות שליח', ADMIN_USER, TENANT);
+
+    expect(sendLog.find(s => s.text.includes('אין שליחים מוגדרים'))).toBeDefined();
+  });
+});
+
+// ── OVERRIDE — spontaneous open/close ─────────────────────────────────────────
+describe('OVERRIDE', () => {
+  test('opens the business now for N hours and reports the EFFECTIVE state', async () => {
+    const settings = require('../src/services/settings');
+    settings.__state.effOpen = false; // middle of the night — schedule says closed
+    mockClaudeReturn = '<!--ADMIN:OVERRIDE:{"state":true,"hours":3}-->';
+
+    await handleAdminMessage(PHONE, 'תפתח את העסק עכשיו לעוד שלוש שעות', ADMIN_USER, TENANT);
+
+    expect(settings.set).toHaveBeenCalledWith('open_override',
+      expect.objectContaining({ state: true, until: expect.any(String) }), TENANT);
+    expect(sendLog.find(s => s.text.includes('נפתח זמנית'))).toBeDefined();
+    // read-back sees the override → business is genuinely open now
+    expect(sendLog.find(s => s.text.includes('מצב בפועל') && s.text.includes('פתוח ✅'))).toBeDefined();
+  });
+
+  test('closes temporarily during open hours', async () => {
+    const settings = require('../src/services/settings');
+    settings.__state.effOpen = true;
+    mockClaudeReturn = '<!--ADMIN:OVERRIDE:{"state":false,"hours":1}-->';
+
+    await handleAdminMessage(PHONE, 'סגור לשעה', ADMIN_USER, TENANT);
+
+    expect(settings.set).toHaveBeenCalledWith('open_override',
+      expect.objectContaining({ state: false }), TENANT);
+    expect(sendLog.find(s => s.text.includes('נסגר זמנית'))).toBeDefined();
+    expect(sendLog.find(s => s.text.includes('מצב בפועל') && s.text.includes('סגור ❌'))).toBeDefined();
+  });
+
+  test('cancel clears the override (false marker — settings.value is NOT NULL)', async () => {
+    const settings = require('../src/services/settings');
+    settings.__state.settings.open_override = { state: true, until: new Date(Date.now() + 3_600_000).toISOString() };
+    mockClaudeReturn = '<!--ADMIN:OVERRIDE:{"cancel":true}-->';
+
+    await handleAdminMessage(PHONE, 'בטל את החריגה', ADMIN_USER, TENANT);
+
+    expect(settings.set).toHaveBeenCalledWith('open_override', false, TENANT);
+    expect(sendLog.find(s => s.text.includes('החריגה בוטלה'))).toBeDefined();
+  });
+
+  test('caps override duration at 24 hours and defaults to 3', async () => {
+    const settings = require('../src/services/settings');
+    mockClaudeReturn = '<!--ADMIN:OVERRIDE:{"state":true,"hours":100}-->';
+    await handleAdminMessage(PHONE, 'פתח למאה שעות', ADMIN_USER, TENANT);
+    const call = settings.set.mock.calls.find(c => c[0] === 'open_override');
+    const until = new Date(call[1].until).getTime();
+    expect(until - Date.now()).toBeLessThanOrEqual(24 * 3_600_000 + 5_000);
+  });
+});
+
+// ── UPDATE_PRICE — multi-match disambiguation ─────────────────────────────────
+describe('UPDATE_PRICE', () => {
+  test('updates a single unambiguous match', async () => {
+    seedProduct('p-1', 'פיצה מרגריטה');
+    mockClaudeReturn = '<!--ADMIN:UPDATE_PRICE:{"name":"מרגריטה","price":55}-->';
+
+    await handleAdminMessage(PHONE, 'עדכן מחיר מרגריטה ל-55', ADMIN_USER, TENANT);
+
+    expect(sendLog.find(s => s.text.includes('מחיר עודכן ל-₪55'))).toBeDefined();
+  });
+
+  test('multiple matches → asks for the exact name instead of silently repricing all', async () => {
+    seedProduct('p-1', 'פיצה מרגריטה');
+    seedProduct('p-2', 'פיצה יוונית');
+    mockClaudeReturn = '<!--ADMIN:UPDATE_PRICE:{"name":"פיצה","price":55}-->';
+
+    await handleAdminMessage(PHONE, 'עדכן מחיר פיצה ל-55', ADMIN_USER, TENANT);
+
+    expect(sendLog.find(s => s.text.includes('כמה מוצרים תואמים'))).toBeDefined();
+    expect(updateLog.find(u => u.vals && u.vals.price === 55)).toBeUndefined();
   });
 });
 

@@ -2444,6 +2444,14 @@ async function saveSection(updates, successMsg) {
   } catch (err) { alert(err.message); }
 }
 
+async function cancelOverride() {
+  try {
+    await api('PATCH', '/settings', { open_override: false }); // settings.value is NOT NULL — false = no override
+    showToast(TR('החריגה בוטלה — חוזרים ללוח השעות הרגיל'));
+    loadSettings();
+  } catch (err) { alert(err.message); }
+}
+
 function showToast(msg) {
   const t = document.createElement('div');
   t.textContent = msg;
@@ -2491,9 +2499,32 @@ function renderSettingsForm(s) {
 
   const NAV_LABELS = ['פרטי העסק','מע"מ','תשלום','סוגי הזמנה','אישור הזמנות','מתוזמנות','שינויי הזמנות','שיחה עם נציג','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים','שיחות שלא נענו'];
 
+  // Effective state banner — what customers experience RIGHT NOW (flag ∧ hours
+  // ∧ override), not the raw is_open toggle below, which alone can mislead.
+  const eff = s._effective || {};
+  const ovUntil = eff.override ? new Date(eff.override.until).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : '';
+  const effBanner = `
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;padding:14px 18px;border:1px solid ${eff.open ? '#bbf7d0' : '#fecaca'};background:${eff.open ? '#f0fdf4' : '#fef2f2'};border-radius:var(--radius-lg)">
+      <span style="width:10px;height:10px;border-radius:50%;background:${eff.open ? '#16a34a' : '#dc2626'};flex-shrink:0"></span>
+      <span style="font-weight:700;font-size:.9rem;color:var(--text)">
+        ${eff.open ? TR('העסק פתוח כרגע ללקוחות') : TR('העסק סגור כרגע ללקוחות')}
+      </span>
+      <span style="font-size:.8rem;color:var(--text-muted)">
+        ${eff.open === false && s.is_open !== false && !eff.override ? TR('(מחוץ לשעות הפעילות)') : ''}
+        ${TR('משלוח')}: ${eff.delivery ? TR('פתוח') : TR('סגור')}
+      </span>
+      ${eff.override ? `
+        <span style="font-size:.78rem;font-weight:600;padding:3px 10px;border-radius:50px;background:#fef3c7;color:#92400e">
+          ${eff.override.state ? TR('פתיחה חריגה עד') : TR('סגירה חריגה עד')} ${ovUntil}
+        </span>
+        <button onclick="cancelOverride()" class="btn btn-outline" style="font-size:.78rem;padding:4px 12px">${TR('בטל חריגה')}</button>
+      ` : ''}
+    </div>`;
+
   _sCardSeq = 0;
   document.getElementById('settingsForm').innerHTML = `
     ${settingsNav(NAV_LABELS)}
+    ${effBanner}
 
     ${sCard(ICONS.biz, 'פרטי העסק', 'פרטים המוצגים ללקוחות בבוט ובתפריט הציבורי', `
       ${sField('biz_name',    'שם העסק',           s.business_name    || '', 'text', 'פיצה דליבריס')}
