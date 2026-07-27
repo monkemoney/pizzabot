@@ -486,6 +486,12 @@ Order status flow: `new (awaiting approval) → preparing → ready → out_for_
      -d '{"deployId":"dep-XXXXXXXXXXXX"}'
    ```
    Rollback reuses the already-built image — measured live in ~25s with no build step, so it is the fast path in an incident (a forward deploy takes ~2 min). It creates a NEW deploy with `"trigger":"rollback"` pointing at the old commit; verify with the same SHA loop (expect the OLD SHA), plus `/health` 200 and a fresh startup banner in the logs. Afterwards roll forward with the empty `POST /deploys` from rule 1 (rebuilds latest main). Remember that after a rollback the *latest* deploy IS the rollback — the poll-for-SHA rule above applies doubly.
+
+   ⚠️ **Rolling back silently turns auto-deploy OFF** (`autoDeployTrigger: "off"` on the service) — discovered in the 2026-07-27 drill when a subsequent `git push` deployed nothing for 10 minutes with no error anywhere. After any rollback: re-enable auto-deploy (dashboard → Settings → Build & Deploy → Auto-Deploy, or `PATCH /v1/services/<id>` with `{"autoDeployTrigger":"commit"}`), and until it is back on, every push must be followed by the manual `POST /deploys` trigger. Check the current state with:
+   ```bash
+   curl -s "https://api.render.com/v1/services/srv-d831jc8js32c73ef8mng" \
+     -H "Authorization: Bearer $RENDER_API_KEY" | grep -o '"autoDeployTrigger":"[^"]*"'
+   ```
 5. **A local dev server against the prod DB competes with production.** Both run the same `setInterval` schedulers over the same rows, so a test you set up can be acted on by the deployed (older) code before your local code sees it — this cost real debugging time on 2026-07-26. Escalation and the handoff watchdog are already gated to `process.env.RENDER`; the scheduled-order and delivered→done sweeps are NOT. When testing scheduler behaviour, either read the logs of both servers or seed rows that production will ignore.
 6. **Every desktop UI change must include mobile** — media queries + `window.innerWidth <= 768` branches
 7. **delivery_zones** is authoritative (5 fields: city, area, fee, min_order, eta_minutes); `saveZones()` syncs legacy `delivery_cities`; bot reads zones first
