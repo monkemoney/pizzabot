@@ -131,6 +131,13 @@ document.querySelectorAll('.modal-overlay').forEach((overlay) => {
 // i18n: tr() comes from i18n.js (Hebrew→English string map); TR guards against
 // pages that load app.js without it. LOCALE follows the dashboard language.
 const TR = (str) => (typeof tr === 'function' ? tr(str) : str);
+
+// Topping display label — includes the portion when partial, e.g. "זיתים (חצי)".
+// Toppings are free-text since 2026-07-28; portion ∈ {"חצי","רבע",...} or absent (whole pizza).
+function topLabel(t) {
+  const n = (t && (t.name || t.name_he)) || '';
+  return n && t.portion ? `${n} (${t.portion})` : n;
+}
 const LOCALE = (typeof LANG !== 'undefined' && LANG === 'en') ? 'en-GB' : 'he-IL';
 
 function formatDate(iso) {
@@ -338,7 +345,7 @@ function exportOrdersCSV() {
       return `${it.name||it.name_he||''}${qty>1?` ×${qty}`:''}`;
     }).join(' | ');
     const toppings = (o.items||[]).flatMap(it =>
-      (it.toppings||[]).map(t => t.name||t.name_he||'')
+      (it.toppings||[]).map(topLabel)
     ).filter(Boolean).join(', ');
 
     return [
@@ -430,7 +437,7 @@ function renderOrderRow(o) {
   const items = (o.items || []);
   const itemsHtml = items.map(it => {
     const qty     = it.quantity || it.qty || 1;
-    const tops    = (it.toppings||[]).map(t=>t.name||t.name_he||'').filter(Boolean).join(', ');
+    const tops    = (it.toppings||[]).map(topLabel).filter(Boolean).join(', ');
     const lineTotal = ((parseFloat(it.price)||0)*qty).toFixed(0);
     return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--border)">
       <div>
@@ -679,7 +686,7 @@ function _incomingCard(o) {
 
   const items = (o.items || []).map(it => {
     const qty  = it.quantity || it.qty || 1;
-    const tops = (it.toppings || []).map(t => t.name || t.name_he || '').filter(Boolean);
+    const tops = (it.toppings || []).map(topLabel).filter(Boolean);
     return `<div style="padding:7px 0;border-bottom:1px solid var(--border);font-size:.9rem">
       <div style="display:flex;align-items:baseline;gap:8px">
         <span style="font-weight:800;color:var(--text);min-width:30px">×${qty}</span>
@@ -1240,7 +1247,7 @@ function openDisputeModal(orderId) {
     const toppings = (it.toppings || []).filter(t => (t.name || t.name_he));
 
     const toppingRows = toppings.map((t, ti) => {
-      const tName  = t.name || t.name_he || TR('תוספת');
+      const tName  = topLabel(t) || TR('תוספת');
       const tPrice = parseFloat(t.price) || 0;
       return `
         <label style="display:flex;align-items:center;gap:8px;padding:5px 10px 5px 28px;cursor:pointer;font-size:.8rem;color:var(--text-muted)">
@@ -1502,7 +1509,7 @@ function printOrder(orderId) {
   const itemRows = items.map(it => {
     const qty      = it.quantity || it.qty || 1;
     const lineTotal= (parseFloat(it.price)||0) * qty;
-    const tops     = (it.toppings||[]).map(t => t.name || t.name_he || '').filter(Boolean).join(', ');
+    const tops     = (it.toppings||[]).map(topLabel).filter(Boolean).join(', ');
     return `
       <tr>
         <td style="padding:8px 0;border-bottom:1px dashed #e5e7eb">
@@ -1659,7 +1666,7 @@ function renderEditItems() {
   }
   el.innerHTML = _editItems.map((item, i) => {
     const qty = item.quantity || 1;
-    const toppings = (item.toppings || []).map(t => t.name || t.name_he || '').filter(Boolean).join(', ');
+    const toppings = (item.toppings || []).map(topLabel).filter(Boolean).join(', ');
     return `
       <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--color-bg);border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px">
         <div style="flex:1;min-width:0">
@@ -2542,7 +2549,7 @@ function renderSettingsForm(s) {
     phone: ico('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>'),
   };
 
-  const NAV_LABELS = ['פרטי העסק','מע"מ','תשלום','סוגי הזמנה','אישור הזמנות','מתוזמנות','שינויי הזמנות','שיחה עם נציג','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים','שיחות שלא נענו'];
+  const NAV_LABELS = ['פרטי העסק','מע"מ','תשלום','סוגי הזמנה','אישור הזמנות','תוספות','מתוזמנות','שינויי הזמנות','שיחה עם נציג','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים','שיחות שלא נענו'];
 
   // Effective state banner — what customers experience RIGHT NOW (flag ∧ hours
   // ∧ override), not the raw is_open toggle below, which alone can mislead.
@@ -2638,6 +2645,13 @@ function renderSettingsForm(s) {
         <span style="font-size:.84rem;color:var(--text-muted)">${TR('דקות (push + וואטסאפ למנהלים)')}</span>
       </div>
       ${saveBtn('saveAcceptance')}
+    `)}
+
+    ${sCard(ICONS.bag, 'תוספות', 'תמחור תוספות חלקיות — לקוחות מבקשים חופשי (חצי זיתים, רבע פטריות)', `
+      <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:12px">${TR('ברירת המחדל: תוספת חלקית עולה כמו תוספת מלאה. אפשר לתמחר חצי/רבע כאחוז ממחיר התוספת.')}</div>
+      ${sField('topping_half_pct',    'מחיר חצי תוספת (% ממחיר מלא)', s.topping_half_pct    ?? 100, 'number', '100')}
+      ${sField('topping_quarter_pct', 'מחיר רבע תוספת (% ממחיר מלא)', s.topping_quarter_pct ?? 100, 'number', '100')}
+      ${saveBtn('saveToppingPricing')}
     `)}
 
     ${sCard(ICONS.clock, 'הזמנות מתוזמנות', 'כמה דקות לפני השעה המבוקשת להעביר את ההזמנה להכנה', `
@@ -2826,6 +2840,13 @@ async function saveOrderTypes() {
     if (el) updates[key] = el.checked;
   });
   await saveSection(updates);
+}
+
+async function saveToppingPricing() {
+  const half    = parseInt(document.getElementById('topping_half_pct')?.value, 10);
+  const quarter = parseInt(document.getElementById('topping_quarter_pct')?.value, 10);
+  const clamp = (v) => Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 100;
+  await saveSection({ topping_half_pct: clamp(half), topping_quarter_pct: clamp(quarter) });
 }
 
 async function saveEditSettings() {
@@ -3080,7 +3101,7 @@ function _kitchenElapsed(o) {
 function _kitchenCard(o) {
   const items = (o.items || []).map(it => {
     const qty  = it.quantity || it.qty || 1;
-    const tops = (it.toppings || []).map(t => t.name || t.name_he).filter(Boolean).join(', ');
+    const tops = (it.toppings || []).map(topLabel).filter(Boolean).join(', ');
     return `<div style="font-size:1.5rem;font-weight:700;padding:10px 0;border-bottom:1px solid #f0f0f0;display:flex;align-items:baseline;gap:12px">
       <span style="font-size:1.7rem;font-weight:800;color:#111;min-width:44px">×${qty}</span>
       <span>${it.name || it.name_he}${tops ? `<div style="font-size:1.05rem;font-weight:500;color:#666;margin-top:2px">+ ${tops}</div>` : ''}</span>

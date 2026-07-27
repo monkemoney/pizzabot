@@ -276,7 +276,7 @@ Embedded Signup (post Tech-Provider approval): `POST /api/onboarding/:token/what
    user message (not persisted) — stale "ran out" history otherwise overrides the fresh menu
 7. callClaude() — history ≤40 msgs, system prompt cached
 8. Parse/strip ACTION blocks → send clean text; privacy-policy link appended ONCE per customer lifetime (`sessions.privacy_sent_at`, survives resets; stamped only after a delivered send; re-sent only if the row is pruned after 90d inactivity)
-9. Dispatch: SHOW_TOPPINGS | SAVE_ORDER | CREATE_PAYMENT | RESET
+9. Dispatch: SAVE_ORDER | CREATE_PAYMENT | RESET (SHOW_TOPPINGS deprecated 2026-07-28 — toppings are FREE TEXT: customers describe portions naturally ("חצי זיתים, רבע תירס"); topping objects carry optional `portion`; partial pricing = full price by default, tenant-tunable via `topping_half_pct`/`topping_quarter_pct`; if the model still emits SHOW_TOPPINGS the handler falls back to a free-text question, never a poll)
 ```
 
 ### Order Edit/Cancel Window (customer self-service)

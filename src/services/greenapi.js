@@ -224,6 +224,10 @@ async function sendCategoryPoll(phone, categoryId, lang = 'he') {
 }
 
 /**
+ * DEPRECATED (2026-07-28): toppings are collected as free text now — polls/lists
+ * can't express partial portions ("רבע זיתים") and were a recurring failure
+ * source. No production caller remains; kept only for API compatibility.
+ *
  * Step 3 — Toppings poll for pizza orders.
  * Sends a toppings multi-select poll.
  * 1. If productName is given → look for product_additions for that product first.

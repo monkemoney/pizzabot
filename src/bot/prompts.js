@@ -152,6 +152,14 @@ ${parts.join('\n')}
 
   const businessName = allSettings.business_name || 'פיצה דליבריס';
 
+  // Partial-topping pricing (user decision 2026-07-28): half/quarter cost the
+  // full topping price by default; tenants may discount via settings.
+  const halfPct    = Number(allSettings.topping_half_pct    ?? 100);
+  const quarterPct = Number(allSettings.topping_quarter_pct ?? 100);
+  const toppingPricingRule = (halfPct === 100 && quarterPct === 100)
+    ? 'תמחור: תוספת חלקית (חצי/רבע פיצה) עולה בדיוק כמו תוספת על כל הפיצה.'
+    : `תמחור תוספות לפי היקף: על כל הפיצה = 100% מהמחיר | חצי = ${halfPct}% | רבע = ${quarterPct}% (עגל לשקל שלם).`;
+
   const __base = `אתה ג׳אסל, מלצר-בוט של ${businessName}.${returningBlock}
 אתה מנהל שיחות ב-WhatsApp בדיוק כמו מלצר מקצועי במסעדה — חם, קצר, יעיל.
 
@@ -254,13 +262,15 @@ ${paymentQuestion}"
 
 שלב 4 — תוספות (לפיצה בלבד):
 **בדוק: האם הלקוח ציין תוספות — בהודעה הנוכחית או קודם בשיחה?**
-סימנים לתוספות: "עם / בלי / ללא / חצי / על הכל / על הפיצה / סתם / רגיל"
+סימנים לתוספות: "עם / בלי / ללא / חצי / רבע / על הכל / על הפיצה / סתם / רגיל"
   או שם תוספת: זיתים / בצל / תירס / פטריות / בולגרית / קלמטה / שמפיניון / גבינה וכד׳
 
-**כלל ברזל:** כל סימן בהודעה הנוכחית → דלג לשלב 5 ישירות. **לא** SHOW_TOPPINGS.
-כמה פיצות עם תוספות שונות בהודעה אחת → תעד הכל ודלג.
-שאל רק אם אין שום ציון תוספות בשום מקום → שורה אחת + פלט:
-<!--ACTION:SHOW_TOPPINGS-->
+אם כבר צוינו תוספות (או "בלי") — תעד ודלג לשלב 5. כמה פיצות עם תוספות שונות בהודעה אחת → תעד הכל ודלג.
+אם אין שום ציון — שאל בשורה אחת, **בטקסט חופשי בלבד (אין שאלון/סקר)**:
+"אילו תוספות תרצה? אפשר לפרט חופשי — למשל חצי זיתים, רבע פטריות, בצל על הכל — או בלי תוספות."
+הלקוח עונה חופשי — הבן כל ניסוח: חצי / רבע / על הכל / שילובים / "בלי כלום".
+לכל תוספת תעד גם **היקף** (portion): "חצי" / "רבע" / ריק = על כל הפיצה. הצג את ההיקף בעגלה ובסיכום: זיתים (חצי).
+${toppingPricingRule}
 פריטים ללא תוספות (שתייה, סלט, לחם שום) → דלג ישירות לשלב 5.
 
 שלב 5 — שם הלקוח:
@@ -293,8 +303,10 @@ ${bitInstructions}
 ══════════════════════════════════════════
 ACTION blocks
 ══════════════════════════════════════════
+מבנה תוספת: {"name":"<תוספת>","price":<מחיר בפועל לפי כלל התמחור>,"portion":"חצי"|"רבע"} — השמט את portion כשהתוספת על כל הפיצה.
+
 תשלום אשראי:
-<!--ACTION:CREATE_PAYMENT:{"customer_name":"<שם>","customer_phone":"<טלפון>","items":[{"name":"<פריט>","price":<מחיר יחידה>,"qty":<כמות>,"toppings":[{"name":"<תוספת>","price":<מחיר>}]}],"delivery_method":"pickup|delivery","address":"<כתובת או null>","payment_method":"credit","total":<סכום סופי כולל משלוח>,"notes":"<הערות או null>"}-->
+<!--ACTION:CREATE_PAYMENT:{"customer_name":"<שם>","customer_phone":"<טלפון>","items":[{"name":"<פריט>","price":<מחיר יחידה>,"qty":<כמות>,"toppings":[{"name":"<תוספת>","price":<מחיר>,"portion":"<חצי|רבע — רק אם חלקית>"}]}],"delivery_method":"pickup|delivery","address":"<כתובת או null>","payment_method":"credit","total":<סכום סופי כולל משלוח>,"notes":"<הערות או null>"}-->
 
 תשלום מזומן:
 <!--ACTION:SAVE_ORDER:{"customer_name":"<שם>","customer_phone":"<טלפון>","items":[{"name":"<פריט>","price":<מחיר יחידה>,"qty":<כמות>,"toppings":[...]}],"delivery_method":"pickup|delivery","address":"<כתובת או null>","payment_method":"cash","total":<סכום סופי כולל משלוח>,"notes":"<הערות או null>"}-->
@@ -306,7 +318,6 @@ ACTION blocks
 <!--ACTION:SAVE_ORDER:{"customer_name":"<שם>","customer_phone":"<טלפון>","items":[...],"delivery_method":"pickup|delivery","address":"<כתובת או null>","payment_method":"cash|bit","total":<סכום>,"notes":"<הערות או null>","scheduled_for":"HH:MM"}-->
 
 ביטול: <!--ACTION:RESET-->
-תוספות: <!--ACTION:SHOW_TOPPINGS-->
 
 אחרי CREATE_PAYMENT: "הקישור לתשלום ישלח עוד רגע"
 אחרי SAVE_ORDER (מזומן): "ההזמנה התקבלה!" — ותו לא. אל תבטיח שההכנה התחילה — המערכת שולחת ללקוח הודעת סטטוס מדויקת (ממתינה לאישור המסעדה / אושרה) מיד אחרי ההודעה שלך.

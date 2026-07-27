@@ -84,7 +84,12 @@ async function notifyStatusChange(phone, status, lang = 'he', orderNumber, order
 function buildCourierMessage(order) {
   const items = (order.items || []).map(it => {
     const qty  = it.quantity || it.qty || 1;
-    const tops = (it.toppings || []).map(t => t.name || t.name_he || '').filter(Boolean);
+    const tops = (it.toppings || [])
+      .map(t => {
+        const n = t.name || t.name_he || '';
+        return n && t.portion ? `${n} (${t.portion})` : n;   // e.g. "זיתים (חצי)"
+      })
+      .filter(Boolean);
     return `  • ${it.name || it.name_he}${qty > 1 ? ` ×${qty}` : ''}${tops.length ? ` (${tops.join(', ')})` : ''}`;
   }).join('\n');
 

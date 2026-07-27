@@ -2,7 +2,7 @@
 
 const { callClaude }              = require('../services/claude');
 const { buildSystemPrompt }       = require('./prompts');
-const { sendMessage, sendToppingsPoll } = require('../services/greenapi');
+const { sendMessage } = require('../services/greenapi');
 const { getSession, updateSession, savePendingPayment, saveOrder,
         getLastOrderByPhone, saveCustomerProfile, getCustomerProfile,
         getOrderById, updateOrderStatus, updateOrder } = require('../services/supabase');
@@ -493,9 +493,16 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
   const payload    = match[2] ? parsePayload(match[2]) : null;
 
   if (actionType === 'SHOW_TOPPINGS') {
+    // Deprecated action (2026-07-28): toppings are free-text now — polls/lists
+    // can't express "רבע זיתים, חצי בלי כלום" and were a recurring failure
+    // source (poll parse loops, Meta single-select). The prompt no longer emits
+    // this, but if the model does anyway, fall back to the free-text question
+    // rather than a poll.
     const lang = detectLang(userMessage, history);
-    const productName = userMessage.length < 80 ? userMessage : null;
-    await sendToppingsPoll(phone, lang, productName, tid).catch(() => {});
+    const q = lang === 'en'
+      ? 'Which toppings would you like? Feel free to describe — e.g. half olives, quarter mushrooms, onion on all — or no toppings.'
+      : 'אילו תוספות תרצה? אפשר לפרט חופשי — למשל חצי זיתים, רבע פטריות, בצל על הכל — או בלי תוספות.';
+    await reply(phone, q, tid);
     await updateSession(phone, { conversation_history: updatedHistory }, tid);
     return;
   }

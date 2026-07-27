@@ -58,7 +58,10 @@ function renderCard(order) {
   const isUrgent = (Date.now() - new Date(base)) > (order.status === 'new' ? 5 : 20) * 60000;
   const items = (order.items || []).map(it => {
     const qty   = it.quantity || it.qty || 1;
-    const tops  = (it.toppings || []).map(t => t.name || t.name_he).filter(Boolean).join(', ');
+    // Portion-aware label — the kitchen must see "זיתים (חצי)" exactly as ordered
+    const tops  = (it.toppings || [])
+      .map(t => { const n = t.name || t.name_he; return n && t.portion ? `${n} (${t.portion})` : n; })
+      .filter(Boolean).join(', ');
     return `<li>
       <span class="item-qty">×${qty}</span>${it.name || it.name_he}
       ${tops ? `<span class="item-toppings">(${tops})</span>` : ''}
