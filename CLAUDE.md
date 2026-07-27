@@ -61,6 +61,7 @@ GREEN_API_INSTANCE_ID, GREEN_API_TOKEN, GREEN_API_BASE_URL   # legacy channel
 DIDWW_SMS_USER, DIDWW_SMS_PASSWORD                    # DIDWW HTTP OUT trunk (missed-call SMS channel)
 CARDCOM_API_URL, CARDCOM_TERMINAL, CARDCOM_USERNAME   # default tenant; per-tenant creds live in settings
 VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_EMAIL
+SENTRY_DSN                                            # optional — error tracking; absent = disabled
 ADMIN_SECRET, JWT_SECRET,
 DASHBOARD_ADMIN_PASSWORD, DASHBOARD_MANAGER_PASSWORD, DASHBOARD_VENDOR_PASSWORD
 RENDER_API_KEY                                        # local-only helper (not on Render itself)
@@ -345,6 +346,19 @@ Dashboard tab + standalone `/kitchen` (kitchen role; token key = `token`, same a
 ### Dashboard order intake (orders tab)
 
 Incoming-orders card zone above the list (`renderIncomingOrders` in app.js): full item visibility, aging timer (green<3m/amber<6m/red), per-item out-of-stock tags (from `/products` availability), one-tap "אשר הזמנה" with prep-time quick picks (15/30/45/60; default from `default_prep_minutes`), "פריט חסר" (dispute modal) and "דחה" (cancel modal). Orders SSE connection at boot (`_ordersConnectSSE`) + WebAudio chime + tab-title flash; 30s polling is fallback. Push opt-in nudge banner; push clicks deep-link to `/dashboard.html?tab=orders` (login page redirects authenticated users).
+
+### Error Tracking (2026-07-27)
+
+`src/services/error-tracker.js`. **Inert unless `SENTRY_DSN` is set** — absent, every function is a no-op and the server logs that tracking is off.
+
+The redaction is the point, not the plumbing: in this system the customer's phone number is the primary key of half the schema, so it appears in ordinary error strings (`[greenapi] sendMessage failed for 972…@c.us`). Sending events raw would stream clients' customers' phone numbers, names and addresses to a third party continuously. `scrub()` redacts by **key name** (secrets, PII, free text) and by **value shape** (phones, JWTs, bearer tokens, onboarding tokens, query strings, emails), drops request bodies, cookies and the `user` object entirely, and keeps `tenant_id` — a UUID identifies *which business* without identifying a person. If the scrubber itself throws, the event is dropped rather than sent.
+
+**Two lessons worth keeping, both found the hard way:**
+
+- **Unit tests on `scrub()` are not enough.** They passed while the real send path shipped **verbatim source code**: Sentry's `ContextLines` integration reads the failing file off disk and attaches surrounding lines to every frame. Caught only by intercepting the transport and inspecting the actual bytes. That end-to-end check is now a permanent test — keep it, and extend it rather than the unit tests when adding a new field.
+- **A regex cannot catch a name or a street in prose.** The rule that does the work here is that *every error string in this codebase is written in English by a developer*, so a Hebrew run inside one is runtime data. If that ever stops being true, this defence weakens.
+
+**Residual risk:** an ASCII identifier interpolated into a message by a developer (`throw new Error(\`no route for ${someId}\`)`) can still get through. Do not put customer identifiers into error messages — pass them as `captureException(err, { tenantId })` context instead.
 
 ### Webhook Authentication (2026-07-27)
 

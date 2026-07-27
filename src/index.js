@@ -18,6 +18,11 @@ const sse      = require('./services/sse');
 const settings = require('./services/settings');
 const { createClient: createSB }       = require('@supabase/supabase-js');
 const vendorAlerts                     = require('./services/vendor-alerts');
+const errorTracker                     = require('./services/error-tracker');
+
+// Before anything else can throw. No-op unless SENTRY_DSN is set; every event
+// is redacted by services/error-tracker.js before it leaves the process.
+errorTracker.init();
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -547,11 +552,14 @@ if (require.main === module) app.listen(PORT, async () => {
 // ─── Global error handler — notify vendor ────────────────────────────────────
 process.on('uncaughtException', (err) => {
   console.error('[uncaughtException]', err);
+  errorTracker.captureException(err, { where: 'uncaughtException' });
   vendorAlerts.alerts.serverError(err).catch(() => {});
 });
 
 process.on('unhandledRejection', (reason) => {
   console.error('[unhandledRejection]', reason);
+  errorTracker.captureException(reason instanceof Error ? reason : new Error(String(reason)),
+    { where: 'unhandledRejection' });
   vendorAlerts.alerts.serverError(reason).catch(() => {});
 });
 
@@ -565,6 +573,7 @@ app.use((err, req, res, _next) => {
     return res.status(400).json({ error: 'Malformed request body' });
   }
   console.error('[express-error]', err);
+  errorTracker.captureException(err, { where: `${req.method} ${req.path}`, tenantId: req.user?.tenant_id });
   vendorAlerts.alerts.serverError(err).catch(() => {});
   res.status(500).json({ error: 'Internal server error' });
 });

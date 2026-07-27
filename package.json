@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@sentry/node": "^8.55.2",
     "@supabase/supabase-js": "^2.39.0",
     "axios": "^1.6.2",
     "bcryptjs": "^3.0.3",
