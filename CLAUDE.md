@@ -478,6 +478,14 @@ Order status flow: `new (awaiting approval) → preparing → ready → out_for_
      | python3 -c "import sys,json;d=json.load(sys.stdin)[0]['deploy'];print(d['status'],d.get('commit',{}).get('id','')[:7])"
    ```
    Loop until status is `live` **and** the SHA matches your commit.
+
+   **Rollback (drilled 2026-07-27):** target a previous **deploy id** (from the `?limit=5` list), not a commit:
+   ```bash
+   curl -s -X POST "https://api.render.com/v1/services/srv-d831jc8js32c73ef8mng/rollback" \
+     -H "Authorization: Bearer $RENDER_API_KEY" -H "Content-Type: application/json" \
+     -d '{"deployId":"dep-XXXXXXXXXXXX"}'
+   ```
+   Rollback reuses the already-built image — measured live in ~25s with no build step, so it is the fast path in an incident (a forward deploy takes ~2 min). It creates a NEW deploy with `"trigger":"rollback"` pointing at the old commit; verify with the same SHA loop (expect the OLD SHA), plus `/health` 200 and a fresh startup banner in the logs. Afterwards roll forward with the empty `POST /deploys` from rule 1 (rebuilds latest main). Remember that after a rollback the *latest* deploy IS the rollback — the poll-for-SHA rule above applies doubly.
 5. **A local dev server against the prod DB competes with production.** Both run the same `setInterval` schedulers over the same rows, so a test you set up can be acted on by the deployed (older) code before your local code sees it — this cost real debugging time on 2026-07-26. Escalation and the handoff watchdog are already gated to `process.env.RENDER`; the scheduled-order and delivered→done sweeps are NOT. When testing scheduler behaviour, either read the logs of both servers or seed rows that production will ignore.
 6. **Every desktop UI change must include mobile** — media queries + `window.innerWidth <= 768` branches
 7. **delivery_zones** is authoritative (5 fields: city, area, fee, min_order, eta_minutes); `saveZones()` syncs legacy `delivery_cities`; bot reads zones first
