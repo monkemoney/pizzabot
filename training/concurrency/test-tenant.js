@@ -97,10 +97,14 @@ async function provisionTestTenant({ tag = '' } = {}) {
     pickup_enabled: true,
     payment_cash: true,
     payment_credit: true,
+    is_open: true,               // never inherit the live tenant's master switch
     [MARKER_KEY]: true,
   };
   const cloned = (settings || [])
-    .filter((r) => !/^(meta_|green_api_|__test)/.test(r.key))   // never copy creds
+    // Never copy creds — and never copy live open/close state (is_open,
+    // open_override): a spontaneously-closed live tenant must not make the
+    // test tenant refuse conversations and fake a regression.
+    .filter((r) => !/^(meta_|green_api_|__test|is_open$|open_override$)/.test(r.key))
     .map((r) => ({ tenant_id: tid, key: r.key, value: r.value }));
   const overrideRows = Object.entries(overrides).map(([key, value]) => ({ tenant_id: tid, key, value }));
   // overrides win over clones on key collision
