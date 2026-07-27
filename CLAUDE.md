@@ -275,7 +275,7 @@ Embedded Signup (post Tech-Provider approval): `POST /api/onboarding/:token/what
    (BOTH directions — out-of-stock AND restocked) appended to the system prompt AND to the current
    user message (not persisted) — stale "ran out" history otherwise overrides the fresh menu
 7. callClaude() — history ≤40 msgs, system prompt cached
-8. Parse/strip ACTION blocks → send clean text; first message appends privacy-policy link
+8. Parse/strip ACTION blocks → send clean text; privacy-policy link appended ONCE per customer lifetime (`sessions.privacy_sent_at`, survives resets; stamped only after a delivered send; re-sent only if the row is pruned after 90d inactivity)
 9. Dispatch: SHOW_TOPPINGS | SAVE_ORDER | CREATE_PAYMENT | RESET
 ```
 
@@ -595,7 +595,7 @@ Bot isolation is stateless by design: handlers hold zero module-level mutable st
 ### Payments & GDPR
 
 Cardcom: `CARDCOM_TERMINAL` (terminal number like 1000) ≠ CompanyId; `CARDCOM_USERNAME` is the ApiName, not a human login. Client flow: client signs up at cardcom.co.il → rep sends terminal+ApiName to Jasell → vendor enters in onboarding step 2 → seeded to tenant settings.
-GDPR erasure (`DELETE /api/customers/:phone`, requireAdmin only): delete session, anonymize orders (don't hard-delete — breaks accounting/sequences). Privacy-policy link on first bot message only.
+GDPR erasure (`DELETE /api/customers/:phone`, requireAdmin only): delete session, anonymize orders (don't hard-delete — breaks accounting/sequences). Privacy-policy link sent once per customer lifetime (sessions.privacy_sent_at).
 
 ### Not yet exercised in anger (as of 2026-07-27)
 

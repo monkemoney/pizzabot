@@ -112,6 +112,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   -- Marketing opt-out (suppresses broadcasts + missed-call recovery only)
   opted_out             BOOLEAN DEFAULT FALSE,
   opted_out_at          TIMESTAMPTZ,
+  -- Privacy notice sent once per customer lifetime (re-sent only if the row
+  -- is pruned after 90d inactivity). Survives clearSession like customer_profile.
+  privacy_sent_at       TIMESTAMPTZ,
   updated_at            TIMESTAMPTZ DEFAULT NOW(),
   PRIMARY KEY (tenant_id, phone)
 );

@@ -451,17 +451,25 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
   const match     = assistantText.match(ACTION_RE);
   const cleanText = stripAction(assistantText);
 
-  // On first message, append a one-time privacy notice
+  // On the first message of a conversation: fallback greeting if Claude returned
+  // empty text, plus the privacy notice — ONCE PER CUSTOMER LIFETIME, not once
+  // per conversation. sessions.privacy_sent_at survives session resets (like
+  // customer_profile), so returning customers only ever see the menu link.
   if (history.length === 0) {
     const botUrl = (await settings.get('bot_url', tid).catch(() => null)) || process.env.PUBLIC_URL || 'https://www.jasell.com';
-    const privacyNotice = `\n\n_מדיניות הפרטיות שלנו: ${botUrl}/privacy.html_`;
     const allSettingsForName = await settings.loadAll(tid);
     const bizName = allSettingsForName.business_name || 'פיצה דליבריס';
     const menuSlug = allSettingsForName.public_slug || tid;
     const menuUrl = botUrl + '/menu.html?biz=' + encodeURIComponent(menuSlug);
-    // Fallback greeting if Claude returned empty text on first message
     const text = cleanText || `היי! ברוכים הבאים ל${bizName}\nמשלוח או איסוף? מזומן או אשראי?\nתפריט עם תמונות: ${menuUrl}`;
-    await reply(phone, text + privacyNotice, tid);
+
+    const isNewCustomer = !session.privacy_sent_at;
+    const privacyNotice = isNewCustomer ? `\n\n_מדיניות הפרטיות שלנו: ${botUrl}/privacy.html_` : '';
+    const delivered = await reply(phone, text + privacyNotice, tid);
+    // Stamp only after a delivered send — a failed send retries the notice next time.
+    if (isNewCustomer && delivered !== false) {
+      await updateSession(phone, { privacy_sent_at: new Date().toISOString() }, tid);
+    }
   } else if (cleanText) {
     await reply(phone, cleanText, tid);
   }
