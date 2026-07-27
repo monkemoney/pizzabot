@@ -71,6 +71,7 @@ Notes:
 - **`SUPABASE_SERVICE_KEY` is a new-style `sb_secret_...` key** (2026-07-15). The project's **legacy JWT API keys (anon/service_role) are DISABLED** — any old `eyJ...` key is rejected with "Legacy API keys are disabled". New secret keys are drop-in for supabase-js; the Management API token (`sbp_...`, in Claude memory) is a separate credential and unaffected.
 - **Cardcom test account: `Cardcomtest26` / terminal 1000 — WORKING** (verified 2026-07-18: LowProfile/Create returns ResponseCode 0 with a live payment URL). Portal login password is `CARDCOM_PORTAL_PASSWORD` in the env file. The previous account (`CardTest1994`) is dead (603). Real clients supply their own terminal via onboarding.
 - Direct Postgres access does not work from anywhere (see DB access lesson below) — the `SUPABASE_DB_PASSWORD` is effectively unusable.
+- **`META_APP_SECRET` is load-bearing since 2026-07-27** — Meta webhook signature verification enforces whenever it is set. If it is ever rotated in the Meta App Dashboard, Render must be updated **in the same breath** or the bot stops receiving messages entirely. The symptom in the logs is a flood of `[webhook:meta] rejected — signature invalid`. Startup prints which mode is active.
 - **Rotation status (2026-07-15):** everything that was ever exposed in git history is dead — Supabase legacy keys disabled, Render API key rotated+revoked, JWT_SECRET / dashboard passwords / ADMIN_SECRET / META_WA_VERIFY_TOKEN / VAPID keypair all regenerated. Only the legacy Green API token remains on its original value (low priority). Consequences to remember: push subscribers must re-opt-in (new VAPID); Meta's webhook "Verify and save" needs the new verify token if ever re-run.
 
 ---
@@ -452,12 +453,43 @@ Order status flow: `new (awaiting approval) → preparing → ready → out_for_
    SUPABASE_MGMT_TOKEN=sbp_... node scripts/check-schema.js
    ```
    It compares every documented column against `information_schema`, both directions, and asserts the composite primary keys that carry multi-tenancy (`settings(tenant_id,key)`, `sessions(tenant_id,phone)`). Exits non-zero on drift. schema.sql is the rebuild script for a fresh or restored environment — when it drifts, applying it produces a system where one business's settings silently overwrite another's. It was regenerated from the live DB on 2026-07-27 after exactly that had happened on paper (it still described a single-tenant schema, with `tenant_users` missing entirely).
-3. **Before every commit:** `node --check public/app.js && node --check public/admin.js` (a missing backtick silently blanks the whole SPA) + `npm test -- --forceExit` (168 tests)
-4. **Every desktop UI change must include mobile** — media queries + `window.innerWidth <= 768` branches
-5. **delivery_zones** is authoritative (5 fields: city, area, fee, min_order, eta_minutes); `saveZones()` syncs legacy `delivery_cities`; bot reads zones first
-6. **Vendor portal ≠ business dashboard** — separate SPAs, changes to one never affect the other
-7. **Always update CLAUDE.md** when architecture changes — and when enforcement logic changes, grep `prompts.js` for stale descriptions of the old rule (the prompt once promised a "15-minute cancellation window" that no longer existed)
-8. **No secrets in committed files.** New secrets → `.env.production` + Render; long-lived tool tokens → Claude memory.
+3. **Before every commit:** `node --check public/app.js && node --check public/admin.js` (a missing backtick silently blanks the whole SPA) + `npm test -- --forceExit` (251 tests). If the change touches an error path, also grep for swallowed failures — see Failure Classes below.
+4. **Verifying a deploy: poll for the SHA, not for `live`.** The Render API returns the *latest* deploy, and a fresh push takes ~20s to appear — checking too early shows the PREVIOUS deploy already `live` and you will conclude your change shipped when it has not:
+   ```bash
+   curl -s ".../deploys?limit=1" -H "Authorization: Bearer $RENDER_API_KEY" \
+     | python3 -c "import sys,json;d=json.load(sys.stdin)[0]['deploy'];print(d['status'],d.get('commit',{}).get('id','')[:7])"
+   ```
+   Loop until status is `live` **and** the SHA matches your commit.
+5. **A local dev server against the prod DB competes with production.** Both run the same `setInterval` schedulers over the same rows, so a test you set up can be acted on by the deployed (older) code before your local code sees it — this cost real debugging time on 2026-07-26. Escalation and the handoff watchdog are already gated to `process.env.RENDER`; the scheduled-order and delivered→done sweeps are NOT. When testing scheduler behaviour, either read the logs of both servers or seed rows that production will ignore.
+6. **Every desktop UI change must include mobile** — media queries + `window.innerWidth <= 768` branches
+7. **delivery_zones** is authoritative (5 fields: city, area, fee, min_order, eta_minutes); `saveZones()` syncs legacy `delivery_cities`; bot reads zones first
+8. **Vendor portal ≠ business dashboard** — separate SPAs, changes to one never affect the other
+9. **Always update CLAUDE.md** when architecture changes — and when enforcement logic changes, grep `prompts.js` for stale descriptions of the old rule (the prompt once promised a "15-minute cancellation window" that no longer existed)
+10. **No secrets in committed files.** New secrets → `.env.production` + Render; long-lived tool tokens → Claude memory.
+
+---
+
+## Failure Classes — the diagnostic that found ~50 defects
+
+A 2026-07-26/27 session was asked to fix the order-acceptance flow. Naming *why* it was broken — rather than fixing it — turned one repair into about fifty, because the same eight shapes recurred across onboarding, payments, the inbox and the stats page. **Run this list against any process before changing it, and against your own change before committing it.**
+
+1. **Multi-step process with no atomicity.** Step 4 fails, steps 1-3 stand. No rollback, no resume. → Record per-step progress so a retry resumes (`onboarding_sessions.provisioning` is the worked example).
+2. **No idempotency key.** A retry, a race or a double-click duplicates instead of recognising "already done". → A real DB constraint, not a message-string check (`idx_orders_cardcom_code_uniq`).
+3. **A state with no exit.** Something enters a state and nothing takes it out. → Every such state needs a clock and a watchdog (`accepted_at`, `handoff_at`).
+4. **A `catch` that swallows.** The error is logged and the flow reports success. **This was the single most common root cause — 9 of the defects.** Cheap audit, run it before every commit that touches an error path:
+   ```bash
+   grep -rn "catch {}\|catch (.*) {}\|\.catch(() => {})" src/ public/ | grep -v node_modules
+   ```
+   Each hit needs a defence: either the failure genuinely does not matter, or it must surface.
+5. **Trusting external input.** An unsigned webhook, an amount the LLM computed, an identity field taken from the request body. → Verify cryptographically where the provider allows it, cross-check against your own record where it does not.
+6. **A dropped `tenantId`.** A service signature with a default plus a caller that forgets. → See Tenant Isolation Rules; the defaults are the trap, not the safety net.
+7. **Notifications from one path only.** An action happens in six places and one of them broadcasts. → Route every writer through a single exit point (`order-state.js`).
+8. **Derived data diverging from its source.** The dashboard says X, the DB or the payment processor says Y, and nothing compares them. → Define the number by what it means (revenue = money received), and make the query select every field it filters on.
+
+**Two habits that made the difference, worth keeping:**
+
+- **Verify against production, not only against tests.** Three defects were found *only* by exercising the deployed system — a 500 that paged the vendor, a chart that contradicted the number beside it, and a scheduler race. Tests confirm what you thought of; production shows what you did not.
+- **Turn a rule into a file that runs.** Every "remember to…" in this document is a candidate. `scripts/check-schema.js` caught drift its own author introduced, hours later.
 
 ---
 
@@ -518,6 +550,16 @@ Bot isolation is stateless by design: handlers hold zero module-level mutable st
 
 Cardcom: `CARDCOM_TERMINAL` (terminal number like 1000) ≠ CompanyId; `CARDCOM_USERNAME` is the ApiName, not a human login. Client flow: client signs up at cardcom.co.il → rep sends terminal+ApiName to Jasell → vendor enters in onboarding step 2 → seeded to tenant settings.
 GDPR erasure (`DELETE /api/customers/:phone`, requireAdmin only): delete session, anonymize orders (don't hard-delete — breaks accounting/sequences). Privacy-policy link on first bot message only.
+
+### Not yet exercised in anger (as of 2026-07-27)
+
+The 2026-07-26/27 rebuild was verified by tests, simulated webhooks and production probes — but **not one real WhatsApp message was ever run end to end through it**, because the pilot had no live traffic that night (3 orders in the database, 1 credit order ever). Specifically unexercised in production:
+
+- the escalation loop and the handoff watchdog have never actually fired (they need an order or a chat to sit waiting)
+- the Bit flow, the broadcast, and Cardcom with a real card
+- `approve` against a real Meta WABA since it was rewritten
+
+**The next real client onboarding is the first true test.** Be present for it, and watch the Render logs live.
 
 ### Testing (Jest 30 + supertest)
 
