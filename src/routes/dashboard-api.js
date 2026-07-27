@@ -103,10 +103,18 @@ router.get('/orders', requireAuth, async (req, res) => {
 
     const { status, date_from, date_to } = req.query;
     if (status && status !== 'all') query = query.eq('status', status);
-    if (date_from) query = query.gte('created_at', new Date(date_from).toISOString());
+    // Day boundaries in ISRAEL time — new Date('YYYY-MM-DD') is UTC midnight,
+    // which filed the 00:00-03:00 IL rush under the wrong day (same class as
+    // the 2026-07-27 stats fix; see services/il-time.js).
+    const ilDayStart = (s) => {
+      const [y, m, d] = String(s).split('-').map(Number);
+      return ilMidnightUTC(y, m, d);
+    };
+    if (date_from) query = query.gte('created_at', ilDayStart(date_from).toISOString());
     if (date_to) {
-      const end = new Date(date_to);
-      end.setDate(end.getDate() + 1);
+      const [y, m, d] = String(date_to).split('-').map(Number);
+      const n = new Date(Date.UTC(y, m - 1, d + 1)); // normalize month/year overflow
+      const end = ilMidnightUTC(n.getUTCFullYear(), n.getUTCMonth() + 1, n.getUTCDate());
       query = query.lt('created_at', end.toISOString());
     }
 
@@ -362,7 +370,7 @@ router.post('/orders/:id/item-dispute', requireAdmin, async (req, res) => {
 
 // Period boundaries, hour buckets and day keys are Israel-time — see
 // services/il-time.js for why the server clock cannot be used here.
-const { ilHourOf, ilDayKey, periodRange } = require('../services/il-time');
+const { ilHourOf, ilDayKey, periodRange, ilParts, ilMidnightUTC } = require('../services/il-time');
 
 
 router.get('/stats', requireAdmin, async (req, res) => {
@@ -1099,8 +1107,9 @@ router.delete('/admin-users/:id', requireAdmin, async (req, res) => {
 
 // GET /vendor/clients — all client businesses, with current-month API usage
 router.get('/vendor/clients', requireVendor, async (_req, res) => {
-  const monthStart = new Date();
-  monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+  // "This month" starts at ISRAEL month start, not the UTC server's (class 12)
+  const nowP = ilParts();
+  const monthStart = ilMidnightUTC(nowP.year, nowP.month, 1);
 
   const [{ data: clients, error }, { data: usage }] = await Promise.all([
     supabase.from('clients').select('*').order('created_at', { ascending: false }),
@@ -1203,7 +1212,7 @@ router.get('/vendor/usage', requireVendor, async (_req, res) => {
 
   const byKey = {};
   for (const row of data) {
-    const month = row.created_at.slice(0, 7); // YYYY-MM
+    const month = ilDayKey(row.created_at).slice(0, 7); // YYYY-MM in Israel time (class 12)
     const key   = `${row.tenant_id}::${month}`;
     if (!byKey[key]) byKey[key] = { tenant_id: row.tenant_id, month, calls: 0, input: 0, output: 0, cache_read: 0, cache_write: 0 };
     byKey[key].calls++;

@@ -10,6 +10,8 @@ const { createClient } = require('@supabase/supabase-js');
 const settings = require('./settings');
 
 let _vendorPhone = null;
+let _vendorPhoneTime = 0;
+const VENDOR_PHONE_TTL = 60_000;
 let _alertCooldowns = {};   // key → last alert timestamp (throttle)
 const COOLDOWN_MS = 5 * 60 * 1000; // 5 min between same alert type
 
@@ -20,12 +22,17 @@ function getSupabase() {
 const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
 
 async function getVendorPhone() {
-  if (_vendorPhone) return _vendorPhone;
+  // TTL like every other cache in the repo (class 11): forever-cached meant a
+  // direct-DB edit of vendor_phone kept alerts going to the OLD phone until
+  // the next deploy. invalidateVendorPhone() still gives instant refresh on
+  // the dashboard path; the TTL covers everything that bypasses it.
+  if (_vendorPhone && Date.now() - _vendorPhoneTime < VENDOR_PHONE_TTL) return _vendorPhone;
   try {
     const sb = getSupabase();
     const { data } = await sb.from('settings')
       .select('value').eq('key', 'vendor_phone').eq('tenant_id', DEFAULT_TENANT_ID).single();
     _vendorPhone = data?.value ? String(data.value).replace(/"/g, '') : null;
+    _vendorPhoneTime = Date.now();
     return _vendorPhone;
   } catch { return null; }
 }
@@ -68,7 +75,12 @@ async function alert(type, emoji, title, detail = '') {
     if (enabled === false || enabled === 'false') return;
   }
 
-  // Throttle: skip if same type was sent within COOLDOWN_MS
+  // Throttle: skip if same type was sent within COOLDOWN_MS.
+  // Expired entries are dropped first — per-incident keys (payment_stale_<phone>)
+  // otherwise accumulate forever (class 13: append-only with no pruning owner).
+  for (const k of Object.keys(_alertCooldowns)) {
+    if (Date.now() - _alertCooldowns[k] >= COOLDOWN_MS) delete _alertCooldowns[k];
+  }
   const last = _alertCooldowns[type] || 0;
   if (Date.now() - last < COOLDOWN_MS) return;
   _alertCooldowns[type] = Date.now();
