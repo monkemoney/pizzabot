@@ -69,6 +69,8 @@ const CHECKS = [
       'src/services/menu-service.js': 1,
       'src/services/settings.js': 1,
       'src/services/supabase.js': 1,
+      // lazy supabase client handle, not state (rebuilt on restart; per-instance is harmless)
+      'src/services/recovery-attribution.js': 1,
     },
   },
   {
@@ -85,13 +87,16 @@ const CHECKS = [
       'src/bot/ai-handler.js': 7,
       'src/bot/admin-handler.js': 15,
       'src/routes/payment.js': 2,
-      'src/routes/dashboard-api.js': 30,
+      // 33 since the vendor KPI endpoint (epoch math for accept-time + ilDayKey month fallback)
+      'src/routes/dashboard-api.js': 33,
       'src/services/vendor-alerts.js': 1,
       'src/services/supabase.js': 13,
       'src/services/order-state.js': 4,
       'src/services/slug.js': 1,
       'src/services/settings.js': 8,
       'src/services/push-notifier.js': 1,
+      // audited 2026-07-28: epoch math (attribution window) + ISO stamping only
+      'src/services/recovery-attribution.js': 4,
     },
   },
 ];

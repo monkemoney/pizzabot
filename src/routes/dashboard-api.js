@@ -1237,6 +1237,157 @@ router.get('/vendor/usage', requireVendor, async (_req, res) => {
   res.json(rows);
 });
 
+// GET /api/vendor/kpi/:tenantId?month=YYYY-MM — per-tenant pilot KPIs.
+// One payload with the whole value story: orders + attributable recovery
+// revenue + ops health + unit costs. This is what pricing decisions and the
+// client's monthly value report are built from.
+router.get('/vendor/kpi/:tenantId', requireVendor, async (req, res) => {
+  try {
+    const tenantId = req.params.tenantId;
+    const month = /^\d{4}-\d{2}$/.test(req.query.month || '')
+      ? req.query.month
+      : ilDayKey(new Date().toISOString()).slice(0, 7);
+    // mid-month date avoids UTC/IL edge flips at the month boundary
+    const { start, end } = periodRange('month', `${month}-15`);
+
+    const [ordersRes, callsRes, usageRes, handoffsRes, aggRateRes] = await Promise.all([
+      supabase.from('orders')
+        .select('id, phone, status, total_price, payment_status, refund_status, created_at, accepted_at, escalation_level')
+        .eq('tenant_id', tenantId).gte('created_at', start).lt('created_at', end),
+      supabase.from('call_events')
+        .select('caller, outcome, channel, responded_at, recovered_order_id')
+        .eq('tenant_id', tenantId).gte('created_at', start).lt('created_at', end),
+      supabase.from('api_usage')
+        .select('input_tokens, output_tokens, cache_read_tokens, cache_write_tokens')
+        .eq('tenant_id', tenantId).gte('created_at', start).lt('created_at', end),
+      supabase.from('sessions')
+        .select('phone', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId).gte('handoff_at', start).lt('handoff_at', end),
+      settings.get('aggregator_rate', tenantId).catch(() => null),
+    ]);
+
+    const orders = ordersRes.data || [];
+    const calls  = callsRes.data  || [];
+
+    // ── Orders ────────────────────────────────────────────────────────────────
+    const completed = orders.filter((o) => o.status !== 'cancelled');
+    const paidOrders = completed.filter((o) => o.payment_status === 'paid' && o.refund_status !== 'refunded');
+    const revenuePaid = paidOrders.reduce((s, o) => s + (parseFloat(o.total_price) || 0), 0);
+    const revenuePending = completed
+      .filter((o) => o.payment_status !== 'paid')
+      .reduce((s, o) => s + (parseFloat(o.total_price) || 0), 0);
+
+    // New vs returning: a customer is new when this month holds their first order
+    const phones = [...new Set(completed.map((o) => o.phone).filter(Boolean))];
+    let returningPhones = new Set();
+    if (phones.length) {
+      const { data: prior } = await supabase
+        .from('orders')
+        .select('phone')
+        .eq('tenant_id', tenantId)
+        .lt('created_at', start)
+        .in('phone', phones);
+      returningPhones = new Set((prior || []).map((r) => r.phone));
+    }
+
+    // ── Recovery funnel (call_events) ─────────────────────────────────────────
+    const byOutcome = {};
+    for (const c of calls) byOutcome[c.outcome] = (byOutcome[c.outcome] || 0) + 1;
+    const sentRows = calls.filter((c) => c.outcome === 'recovery_sent');
+    const answered = byOutcome.answered || 0;
+
+    const recoveredIds = sentRows.map((c) => c.recovered_order_id).filter(Boolean);
+    let recoveredRevenue = 0, recoveredPaid = 0;
+    if (recoveredIds.length) {
+      // The recovery may land the order in a later month than the call — read
+      // the attributed orders directly rather than filtering this month's list.
+      const { data: recOrders } = await supabase
+        .from('orders')
+        .select('total_price, payment_status, refund_status, status')
+        .eq('tenant_id', tenantId)
+        .in('id', recoveredIds);
+      for (const o of recOrders || []) {
+        if (o.status === 'cancelled') continue;
+        recoveredRevenue += parseFloat(o.total_price) || 0;
+        if (o.payment_status === 'paid' && o.refund_status !== 'refunded') recoveredPaid++;
+      }
+    }
+
+    // ── Operations ────────────────────────────────────────────────────────────
+    const acceptMins = completed
+      .filter((o) => o.accepted_at)
+      .map((o) => (new Date(o.accepted_at) - new Date(o.created_at)) / 60000)
+      .filter((m) => Number.isFinite(m) && m >= 0)
+      .sort((a, b) => a - b);
+    const pick = (arr, q) => (arr.length ? Math.round(arr[Math.min(arr.length - 1, Math.floor(q * arr.length))] * 10) / 10 : null);
+
+    // ── Costs (Claude; same claude-opus-4-7 pricing as /vendor/usage) ─────────
+    const P = { input: 15 / 1e6, output: 75 / 1e6, cache_read: 1.5 / 1e6, cache_write: 18.75 / 1e6 };
+    let claudeCost = 0;
+    for (const u of usageRes.data || []) {
+      claudeCost += (u.input_tokens || 0) * P.input + (u.output_tokens || 0) * P.output
+        + (u.cache_read_tokens || 0) * P.cache_read + (u.cache_write_tokens || 0) * P.cache_write;
+    }
+
+    const aggregatorRate = Number(aggRateRes) > 0 && Number(aggRateRes) < 1 ? Number(aggRateRes) : 0.25;
+
+    res.json({
+      tenant_id: tenantId, month, start, end,
+      orders: {
+        count:               completed.length,
+        cancelled:           orders.length - completed.length,
+        revenue_paid:        Math.round(revenuePaid),
+        revenue_pending:     Math.round(revenuePending),
+        avg_order:           completed.length ? Math.round(revenuePaid / (paidOrders.length || 1)) : 0,
+        new_customers:       phones.filter((p) => !returningPhones.has(p)).length,
+        returning_customers: returningPhones.size,
+      },
+      recovery: {
+        calls_total:       calls.length,
+        answered,
+        missed:            calls.length - answered,
+        sent:              sentRows.length,
+        sent_whatsapp:     sentRows.filter((c) => c.channel === 'whatsapp').length,
+        sent_sms:          sentRows.filter((c) => c.channel === 'sms').length,
+        send_failed:       byOutcome.send_failed || 0,
+        responded:         sentRows.filter((c) => c.responded_at).length,
+        orders_recovered:  recoveredIds.length,
+        orders_recovered_paid: recoveredPaid,
+        revenue_recovered: Math.round(recoveredRevenue),
+        skipped: {
+          throttled: byOutcome.skipped_throttled || 0,
+          closed:    byOutcome.skipped_closed    || 0,
+          admin:     byOutcome.skipped_admin     || 0,
+          opted_out: byOutcome.skipped_opted_out || 0,
+          courier:   byOutcome.skipped_courier   || 0,
+          forward:   byOutcome.skipped_forward   || 0,
+          unusable:  byOutcome.unusable_caller   || 0,
+        },
+      },
+      operations: {
+        accepted:          acceptMins.length,
+        accept_median_min: pick(acceptMins, 0.5),
+        accept_p95_min:    pick(acceptMins, 0.95),
+        escalated:         completed.filter((o) => (o.escalation_level || 0) > 0).length,
+        handoffs:          handoffsRes.count || 0,
+      },
+      costs: {
+        claude_usd: Math.round(claudeCost * 100) / 100,
+        claude_calls: (usageRes.data || []).length,
+      },
+      commission_saved: {
+        // estimate: what this month's direct revenue would have cost on a
+        // delivery-app channel at the configured (or default 25%) commission
+        rate:   aggregatorRate,
+        amount: Math.round(revenuePaid * aggregatorRate),
+      },
+    });
+  } catch (err) {
+    console.error('[vendor/kpi] error:', err.message);
+    res.status(500).json({ error: 'שגיאה בחישוב מדדים' });
+  }
+});
+
 // ─── Onboarding ────────────────────────────────────────────────────────────────
 
 // GET /onboarding/:token — public, client fetches their session

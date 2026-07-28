@@ -314,6 +314,11 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
   console.log(`[ai-handler] phone=${phone} tenant=${tid} historyLen=${history.length} msg="${userMessage.slice(0, 80)}"`);
 
   if (history.length === 0) {
+    // Recovery funnel: a fresh conversation may be the reply to a missed-call
+    // recovery message — stamp it (fire-and-forget, never throws). Checked only
+    // on new conversations so ordinary messages don't pay the lookup.
+    require('../services/recovery-attribution').markResponded(phone, tid);
+
     const [lastOrder, editsAllowed] = await Promise.all([
       getLastOrderByPhone(phone, tid),
       settings.get('allow_order_edits', tid),

@@ -375,6 +375,11 @@ async function afterCreate(order, { lang = 'he', notifyAdmins = false } = {}) {
   const tenantId = order.tenant_id || DEFAULT_TENANT_ID;
   const mode = await getAcceptanceMode(tenantId);
 
+  // Recovery funnel: credit the missed-call recovery this order followed, if
+  // any (fire-and-forget, never throws, idempotent — afterCreate runs again
+  // from confirmPayment and the event can only be claimed once).
+  require('./recovery-attribution').markOrder(order);
+
   // Both immediate and scheduled orders need approval; an order already
   // accepted (or past those states) is nothing to do here.
   const awaitingApproval = ['new', 'scheduled'].includes(order.status) && !order.accepted_at;

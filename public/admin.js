@@ -45,6 +45,7 @@ function showPage(name) {
   if (name === 'clients')     loadClients();
   if (name === 'alerts')      loadAlertSettings();
   if (name === 'onboarding')  loadOnboarding();
+  if (name === 'kpi')         loadKpi();
 }
 
 function showToast(msg) {
@@ -168,6 +169,126 @@ async function loadUsage() {
 // ─── Clients ──────────────────────────────────────────────────────────────────
 
 let _clients = [];
+
+// ─── KPI (ביצועים) ────────────────────────────────────────────────────────────
+
+let _kpiInit = false;
+
+const KPI_ICONS = {
+  orders:   '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
+  revenue:  '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
+  recovered:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 2 16 8 22 8"/><line x1="23" y1="1" x2="16" y2="8"/><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+  saved:    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>',
+};
+
+async function loadKpi() {
+  const sel   = document.getElementById('kpiClient');
+  const month = document.getElementById('kpiMonth');
+  const body  = document.getElementById('kpiBody');
+
+  if (!_kpiInit) {
+    if (!_clients.length) {
+      try { _clients = await api('GET', '/vendor/clients'); } catch { _clients = []; }
+    }
+    const tenants = _clients.filter(c => c.tenant_id);
+    // The pilot's live data sits on the default tenant (env creds), which no
+    // client row points to — always offer it so the main numbers are reachable.
+    const DEFAULT_TENANT = 'aaaaaaaa-0000-0000-0000-000000000001';
+    const options = tenants.map(c => `<option value="${c.tenant_id}">${c.name}</option>`);
+    if (!tenants.some(c => c.tenant_id === DEFAULT_TENANT)) {
+      options.push(`<option value="${DEFAULT_TENANT}">הטנאנט הראשי (פיילוט)</option>`);
+    }
+    sel.innerHTML = '<option value="">בחר לקוח…</option>' + options.join('');
+    if (tenants.length === 1) sel.value = tenants[0].tenant_id;
+    if (!month.value) {
+      month.value = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }).slice(0, 7);
+    }
+    _kpiInit = true;
+  }
+
+  if (!sel.value) {
+    body.innerHTML = '<div style="color:var(--text-muted);font-size:.85rem">בחר לקוח כדי לראות מדדים</div>';
+    return;
+  }
+
+  body.innerHTML = '<div style="color:var(--text-muted);font-size:.85rem">טוען מדדים…</div>';
+  let k;
+  try {
+    k = await api('GET', `/vendor/kpi/${sel.value}?month=${month.value}`);
+  } catch (err) {
+    body.innerHTML = `<div style="color:#e0004d;font-size:.85rem">${err.message}</div>`;
+    return;
+  }
+
+  const kpiCard = (icon, tone, value, label, sub) => `
+    <div class="kpi-card">
+      <div class="kpi-icon ${tone}">${KPI_ICONS[icon]}</div>
+      <div class="kpi-value">${value}</div>
+      <div class="kpi-label">${label}</div>
+      ${sub ? `<div class="kpi-sub">${sub}</div>` : ''}
+    </div>`;
+
+  const funnelRow = (label, value, base, color) => {
+    const pct = base > 0 ? Math.round((value / base) * 100) : 0;
+    return `
+      <div class="funnel-row">
+        <div class="funnel-head"><span style="font-weight:600">${label}</span><span style="font-weight:800">${value}</span></div>
+        <div class="funnel-track"><div class="funnel-fill" style="width:${pct}%;background:${color}"></div></div>
+      </div>`;
+  };
+
+  const kv = (label, value) =>
+    `<div class="kv-row"><span class="kv-label">${label}</span><span class="kv-value">${value}</span></div>`;
+
+  const r = k.recovery, o = k.orders, ops = k.operations;
+  const skippedTotal = Object.values(r.skipped || {}).reduce((s, n) => s + n, 0);
+
+  body.innerHTML = `
+    <div class="kpi-grid">
+      ${kpiCard('orders', '', o.count, 'הזמנות החודש', o.cancelled ? `${o.cancelled} בוטלו` : '')}
+      ${kpiCard('revenue', 'green', `₪${o.revenue_paid.toLocaleString()}`, 'הכנסות (שולם)',
+                o.revenue_pending ? `₪${o.revenue_pending.toLocaleString()} ממתין לתשלום` : '')}
+      ${kpiCard('recovered', 'brand', `₪${r.revenue_recovered.toLocaleString()}`, 'שוחזר משיחות שפוספסו',
+                `${r.orders_recovered} הזמנות מ-${r.sent} הודעות שחזור`)}
+      ${kpiCard('saved', 'amber', `₪${k.commission_saved.amount.toLocaleString()}`, 'עמלות שנחסכו (אומדן)',
+                `לפי ${Math.round(k.commission_saved.rate * 100)}% עמלת אפליקציות משלוח`)}
+    </div>
+
+    <div class="kpi-two">
+      <div class="card" style="padding:24px 26px">
+        <div style="font-size:.9rem;font-weight:800;margin-bottom:18px">משפך שחזור שיחות</div>
+        ${r.calls_total === 0
+          ? '<div style="color:var(--text-muted);font-size:.84rem">אין אירועי שיחות החודש</div>'
+          : funnelRow('שיחות נכנסות', r.calls_total, r.calls_total, 'var(--color-border)')
+          + funnelRow('לא נענו', r.missed, r.calls_total, '#c07000')
+          + funnelRow('הודעת שחזור נשלחה', r.sent, r.calls_total, 'var(--primary)')
+          + funnelRow('הלקוח הגיב', r.responded, r.calls_total, 'var(--primary)')
+          + funnelRow('הבשילו להזמנה', r.orders_recovered, r.calls_total, '#008043')}
+        ${skippedTotal || r.send_failed ? `
+          <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);font-size:.74rem;color:var(--text-muted)">
+            ${skippedTotal ? `לא נשלחו: ${r.skipped.throttled} חוזרות · ${r.skipped.closed} מחוץ לשעות · ${r.skipped.admin + r.skipped.courier + r.skipped.forward} צוות · ${r.skipped.opted_out} הוסרו · ${r.skipped.unusable} מספר חסוי` : ''}
+            ${r.send_failed ? `<div style="color:#e0004d;font-weight:700;margin-top:4px">⚠ ${r.send_failed} שליחות נכשלו</div>` : ''}
+          </div>` : ''}
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <div class="card" style="padding:24px 26px">
+          <div style="font-size:.9rem;font-weight:800;margin-bottom:10px">תפעול</div>
+          ${kv('זמן אישור הזמנה (חציון)', ops.accept_median_min != null ? `${ops.accept_median_min} דק'` : '—')}
+          ${kv('זמן אישור (p95)', ops.accept_p95_min != null ? `${ops.accept_p95_min} דק'` : '—')}
+          ${kv('הגיעו לתזכורת (אסקלציה)', ops.escalated)}
+          ${kv('שיחות שהועברו לנציג', ops.handoffs)}
+          ${kv('לקוחות חדשים / חוזרים', `${o.new_customers} / ${o.returning_customers}`)}
+        </div>
+        <div class="card" style="padding:24px 26px">
+          <div style="font-size:.9rem;font-weight:800;margin-bottom:10px">עלויות</div>
+          ${kv('Claude API', `$${k.costs.claude_usd.toFixed(2)}`)}
+          ${kv('קריאות מודל', k.costs.claude_calls)}
+          <div style="margin-top:10px;font-size:.72rem;color:var(--text-muted)">לא כולל עלויות Meta / DIDWW / תשתית</div>
+        </div>
+      </div>
+    </div>`;
+}
 
 async function loadClients() {
   const el = document.getElementById('clientsTable');

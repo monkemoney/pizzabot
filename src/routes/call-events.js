@@ -32,6 +32,7 @@ const settings         = require('../services/settings');
 const { getAdminUser } = require('../services/supabase');
 const greenapi         = require('../services/greenapi');
 const sms              = require('../services/sms');
+const attribution      = require('../services/recovery-attribution');
 
 const router = express.Router();
 
@@ -121,20 +122,32 @@ async function processCallEvents(tenantId, events) {
   const throttleMs = throttleHours * 60 * 60 * 1000;
 
   for (const event of events) {
-    if (event.answered) continue;
-
     const caller = greenapi.formatPhone(event.caller || '');
-    if (!caller || !/^\d{9,15}$/.test(caller)) {
+    const callerOk = caller && /^\d{9,15}$/.test(caller);
+
+    // Every event lands in call_events with its outcome — the KPI funnel
+    // (calls → missed → sent → replied → order) is built from these rows.
+    const record = (outcome, extra = {}) =>
+      attribution.recordCallEvent(
+        { caller: callerOk ? caller : null, answered: event.answered, outcome, raw: event.raw, ...extra },
+        tenantId
+      );
+
+    if (event.answered) { record('answered'); continue; }
+
+    if (!callerOk) {
       // Raw attrs logged so an unexpected provider field naming can be calibrated from the logs
       console.log(`[calls:${tenantId}] missed call with unusable caller id (${event.caller}) — skipping. Raw: ${JSON.stringify(event.raw).slice(0, 600)}`);
+      record('unusable_caller');
       continue;
     }
-    if (caller === forwardPhone) continue;              // the owner's own device
-    if (couriers.includes(caller)) continue;            // courier phoning in
+    if (caller === forwardPhone)  { record('skipped_forward'); continue; }   // the owner's own device
+    if (couriers.includes(caller)) { record('skipped_courier'); continue; }  // courier phoning in
 
     // Business-hours gate: a 3am recovery message is spam, not sales.
     if (all.missed_call_when_closed !== true && !(await settings.isOpen(tenantId))) {
       console.log(`[calls:${tenantId}] missed call from ${caller} while closed — skipping`);
+      record('skipped_closed');
       continue;
     }
 
@@ -142,6 +155,7 @@ async function processCallEvents(tenantId, events) {
     const adminUser = await getAdminUser(caller, tenantId).catch(() => null);
     if (adminUser) {
       console.log(`[calls:${tenantId}] missed call from admin ${caller} — skipping`);
+      record('skipped_admin');
       continue;
     }
 
@@ -150,13 +164,19 @@ async function processCallEvents(tenantId, events) {
     const suppressed = await getOptedOutPhones([caller], tenantId).catch(() => new Set());
     if (suppressed.has(caller)) {
       console.log(`[calls:${tenantId}] ${caller} opted out of marketing — skipping recovery message`);
+      record('skipped_opted_out');
       continue;
     }
 
+    // Throttle: the in-memory map is the fast path (and absorbs provider
+    // retries mid-send); call_events is the durable record, so the throttle
+    // now survives deploys instead of resetting with the process.
     const key = _throttleKey(tenantId, caller);
-    const last = _lastNotified.get(key);
+    let last = _lastNotified.get(key);
+    if (!last) last = await attribution.lastRecoverySentAt(caller, tenantId);
     if (last && Date.now() - last < throttleMs) {
       console.log(`[calls:${tenantId}] ${caller} already notified ${Math.round((Date.now() - last) / 60000)}m ago — throttled`);
+      record('skipped_throttled');
       continue;
     }
     _lastNotified.set(key, Date.now()); // set before send — absorbs provider retries mid-send
@@ -165,6 +185,7 @@ async function processCallEvents(tenantId, events) {
     // Channel: 'whatsapp' (Meta template, default) | 'sms' (DIDWW — no Meta
     // approval dependency; the wa.me link hands the reply off to the bot).
     const channel = all.missed_call_channel === 'sms' ? 'sms' : 'whatsapp';
+    let sent = false;
     try {
       if (channel === 'sms') {
         const waDigits = greenapi.formatPhone(all.bot_whatsapp || '');
@@ -185,11 +206,13 @@ async function processCallEvents(tenantId, events) {
           all.missed_call_text || DEFAULT_TEXT
         );
       }
+      sent = true;
       console.log(`[calls:${tenantId}] missed call from ${caller} → recovery ${channel} sent`);
     } catch (err) {
       _lastNotified.delete(key); // let the next event retry
       console.error(`[calls:${tenantId}] recovery ${channel} to ${caller} failed:`, err.message);
     }
+    record(sent ? 'recovery_sent' : 'send_failed', { channel });
   }
 }
 

@@ -339,3 +339,28 @@ CREATE TABLE IF NOT EXISTS api_usage (
 );
 CREATE INDEX IF NOT EXISTS idx_api_usage_tenant  ON api_usage(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_api_usage_created ON api_usage(created_at);
+
+-- Missed-call recovery funnel: one row per processed CDR, including why a
+-- recovery was NOT sent (outcome). recovery_sent rows are also the durable
+-- per-caller send throttle, and carry the attribution trail — responded_at
+-- when the caller wrote back within 24h, recovered_order_id when an order
+-- followed. This table is what makes "₪ recovered from missed calls" a
+-- computable number instead of a log line.
+-- outcome: answered | recovery_sent | send_failed | unusable_caller |
+--          skipped_forward | skipped_courier | skipped_closed |
+--          skipped_admin | skipped_opted_out | skipped_throttled
+CREATE TABLE IF NOT EXISTS call_events (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id          UUID NOT NULL,
+  caller             TEXT,
+  answered           BOOLEAN NOT NULL DEFAULT FALSE,
+  outcome            TEXT NOT NULL,
+  channel            TEXT,
+  raw                JSONB,
+  responded_at       TIMESTAMPTZ,
+  recovered_order_id UUID,
+  recovered_at       TIMESTAMPTZ,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_call_events_tenant_created ON call_events(tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_call_events_tenant_caller  ON call_events(tenant_id, caller, created_at DESC);

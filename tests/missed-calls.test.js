@@ -49,6 +49,16 @@ jest.mock('../src/services/greenapi', () => ({
 const mockSendSms = jest.fn(async () => ({ ok: true }));
 jest.mock('../src/services/sms', () => ({ sendSms: mockSendSms }));
 
+const mockRecordCallEvent    = jest.fn(async () => {});
+const mockLastRecoverySentAt = jest.fn(async () => null);
+jest.mock('../src/services/recovery-attribution', () => ({
+  recordCallEvent:    mockRecordCallEvent,
+  lastRecoverySentAt: mockLastRecoverySentAt,
+  markResponded:      jest.fn(async () => false),
+  markOrder:          jest.fn(async () => false),
+  ATTRIBUTION_HOURS:  24,
+}));
+
 jest.mock('../src/services/vendor-alerts',  () => ({ alert: jest.fn(async () => {}), alerts: { serverError: jest.fn(async () => {}), serverRestart: jest.fn(async () => {}), onboardingComplete: jest.fn(async () => {}) } }));
 jest.mock('../src/services/push-notifier',  () => ({ notifyNewOrder: jest.fn(async () => {}), saveSubscription: jest.fn() }));
 jest.mock('../src/services/cardcom',        () => ({
@@ -379,6 +389,121 @@ describe('route mounting order', () => {
   test('GET /webhook/calls/:tenantId answers the sanity check (not Meta verify 403)', async () => {
     const res = await request(app).get(`/webhook/calls/${TENANT}`).expect(200);
     expect(res.body.service).toBe('call-events');
+  });
+});
+
+// ── Funnel recording: every processed CDR lands in call_events ───────────────
+describe('call_events recording', () => {
+  const outcomes = () => mockRecordCallEvent.mock.calls.map(([e]) => e.outcome);
+
+  test('sent recovery records recovery_sent with caller + channel + tenant', async () => {
+    await post(cdrBody('+972501111111')).expect(200);
+    await flush();
+    expect(mockRecordCallEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        caller: '972501111111', answered: false,
+        outcome: 'recovery_sent', channel: 'whatsapp',
+      }),
+      TENANT
+    );
+  });
+
+  test('answered call records answered', async () => {
+    await post(cdrBody('+972501111111', { answered: true, duration: 42 })).expect(200);
+    await flush();
+    expect(outcomes()).toEqual(['answered']);
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  test('unusable caller records unusable_caller with null caller', async () => {
+    await post(cdrBody('anonymous')).expect(200);
+    await flush();
+    expect(mockRecordCallEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ caller: null, outcome: 'unusable_caller' }),
+      TENANT
+    );
+  });
+
+  test('each skip reason is recorded distinctly', async () => {
+    mockIsOpen.mockResolvedValue(false);
+    await post(cdrBody('+972501111111')).expect(200);
+    await flush();
+
+    mockIsOpen.mockResolvedValue(true);
+    mockGetAdminUser.mockResolvedValue({ phone: '972502222222', role: 'admin' });
+    await post(cdrBody('+972502222222')).expect(200);
+    await flush();
+
+    mockGetAdminUser.mockResolvedValue(null);
+    mockOptedOut.add('972503333333');
+    await post(cdrBody('+972503333333')).expect(200);
+    await flush();
+    mockOptedOut.clear();
+
+    mockSettingsStore.missed_call_forward_number = '0504444444';
+    await post(cdrBody('+972504444444')).expect(200);
+    await flush();
+
+    expect(outcomes()).toEqual([
+      'skipped_closed', 'skipped_admin', 'skipped_opted_out', 'skipped_forward',
+    ]);
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  test('throttled repeat records skipped_throttled', async () => {
+    await post(cdrBody('+972501111111')).expect(200);
+    await flush();
+    await post(cdrBody('+972501111111')).expect(200);
+    await flush();
+    expect(outcomes()).toEqual(['recovery_sent', 'skipped_throttled']);
+  });
+
+  test('failed send records send_failed and not recovery_sent', async () => {
+    mockSendTemplate.mockRejectedValueOnce(new Error('meta 500'));
+    await post(cdrBody('+972501111111')).expect(200);
+    await flush();
+    expect(outcomes()).toEqual(['send_failed']);
+  });
+
+  test('sms channel records recovery_sent with channel sms', async () => {
+    mockSettingsStore.missed_call_channel = 'sms';
+    mockSettingsStore.bot_whatsapp        = '97233741407';
+    await post(cdrBody('+972501111111')).expect(200);
+    await flush();
+    expect(mockRecordCallEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'recovery_sent', channel: 'sms' }),
+      TENANT
+    );
+  });
+});
+
+// ── Durable throttle: call_events backs the in-memory map across deploys ──────
+describe('durable throttle (DB-backed)', () => {
+  test('a recovery_sent row from before the deploy throttles the send', async () => {
+    mockLastRecoverySentAt.mockResolvedValueOnce(Date.now() - 10 * 60000); // 10m ago
+    await post(cdrBody('+972501111111')).expect(200);
+    await flush();
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+    expect(mockRecordCallEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'skipped_throttled' }),
+      TENANT
+    );
+  });
+
+  test('a recovery_sent row older than the window does not throttle', async () => {
+    mockLastRecoverySentAt.mockResolvedValueOnce(Date.now() - 10 * 3600000); // 10h > 3h default
+    await post(cdrBody('+972501111111')).expect(200);
+    await flush();
+    expect(mockSendTemplate).toHaveBeenCalledTimes(1);
+  });
+
+  test('the DB is only consulted when the in-memory map has no entry', async () => {
+    await post(cdrBody('+972501111111')).expect(200);
+    await flush();
+    mockLastRecoverySentAt.mockClear();
+    await post(cdrBody('+972501111111')).expect(200);
+    await flush();
+    expect(mockLastRecoverySentAt).not.toHaveBeenCalled(); // memory hit answered it
   });
 });
 

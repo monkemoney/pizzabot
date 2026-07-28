@@ -220,6 +220,7 @@ The tenant's business number lives at a VoIP provider (pilot: DIDWW — number o
 - **Filters before sending:** unusable caller id (anonymous), the forward-target phone (`missed_call_forward_number`), couriers, admin_users, business closed (unless `missed_call_when_closed`).
 - **Throttle:** in-memory per `tenant:caller`, `missed_call_throttle_hours` (default 3h) — also absorbs provider webhook retries/duplicates. Resets on deploy (accepted, like login rate limiting). Failed sends release the throttle key.
 - **CDR parsing** (`parseCallEvents`): DIDWW Voice IN shape `{data:[{type:'inbound-cdr',attributes:{success,duration,time_connect,src_number}}]}`; caller-field probing covers naming variants. Answered = `success===true` | `time_connect` | `duration>0`. Unparsable bodies are logged in full — calibrate against the first real event.
+- **Every processed CDR is persisted** (2026-07-28): `call_events` row per event with its outcome (`answered` / `recovery_sent` / `send_failed` / `skipped_*` / `unusable_caller`) via `services/recovery-attribution.js` — the KPI funnel is built from these rows, and `recovery_sent` rows double as the **durable throttle** (DB checked when the in-memory map is empty, so the throttle now survives deploys). Attribution (24h window, Meta's service window): `markResponded()` fires from ai-handler on new conversations only; `markOrder()` fires from `orderState.afterCreate` (idempotent — an event is claimed once). Both are fire-and-forget and never throw.
 - **Settings** (per tenant): `missed_call_enabled`, `missed_call_webhook_token` (required — 403 without it; **PATCH /settings refuses to enable the toggle without a token**, since an enabled-but-tokenless tenant 403s every CDR and DIDWW retry-spams on non-2xx), template name/lang/params, text fallback, forward number, throttle hours, when-closed. Dashboard toggle: הגדרות → "שיחות שלא נענו".
 - Master switch off ⇒ webhook returns 200 (not 4xx) so the provider doesn't retry-spam.
 - **Onboarding a client onto this feature: follow `docs/ONBOARDING-PLAYBOOK.md`** — the validated ops checklist (number purchase incl. dirty-number check, WABA wiring, per-WABA template, settings seed, CDR stream config) with every production gotcha indexed.
@@ -404,9 +405,13 @@ Vendor alerts use per-incident throttle keys (payment_stale_<phone> etc.) — a 
   second simultaneous incident was silently swallowed by the 5-min cooldown.
 ```
 
+### Vendor KPI (2026-07-28)
+
+`GET /api/vendor/kpi/:tenantId?month=YYYY-MM` (requireVendor) — one payload per tenant-month, IL-time month boundaries via `periodRange`. Blocks: `orders` (paid-only revenue like /stats, new-vs-returning by first-order phone lookup), `recovery` (full funnel from `call_events`: calls → missed → sent → responded → orders_recovered → `revenue_recovered`, attributed orders read by id so a cross-month conversion still counts; skip reasons broken out), `operations` (time-to-accept median/p95 from `accepted_at`, escalations, handoffs by `sessions.handoff_at`), `costs` (Claude from `api_usage`, same opus pricing constants as /vendor/usage), `commission_saved` (paid revenue × `aggregator_rate` setting, default 0.25 — an estimate, labeled as such). Portal page: ביצועים (`loadKpi()` in admin.js — client picker + month picker, KPI cards / funnel bars / kv cards per the v0 analytics reference). This endpoint is the basis for pricing decisions and the client's monthly value report — keep `revenue` meaning "money received", per the stats-correctness rule.
+
 ### Vendor Portal & Alerts
 
-Portal pages: סקירה (KPIs + clients + Claude API cost/month per tenant from `api_usage`), לקוחות (CRUD + live search), אונבורדינג, התראות. Fully isolated from the business dashboard (separate HTML/JS; no shared code — `app.js` uses `api()`, `kitchen.js` uses `apiFetch()`, don't mix).
+Portal pages: סקירה (KPIs + clients + Claude API cost/month per tenant from `api_usage`), לקוחות (CRUD + live search), **ביצועים (per-tenant KPI, see Vendor KPI)**, אונבורדינג, התראות. Fully isolated from the business dashboard (separate HTML/JS; no shared code — `app.js` uses `api()`, `kitchen.js` uses `apiFetch()`, don't mix).
 
 vendor-alerts.js: WhatsApp to `vendor_phone` setting (missing phone → loud `alert DROPPED` console.error, not a silent return — the alerting system reporting to nobody is the one failure it can't page anyone about); 5-min in-memory throttle per type; respects `vendor_alert_error/payment/restart` settings read at send time. Alert types: server_error, bot_error, payment_failed, new_order, restart, low_balance, onboarding_complete. Always uses DEFAULT_TENANT_ID (platform-level) — the one allowed exception to the tenantId rules. Vendor has no interactive bot — web only.
 
@@ -464,6 +469,9 @@ onboarding_sessions state machine: pending_client → pending_vendor → approve
                     (client_info/whatsapp/cardcom/menu/test — first three auto-ticked), audit
                     (updated_at, updated_by 'client'|'vendor'), approved_username/password, expires_at
 api_usage           Claude token log per call (tenant_id, in/out/cache tokens)
+call_events         missed-call recovery funnel: one row per processed CDR — caller, answered,
+                    outcome (answered|recovery_sent|send_failed|skipped_*|unusable_caller),
+                    channel, raw attrs, responded_at, recovered_order_id/recovered_at (attribution)
 ```
 
 Order status flow: `new (awaiting approval) → preparing → ready → out_for_delivery → delivered → done` (auto after 1h, via the state machine — the old bulk sweep had no tenant filter and ran on every `GET /api/orders`) | `cancelled`. Pre-orders stay `scheduled` through approval and are promoted `scheduled → preparing` by the scheduler. Acceptance columns (2026-07-26): `accepted_at`, `prep_minutes`, `escalation_level`. All transitions go through `order-state.js` (see Order Acceptance Flow). When adding a status, update the `orders_status_check` constraint via Management API or PATCHes fail on the CHECK.
