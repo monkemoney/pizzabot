@@ -110,3 +110,11 @@ L6 מקביליות (autonomy ≥98%, 0 isolation, 0 דליפת HTTP, p95<8s, ש
 `load.js`/`bootcamp.js` נוגעים ב-Supabase האמיתי דרך **טנאנט בדיקה מבודד** בלבד, ומנקים אחריהם.
 אף פעם לא נשלחות הודעות וואטסאפ/תשלומים אמיתיים. `push-notifier` ו-`savePendingPayment` מנוטרלים כדי
 שה-schedulers בייצור לא יקלטו שורות בדיקה. הרץ עם `--k` קטן קודם.
+
+## אנליטיקה (ללא LLM) — `training/analytics/`
+```bash
+node training/analytics/funnel.js --days 7   # משפך: שיחות→הזמנות, אישורים, ביטולים, disputes
+node training/analytics/trends.js            # מגמות ציונים בין כל הריצות (מסנן ריצות פסולות)
+node training/ingest/mine-live.js --limit 30 # כריית שיחות פרודקשן חיות (דורש קרדיטים; פלט gitignored)
+```
+שלושתם מחוברים לריצה השבועית `weekly-bot-bootcamp`.
