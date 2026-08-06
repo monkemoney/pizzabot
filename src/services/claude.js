@@ -54,18 +54,31 @@ async function callClaude(systemPrompt, conversationHistory, userMessage, tenant
   ];
 
   const t0 = Date.now();
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 1024,
-    system: [
-      {
-        type: 'text',
-        text: systemPrompt,
-        cache_control: { type: 'ephemeral' }, // cache the large system prompt
-      },
-    ],
-    messages,
-  });
+  let response;
+  try {
+    response = await client.messages.create({
+      model: MODEL,
+      max_tokens: 1024,
+      system: [
+        {
+          type: 'text',
+          text: systemPrompt,
+          cache_control: { type: 'ephemeral' }, // cache the large system prompt
+        },
+      ],
+      messages,
+    });
+  } catch (err) {
+    // Out of credit is not a transient error: every customer conversation stops
+    // until someone tops up. It happened once and the first symptom was the bot
+    // failing to answer — tell the vendor immediately, then rethrow.
+    if (/credit balance|billing|quota/i.test(err.message || '')) {
+      require('./vendor-alerts').alerts
+        .lowBalance('יתרת Anthropic אזלה — הבוט אינו יכול לענות ללקוחות')
+        .catch(() => {});
+    }
+    throw err;
+  }
 
   logUsage(response.usage, tenantId, Date.now() - t0);
 

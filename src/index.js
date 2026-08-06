@@ -291,6 +291,19 @@ app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 setInterval(autoCompleteDeliveredOrders, 60 * 60 * 1000);
 setInterval(pruneOldSessions, 24 * 60 * 60 * 1000); // daily
 
+// Daily Claude-spend rollup + budget alarm. Gated like the other write-side
+// jobs: a local dev server pointed at the production DB must not alert the
+// vendor or fight the real instance over the same rows.
+if (process.env.RENDER || process.env.ENABLE_ROLLUP) {
+  const usageRollup = require('./services/usage-rollup');
+  const runRollup = () => usageRollup.rollup(2)
+    .then(() => usageRollup.checkBudget())
+    .catch((err) => console.error('[usage-rollup] job error:', err.message));
+  setInterval(runRollup, 60 * 60 * 1000);
+} else {
+  console.log('[usage-rollup] disabled (not on Render; set ENABLE_ROLLUP=1 to enable locally)');
+}
+
 // ─── Scheduled orders — check every minute ───────────────────────────────────
 // Each tenant's own prep_lead_time decides when its pre-orders enter the
 // kitchen, so we fetch with the widest supported window and filter per order —

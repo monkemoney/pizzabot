@@ -35,6 +35,8 @@ const CHECKS = [
       'src/routes/payment.js': 8,
       'src/routes/dashboard-api.js': 4,
       'src/services/meta-whatsapp.js': 1,
+      // the credit-exhaustion alert is best-effort; the API error itself is rethrown
+      'src/services/claude.js': 1,
       'src/services/greenapi.js': 2,
       // confirmation replies only: the decision is already committed to the DB,
       // and a failed courtesy message must not roll it back or throw
@@ -89,6 +91,9 @@ const CHECKS = [
       // lazy client handle only; the pending ask lives in sessions.pending_csat
       // (DB), so a restart or a second instance loses nothing
       'src/services/csat.js': 1,
+      // lazy client handle only; the rollup is an idempotent upsert, so a restart
+      // or a second instance recomputes the same rows harmlessly
+      'src/services/usage-rollup.js': 1,
       'src/bot/brain-handler.js': 1,
     },
   },
@@ -119,6 +124,9 @@ const CHECKS = [
       'src/bot/brain-handler.js': 2,
       // asked_at ISO stamping + a 24h elapsed check (epoch math, not calendar)
       'src/services/csat.js': 3,
+      // day WINDOWS come from il-time (periodRange/ilDayKey); these are epoch
+      // math for the N-days-back loop and updated_at ISO stamping
+      'src/services/usage-rollup.js': 4,
       'src/services/slug.js': 1,
       'src/services/settings.js': 8,
       'src/services/push-notifier.js': 1,

@@ -438,3 +438,19 @@ CREATE TABLE IF NOT EXISTS bot_lesson_snapshots (
 -- orders.csat_rating SMALLINT, orders.csat_comment TEXT (see orders above)
 -- sessions.pending_csat JSONB — {order_id, order_number, asked_at, rating?,
 -- awaiting_comment?}; self-expiring after 24h, so no cleanup job is needed.
+
+-- Daily Claude spend per tenant. Rolled up hourly (RENDER-gated job) so the
+-- vendor pages stop scanning six months of raw api_usage per page load, and so
+-- a budget alarm has something to watch. Idempotent upsert on (day, tenant_id).
+CREATE TABLE IF NOT EXISTS api_usage_daily (
+  day                DATE NOT NULL,
+  tenant_id          UUID NOT NULL,
+  calls              INTEGER NOT NULL DEFAULT 0,
+  input_tokens       BIGINT NOT NULL DEFAULT 0,
+  output_tokens      BIGINT NOT NULL DEFAULT 0,
+  cache_read_tokens  BIGINT NOT NULL DEFAULT 0,
+  cache_write_tokens BIGINT NOT NULL DEFAULT 0,
+  cost_usd           NUMERIC(10,4) NOT NULL DEFAULT 0,
+  updated_at         TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (day, tenant_id)
+);

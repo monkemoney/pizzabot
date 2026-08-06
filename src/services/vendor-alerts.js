@@ -121,7 +121,9 @@ const alerts = {
     `לקוח: ${phone}\n${String(err).slice(0, 200)}\nהשיחה מבחינת הלקוח נראית כאילו הבוט השתתק.`),
   newOrder:      (num, total)  => alert('new_order',   '🍕', `הזמנה #${num} התקבלה`, `סכום: ₪${total}`),
   serverRestart: ()       => alert('restart',      '🔄', 'שרת אותחל', 'pizzabot-jasell.onrender.com'),
-  lowBalance:    (bal)    => alert('low_balance',  '⚠️', 'יתרת Green API נמוכה', `${bal} הודעות נותרו`),
+  // Credit/quota exhaustion — for Anthropic (bot stops answering) or Green API.
+  lowBalance:    (detail) => alert('low_balance',  '⚠️', 'יתרה אזלה', String(detail)),
+  costThreshold: (detail) => alert('cost_threshold', '💸', 'חריגה מתקציב יומי', String(detail)),
   provisioningFailed: (name, step, reason) => alert(`provisioning_${name}_${step}`, '🔴', 'הקמת לקוח נכשלה',
     `עסק: ${name || '—'}\nשלב: ${step}\n${String(reason).slice(0, 200)}\n\nהאישור ניתן להרצה מחדש — השלבים שהצליחו לא ירוצו שוב.`),
   onboardingComplete: (name, wa, sessionId) =>

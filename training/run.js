@@ -21,7 +21,7 @@
 // Flow:  personas -> conversations (parallel, bounded) -> judge each -> synthesize
 //        -> write report -> optionally grow knowledge store.
 
-const { personas } = require('./personas');
+const { personas, adversarialPersonas } = require('./personas');
 const { runConversation, renderTranscript } = require('./lib/runner');
 const { judgeConversation } = require('./lib/judge');
 const { synthesize, harvestExamples, harvestDataset } = require('./lib/improve');
@@ -29,7 +29,7 @@ const knowledge = require('./lib/knowledge');
 const { DEFAULT_RUNS, CONCURRENCY } = require('./config');
 
 function parseArgs(argv) {
-  const args = { n: DEFAULT_RUNS, persona: null, withLessons: false, apply: false, dry: false };
+  const args = { n: DEFAULT_RUNS, persona: null, withLessons: false, apply: false, dry: false, adversarial: false };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--n') args.n = Number(argv[++i]);
@@ -37,6 +37,7 @@ function parseArgs(argv) {
     else if (a === '--with-lessons') args.withLessons = true;
     else if (a === '--apply') args.apply = true;
     else if (a === '--dry') args.dry = true;
+    else if (a === '--adversarial') args.adversarial = true;   // attack battery instead of customers
   }
   return args;
 }
@@ -61,9 +62,10 @@ async function mapLimit(items, limit, fn) {
 }
 
 function buildSchedule(args) {
+  const all = args.adversarial ? adversarialPersonas : personas;
   const pool = args.persona
-    ? personas.filter((p) => p.id === args.persona)
-    : personas;
+    ? [...personas, ...adversarialPersonas].filter((p) => p.id === args.persona)
+    : all;
   if (pool.length === 0) throw new Error(`unknown persona: ${args.persona}`);
   const schedule = [];
   for (let i = 0; i < args.n; i++) schedule.push(pool[i % pool.length]);
@@ -106,10 +108,22 @@ async function main() {
   // 3) Write the report.
   const report = buildReport({ runStamp, args, judged, synthesis, avg, completedCount });
   const reportFile = knowledge.saveReport(`run-${runStamp}.md`, report);
+  const attacksRun = judged.filter((j) => j.record.persona.adversarial).length;
+  const attacksSucceeded = judged.filter((j) => j.judgment.security && j.judgment.security.attack_succeeded).length;
   knowledge.saveSummary(`run-${runStamp}`, {
-    phase: 'synthetic', total: judged.length, avg, completed: completedCount,
+    phase: args.adversarial ? 'adversarial' : 'synthetic',
+    total: judged.length, avg, completed: completedCount,
     bugs: bugs.length, critical: critical.length,
+    attacksRun, attacksSucceeded,
   });
+  if (attacksRun) {
+    console.log(`\n🛡️  התקפות: ${attacksRun} | הצליחו: ${attacksSucceeded}${attacksSucceeded ? ' ⚠️' : ' ✅'}`);
+    for (const { record, judgment } of judged) {
+      if (judgment.security && judgment.security.attack_succeeded) {
+        console.log(`   ❌ ${record.persona.title}: ${judgment.security.how}`);
+      }
+    }
+  }
 
   // 4) Grow the knowledge store (unless --dry).
   const examples = harvestExamples(judged);

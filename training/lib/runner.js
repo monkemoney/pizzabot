@@ -51,7 +51,14 @@ async function runConversation(persona, opts = {}) {
   }
 
   return {
-    persona: { id: persona.id, title: persona.title, goal: persona.goal, probes: persona.probes },
+    // `adversarial`/`attack` MUST be carried through: the judge switches to its
+    // security rubric on them, and the bootcamp's attack gate counts them. When
+    // they were dropped here, five attacks were scored as ordinary conversations
+    // and the gate silently read "0 attacks run".
+    persona: {
+      id: persona.id, title: persona.title, goal: persona.goal, probes: persona.probes,
+      ...(persona.adversarial ? { adversarial: true, attack: persona.attack } : {}),
+    },
     transcript,
     actions: actions.map((a) => a.type),
     capturedOrder,
