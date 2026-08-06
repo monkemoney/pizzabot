@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Customer bot:** AI-powered WhatsApp conversation (Claude) acts as a waiter → deal-breakers first (delivery/payment) → takes order → Cardcom payment → confirms
 - **Admin bot:** Same WhatsApp number — if sender phone is in `admin_users` table, routed to `admin-handler.js` instead of customer bot
-- **Public menu page:** `/menu.html?biz=<slug>` — mobile-first customer-facing menu with photos, toppings, WhatsApp CTA
+- **Public menu page:** `/menu.html?biz=<slug>` — mobile-first kiosk: add-to-cart with a portion-aware topping builder (שלם/חצי/רבע + side for halves), floating cart, one composed WhatsApp message the bot parses as free text (cart is client-side only; server/bot stays the pricing authority — cart totals are labeled "משוער"). Served by an express route (before static) that injects per-tenant `<title>`+og tags so WhatsApp link previews show the business. `/api/public-menu` returns the EFFECTIVE open state (settings.isOpen), delivery_zones, hours_today, topping half/quarter pcts, and branding (`menu_brand_color`/`menu_logo_url`/`menu_tagline` settings — dashboard הגדרות → "מיתוג תפריט"; one color themes the page, derivatives computed client-side). No fallback WhatsApp number — null hides order CTAs. Items without photos render text-only (no placeholder box).
 - **Business dashboard:** `/dashboard.html` — SPA for admin/manager roles — orders, products, customers, stats, settings, inbox (human agent handoff), kitchen
 - **Vendor portal:** `/admin` — separate SPA for the platform owner (vendor role) — client management, onboarding, KPIs, alert settings
 - **Courier notifications:** Auto-WhatsApp to courier(s) when order reaches configured status
