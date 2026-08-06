@@ -1417,6 +1417,119 @@ router.get('/vendor/kpi/:tenantId', requireVendor, async (req, res) => {
   }
 });
 
+// ─── Bot Brain — the decision surface ──────────────────────────────────────────
+// The learning loop's control room: what the last eval run found, what is
+// waiting for a decision, how scores move, and where customers fall out.
+// Insights live in the DB (not files/chat) so no knowledge depends on a session.
+
+// GET /vendor/brain/overview — headline state for the page banner + cards
+router.get('/vendor/brain/overview', requireVendor, async (req, res) => {
+  try {
+    const { data: runs } = await supabase
+      .from('bot_runs').select('*').order('run_at', { ascending: false }).limit(1);
+    const lastRun = (runs || [])[0] || null;
+
+    const { count: pending } = await supabase
+      .from('bot_insights').select('*', { count: 'exact', head: true }).eq('status', 'proposed');
+    const { count: approved } = await supabase
+      .from('bot_insights').select('*', { count: 'exact', head: true }).eq('status', 'approved');
+
+    // Claude spend so far today, in Israel time (class-12: never raw date math)
+    const { start } = periodRange('day', new Date().toISOString());
+    const { data: usage } = await supabase
+      .from('api_usage').select('model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens')
+      .gte('created_at', start);
+    const costToday = (usage || []).reduce((s, u) => s + costOf(u), 0);
+
+    const { count: handoffs } = await supabase
+      .from('sessions').select('*', { count: 'exact', head: true })
+      .eq('is_bot_active', false).not('phone', 'like', 'admin:%');
+
+    const stalenessDays = lastRun
+      ? Math.floor((Date.now() - new Date(lastRun.run_at).getTime()) / 864e5)
+      : null;
+
+    res.json({
+      last_run: lastRun,
+      staleness_days: stalenessDays,
+      pending_insights: pending || 0,
+      approved_insights: approved || 0,
+      cost_today_usd: Math.round(costToday * 100) / 100,
+      handoffs_pending: handoffs || 0,
+    });
+  } catch (err) {
+    console.error('[brain/overview] error:', err.message);
+    res.status(500).json({ error: 'שגיאה בטעינת מצב הבוט' });
+  }
+});
+
+// GET /vendor/brain/insights?status=proposed|all
+router.get('/vendor/brain/insights', requireVendor, async (req, res) => {
+  try {
+    let q = supabase.from('bot_insights').select('*').order('created_at', { ascending: false }).limit(100);
+    if (req.query.status && req.query.status !== 'all') q = q.eq('status', req.query.status);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    res.json(data || []);
+  } catch (err) {
+    console.error('[brain/insights] error:', err.message);
+    res.status(500).json({ error: 'שגיאה בטעינת תובנות' });
+  }
+});
+
+// PATCH /vendor/brain/insights/:id  {action:'approve'|'reject', notes?}
+router.patch('/vendor/brain/insights/:id', requireVendor, async (req, res) => {
+  const { action, notes } = req.body || {};
+  if (!['approve', 'reject'].includes(action)) {
+    return res.status(400).json({ error: 'action חייב להיות approve או reject' });
+  }
+  try {
+    const { data: cur } = await supabase
+      .from('bot_insights').select('*').eq('id', req.params.id).single();
+    if (!cur) return res.status(404).json({ error: 'תובנה לא נמצאה' });
+    // Only open insights are decidable — re-deciding history would rewrite it.
+    if (!['proposed', 'monitoring'].includes(cur.status)) {
+      return res.status(409).json({ error: `התובנה כבר ב-${cur.status}` });
+    }
+
+    const { data, error } = await supabase.from('bot_insights').update({
+      status: action === 'approve' ? 'approved' : 'rejected',
+      decided_at: new Date().toISOString(),
+      decided_via: 'portal',
+      notes: notes || cur.notes,
+    }).eq('id', req.params.id).select('*').single();
+    if (error) throw new Error(error.message);
+    res.json(data);
+  } catch (err) {
+    console.error('[brain/insights PATCH] error:', err.message);
+    res.status(500).json({ error: 'שגיאה בעדכון התובנה' });
+  }
+});
+
+// GET /vendor/brain/trends — score movement across weekly runs
+router.get('/vendor/brain/trends', requireVendor, async (req, res) => {
+  try {
+    const { data } = await supabase
+      .from('bot_runs').select('run_at, kind, verdict, scores, status')
+      .eq('status', 'completed').order('run_at', { ascending: false }).limit(12);
+    res.json((data || []).reverse());
+  } catch (err) {
+    console.error('[brain/trends] error:', err.message);
+    res.status(500).json({ error: 'שגיאה בטעינת מגמות' });
+  }
+});
+
+// GET /vendor/brain/funnel?days=7 — where real customers fall out
+router.get('/vendor/brain/funnel', requireVendor, async (req, res) => {
+  try {
+    const { funnelForAll } = require('../services/funnel-stats');
+    res.json(await funnelForAll(parseInt(req.query.days, 10) || 7));
+  } catch (err) {
+    console.error('[brain/funnel] error:', err.message);
+    res.status(500).json({ error: 'שגיאה בחישוב משפך' });
+  }
+});
+
 // ─── Onboarding ────────────────────────────────────────────────────────────────
 
 // GET /onboarding/:token — public, client fetches their session

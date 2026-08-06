@@ -119,6 +119,24 @@ label { display: block; font-size: .82rem; font-weight: 700; color: var(--text-m
 .kv-row:last-child { border-bottom: none; }
 .kv-row .kv-label { color: var(--text-muted); font-weight: 600; }
 .kv-row .kv-value { font-weight: 800; color: var(--text); }
+/* Bot Brain */
+.stale-banner { border-radius: var(--radius-lg); padding: 14px 18px; margin-bottom: 18px; font-size: .86rem; font-weight: 600; border: 1px solid; }
+.stale-ok   { background: #e0fbef; color: #006636; border-color: #a7e8c8; }
+.stale-warn { background: #fff8e0; color: #8a5000; border-color: #ffd980; }
+.stale-bad  { background: #fdecec; color: #a11; border-color: #f6c2c2; }
+.insight-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 18px; margin-bottom: 12px; }
+.insight-title { font-weight: 700; font-size: .93rem; color: var(--text); margin-bottom: 6px; }
+.insight-meta { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 9px; }
+.chip { font-size: .68rem; font-weight: 700; padding: 2px 9px; border-radius: 50px; background: var(--color-bg); color: var(--text-muted); border: 1px solid var(--border); }
+.chip.lesson { background: var(--color-brand-soft); color: var(--primary); border-color: transparent; }
+.chip.code { background: #fff8e0; color: #8a5000; border-color: transparent; }
+.chip.thin { background: #fdecec; color: #a11; border-color: transparent; }
+.insight-body { font-size: .82rem; color: var(--text-muted); line-height: 1.55; white-space: pre-wrap; }
+.insight-actions { display: flex; gap: 8px; margin-top: 12px; }
+.btn-approve { background: #008043; color: #fff; border: none; border-radius: var(--radius-md); padding: 7px 18px; font-weight: 700; font-size: .8rem; cursor: pointer; }
+.btn-reject { background: var(--white); color: #a11; border: 1px solid #f6c2c2; border-radius: var(--radius-md); padding: 7px 18px; font-weight: 700; font-size: .8rem; cursor: pointer; }
+.trend-wrap { overflow-x: auto; }
+.empty-note { color: var(--text-muted); font-size: .85rem; padding: 18px 0; text-align: center; }
 
 /* Badge */
 .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: var(--radius-sm); font-size: .72rem; font-weight: 700; }
@@ -229,6 +247,11 @@ label { display: block; font-size: .82rem; font-weight: 700; color: var(--text-m
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
       אונבורדינג
     </button>
+    <button class="nav-btn" onclick="showPage('brain')" id="nav-brain">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5.2A3 3 0 0 0 9 17a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0 2-4.8A3 3 0 0 0 15 7a3 3 0 0 0-3-3z"/><path d="M12 4v16"/></svg>
+      מוח הבוט
+      <span id="brainNavBadge" style="display:none;margin-inline-start:auto;background:#ef4444;color:#fff;border-radius:10px;font-size:.68rem;padding:1px 7px;font-weight:700"></span>
+    </button>
     <button class="nav-btn" onclick="showPage('alerts')" id="nav-alerts">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       התראות
@@ -310,6 +333,15 @@ label { display: block; font-size: .82rem; font-weight: 700; color: var(--text-m
   </div>
 
   <!-- Alerts page -->
+  <!-- Bot Brain — the learning loop's control room -->
+  <div id="page-brain" class="page">
+    <div class="page-header">
+      <div class="page-title">מוח הבוט</div>
+      <button class="btn btn-outline btn-sm" onclick="loadBrain()">רענן</button>
+    </div>
+    <div id="brainBody"><div class="empty-note">טוען…</div></div>
+  </div>
+
   <div id="page-alerts" class="page">
     <div class="page-header">
       <div class="page-title">התראות מערכת</div>
@@ -416,6 +448,10 @@ label { display: block; font-size: .82rem; font-weight: 700; color: var(--text-m
   <button class="mnav-btn" onclick="showPage('onboarding')" id="mnav-onboarding">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
     הצטרפות
+  </button>
+  <button class="mnav-btn" onclick="showPage('brain')" id="mnav-brain">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5.2A3 3 0 0 0 9 17a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0 2-4.8A3 3 0 0 0 15 7a3 3 0 0 0-3-3z"/><path d="M12 4v16"/></svg>
+    מוח הבוט
   </button>
   <button class="mnav-btn" onclick="showPage('alerts')" id="mnav-alerts">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>

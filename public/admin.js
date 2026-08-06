@@ -46,6 +46,7 @@ function showPage(name) {
   if (name === 'alerts')      loadAlertSettings();
   if (name === 'onboarding')  loadOnboarding();
   if (name === 'kpi')         loadKpi();
+  if (name === 'brain')      loadBrain();
 }
 
 function showToast(msg) {
@@ -179,7 +180,32 @@ const KPI_ICONS = {
   revenue:  '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
   recovered:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 2 16 8 22 8"/><line x1="23" y1="1" x2="16" y2="8"/><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
   saved:    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>',
+  inbox:    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
+  gauge:    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>',
+  shield:   '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+  coin:     '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9.5A3.5 3.5 0 0 0 9 12a3.5 3.5 0 0 0 6 2.5"/></svg>',
 };
+
+// ── Shared card/row templates (used by the KPI and Bot Brain pages) ──────────
+const kpiCard = (icon, tone, value, label, sub) => `
+  <div class="kpi-card">
+    <div class="kpi-icon ${tone}">${KPI_ICONS[icon] || ''}</div>
+    <div class="kpi-value">${value}</div>
+    <div class="kpi-label">${label}</div>
+    ${sub ? `<div class="kpi-sub">${sub}</div>` : ''}
+  </div>`;
+
+const funnelRow = (label, value, base, color) => {
+  const pct = base > 0 ? Math.round((value / base) * 100) : 0;
+  return `
+    <div class="funnel-row">
+      <div class="funnel-head"><span style="font-weight:600">${label}</span><span style="font-weight:800">${value}</span></div>
+      <div class="funnel-track"><div class="funnel-fill" style="width:${pct}%;background:${color}"></div></div>
+    </div>`;
+};
+
+const kv = (label, value) =>
+  `<div class="kv-row"><span class="kv-label">${label}</span><span class="kv-value">${value}</span></div>`;
 
 async function loadKpi() {
   const sel   = document.getElementById('kpiClient');
@@ -219,26 +245,6 @@ async function loadKpi() {
     body.innerHTML = `<div style="color:#e0004d;font-size:.85rem">${err.message}</div>`;
     return;
   }
-
-  const kpiCard = (icon, tone, value, label, sub) => `
-    <div class="kpi-card">
-      <div class="kpi-icon ${tone}">${KPI_ICONS[icon]}</div>
-      <div class="kpi-value">${value}</div>
-      <div class="kpi-label">${label}</div>
-      ${sub ? `<div class="kpi-sub">${sub}</div>` : ''}
-    </div>`;
-
-  const funnelRow = (label, value, base, color) => {
-    const pct = base > 0 ? Math.round((value / base) * 100) : 0;
-    return `
-      <div class="funnel-row">
-        <div class="funnel-head"><span style="font-weight:600">${label}</span><span style="font-weight:800">${value}</span></div>
-        <div class="funnel-track"><div class="funnel-fill" style="width:${pct}%;background:${color}"></div></div>
-      </div>`;
-  };
-
-  const kv = (label, value) =>
-    `<div class="kv-row"><span class="kv-label">${label}</span><span class="kv-value">${value}</span></div>`;
 
   const r = k.recovery, o = k.orders, ops = k.operations;
   const skippedTotal = Object.values(r.skipped || {}).reduce((s, n) => s + n, 0);
@@ -893,3 +899,155 @@ api('GET', '/settings').then(s => {
 }).catch(() => {});
 
 refreshDashboard();
+
+
+// ─── Bot Brain — the learning loop's control room ────────────────────────────
+// Every insight the system proposes lands here with its evidence, and a
+// decision is one click. Before this page the queue lived in a markdown file
+// nobody opened, so proposals quietly expired.
+
+function esc(t) {
+  return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+const TYPE_LABEL = { lesson: 'לקח', code: 'קוד', setting: 'הגדרה', info: 'מידע' };
+
+// Hand-rolled trend chart: no chart library in this codebase, and one polyline
+// is cheaper than adding one.
+function trendChart(runs, key, label, color) {
+  const pts = runs.map((r) => (r.scores || {})[key]).map((v) => (typeof v === 'number' ? v : null));
+  if (pts.filter((v) => v !== null).length < 2) return '';
+  const W = 520, H = 120, PAD = 26;
+  const vals = pts.filter((v) => v !== null);
+  const min = Math.min(...vals, 0), max = Math.max(...vals, 100);
+  const x = (i) => PAD + (i * (W - PAD * 2)) / Math.max(1, pts.length - 1);
+  const y = (v) => H - PAD - ((v - min) / Math.max(1, max - min)) * (H - PAD * 2);
+  const poly = pts.map((v, i) => (v === null ? null : `${x(i)},${y(v)}`)).filter(Boolean).join(' ');
+  const dots = pts.map((v, i) => (v === null ? '' :
+    `<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="${color}"><title>${v}</title></circle>`)).join('');
+  const last = vals[vals.length - 1];
+  return `
+    <div style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;font-size:.82rem;margin-bottom:4px">
+        <span style="font-weight:600">${label}</span><span style="font-weight:800;color:${color}">${last}</span>
+      </div>
+      <div class="trend-wrap"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:320px;height:120px">
+        <polyline points="${poly}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>
+        ${dots}
+      </svg></div>
+    </div>`;
+}
+
+function insightCard(it) {
+  const thin = (it.metrics && it.metrics.sample_size != null && it.metrics.sample_size < 10);
+  const open = it.status === 'proposed' || it.status === 'monitoring';
+  return `
+    <div class="insight-card" id="ins-${it.id}">
+      <div class="insight-title">${esc(it.title)}</div>
+      <div class="insight-meta">
+        <span class="chip ${it.type}">${TYPE_LABEL[it.type] || it.type}</span>
+        <span class="chip">${esc(it.source)}</span>
+        <span class="chip">${new Date(it.created_at).toLocaleDateString('he-IL')}</span>
+        ${it.metrics && it.metrics.sample_size != null
+          ? `<span class="chip ${thin ? 'thin' : ''}">מדגם ${it.metrics.sample_size}${thin ? ' — קטן' : ''}</span>` : ''}
+        ${!open ? `<span class="chip">${esc(it.status)}</span>` : ''}
+      </div>
+      ${it.evidence ? `<div class="insight-body"><b>ראיות:</b> ${esc(it.evidence)}</div>` : ''}
+      ${it.proposal ? `<div class="insight-body" style="margin-top:6px"><b>הצעה:</b> ${esc(it.proposal)}</div>` : ''}
+      ${open ? `<div class="insight-actions">
+        <button class="btn-approve" onclick="decideInsight('${it.id}','approve')">אשר</button>
+        <button class="btn-reject" onclick="decideInsight('${it.id}','reject')">דחה</button>
+      </div>` : ''}
+    </div>`;
+}
+
+async function decideInsight(id, action) {
+  const card = document.getElementById('ins-' + id);
+  try {
+    await api('PATCH', `/vendor/brain/insights/${id}`, { action });
+    showToast(action === 'approve' ? 'אושר' : 'נדחה');
+    if (card) card.remove();
+    loadBrain();
+  } catch (err) { alert(err.message); }
+}
+
+async function loadBrain() {
+  const body = document.getElementById('brainBody');
+  body.innerHTML = '<div class="empty-note">טוען…</div>';
+  try {
+    const [ov, insights, trends, funnel] = await Promise.all([
+      api('GET', '/vendor/brain/overview'),
+      api('GET', '/vendor/brain/insights?status=proposed'),
+      api('GET', '/vendor/brain/trends'),
+      api('GET', '/vendor/brain/funnel?days=7'),
+    ]);
+
+    // Pending count on the nav, so a decision is visible without opening the page.
+    const badge = document.getElementById('brainNavBadge');
+    if (badge) {
+      badge.textContent = ov.pending_insights || '';
+      badge.style.display = ov.pending_insights ? 'inline-block' : 'none';
+    }
+
+    // Staleness: a run that never reported is the failure mode this whole page exists to expose.
+    const lr = ov.last_run;
+    let banner;
+    if (!lr) {
+      banner = `<div class="stale-banner stale-bad">אף ריצת בדיקה לא נרשמה עדיין.</div>`;
+    } else {
+      const when = new Date(lr.run_at).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' });
+      const days = ov.staleness_days;
+      const cls = lr.status === 'failed' ? 'stale-bad' : days > 8 ? 'stale-warn' : 'stale-ok';
+      const statusHe = lr.status === 'completed' ? `הושלמה — ${lr.verdict || '—'}`
+        : lr.status === 'failed' ? 'נכשלה' : 'רצה כעת';
+      banner = `<div class="stale-banner ${cls}">ריצה אחרונה: ${when} · ${statusHe}${days > 8 ? ` · לפני ${days} ימים — ישן` : ''}</div>`;
+    }
+
+    const scores = (lr && lr.scores) || {};
+    const cards = `
+      <div class="kpi-grid">
+        ${kpiCard('inbox', 'brand', ov.pending_insights, 'ממתינות להחלטה', ov.approved_insights ? `${ov.approved_insights} אושרו וממתינות למימוש` : '')}
+        ${kpiCard('gauge', '', scores.replay != null ? scores.replay : '—', 'ציון על שיחות אמיתיות', scores.synthetic != null ? `סינתטי ${scores.synthetic}` : '')}
+        ${kpiCard('shield', 'green', scores.autonomy_pct != null ? scores.autonomy_pct + '%' : '—', 'אוטונומיה במקביליות', scores.p95_ms ? `p95 ${scores.p95_ms}ms` : '')}
+        ${kpiCard('coin', 'amber', `$${(ov.cost_today_usd || 0).toFixed(2)}`, 'עלות Claude היום', ov.handoffs_pending ? `${ov.handoffs_pending} שיחות אצל נציג` : '')}
+      </div>`;
+
+    const queue = `
+      <div class="card" style="padding:20px 22px;margin-bottom:20px">
+        <div style="font-weight:800;margin-bottom:14px">תור החלטות</div>
+        ${insights.length ? insights.map(insightCard).join('') : '<div class="empty-note">אין תובנות ממתינות.</div>'}
+      </div>`;
+
+    const trendsHtml = `
+      <div class="card" style="padding:20px 22px;margin-bottom:20px">
+        <div style="font-weight:800;margin-bottom:14px">מגמות (${trends.length} ריצות)</div>
+        ${trends.length >= 2
+          ? trendChart(trends, 'replay', 'שיחות אמיתיות', '#5e17eb') +
+            trendChart(trends, 'synthetic', 'סינתטי', '#2563eb') +
+            trendChart(trends, 'autonomy_pct', 'אוטונומיה %', '#008043')
+          : '<div class="empty-note">צריך לפחות שתי ריצות שהושלמו כדי להציג מגמה.</div>'}
+      </div>`;
+
+    const funnelHtml = `
+      <div class="card" style="padding:20px 22px">
+        <div style="font-weight:800;margin-bottom:14px">משפך — 7 ימים</div>
+        ${funnel.length ? funnel.map((f) => `
+          <div style="margin-bottom:18px">
+            <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">${esc(f.tenant.slice(0, 8))}</div>
+            ${funnelRow('שיחות', f.conversations, f.conversations, '#94a3b8')}
+            ${funnelRow('הזמנות', f.orders, f.conversations, '#5e17eb')}
+            ${funnelRow('הושלמו / פעילות', f.completedOrActive, f.conversations, '#008043')}
+            ${f.cancelled ? funnelRow('בוטלו', f.cancelled, f.conversations, '#ef4444') : ''}
+            <div style="margin-top:10px">
+              ${kv('המרה', f.conversionPct + '%')}
+              ${kv('חציון זמן אישור', f.medianAcceptMin != null ? f.medianAcceptMin + ' דק׳' : '—')}
+              ${kv('ממוצע הזמנה', '₪' + f.avgOrder)}
+            </div>
+          </div>`).join('') : '<div class="empty-note">אין נתונים בחלון.</div>'}
+      </div>`;
+
+    body.innerHTML = banner + cards + queue + trendsHtml + funnelHtml;
+  } catch (err) {
+    body.innerHTML = `<div class="stale-banner stale-bad">שגיאה בטעינה: ${esc(err.message)}</div>`;
+  }
+}

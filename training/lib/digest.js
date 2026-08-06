@@ -1,9 +1,10 @@
 'use strict';
 
 // Weekly WhatsApp digest to the vendor — the push half of the decision loop.
-// v1 is TEXT-ONLY by design: interactive buttons ship only together with the
-// vendor-reply routing branch (plan block 4c) — a button tap before that lands
-// in the customer bot. Send outcome is recorded by the caller into bot_runs.meta.
+// Carries approve/reject buttons for the top pending insight; replies are routed
+// by src/bot/brain-handler.js (the vendor's phone is not in admin_users, so
+// without that branch a tap would land in the customer bot).
+// Send outcome is recorded by the caller into bot_runs.meta.
 //
 // Reads vendor_phone directly from settings (default tenant) — NOT via
 // vendor-alerts.alert(), whose cooldown/prefix semantics don't fit a digest.
@@ -65,9 +66,24 @@ async function sendWeeklyDigest({ runId, verdict, scores = {} }) {
     lines.push('אין החלטות ממתינות.');
   }
 
+  const body = lines.join('\n');
+  const top = pending[0];
+
   try {
-    const { sendMessage } = require('../../src/services/greenapi');
-    await sendMessage(phone, lines.join('\n'), DEFAULT_TENANT_ID);
+    const greenapi = require('../../src/services/greenapi');
+    // One decision per digest: Meta allows 3 buttons and titles ≤20 chars, and
+    // a wall of buttons is worse than a link to the full queue.
+    if (top && typeof greenapi.sendInteractiveButtons === 'function') {
+      await greenapi.sendInteractiveButtons(
+        phone, body,
+        [{ id: `brain:approve:${top.id}`, title: 'אשר את #1' },
+         { id: `brain:reject:${top.id}`,  title: 'דחה את #1' }],
+        DEFAULT_TENANT_ID,
+        `${body}\n\n(להחלטה מהירה על #1 השב: אשר / דחה)`,
+      );
+    } else {
+      await greenapi.sendMessage(phone, body, DEFAULT_TENANT_ID);
+    }
     return 'sent';
   } catch (e) {
     return `failed:${e.message.slice(0, 120)}`;

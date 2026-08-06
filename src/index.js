@@ -156,6 +156,13 @@ function handleMetaWebhook(req, res) {
       return;
     }
 
+    // Bot Brain decisions come from the vendor's phone, which is NOT in
+    // admin_users — without this branch a digest button tap would fall through
+    // to the customer bot. Checked before the admin lookup; the handler itself
+    // verifies the sender really is the vendor.
+    const { handleBrainReply } = require('./bot/brain-handler');
+    if (await handleBrainReply(phone, interactiveId, textMessage, tenantId)) return;
+
     const adminUser = await getAdminUser(phone, tenantId);
     if (adminUser) return handleAdminMessage(phone, textMessage, adminUser, tenantId, interactiveId);
     return handleMessage(phone, textMessage, tenantId);

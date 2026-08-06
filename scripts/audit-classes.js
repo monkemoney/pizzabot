@@ -36,6 +36,9 @@ const CHECKS = [
       'src/routes/dashboard-api.js': 4,
       'src/services/meta-whatsapp.js': 1,
       'src/services/greenapi.js': 2,
+      // confirmation replies only: the decision is already committed to the DB,
+      // and a failed courtesy message must not roll it back or throw
+      'src/bot/brain-handler.js': 3,
       'public/sw.js': 1,
       'public/admin.js': 2,
       'public/app.js': 11,
@@ -75,6 +78,9 @@ const CHECKS = [
       'src/services/pricing.js': 2,
       // lazy client handle only; insight dedup is enforced by a DB query, not memory
       'src/services/insights.js': 1,
+      // lazy client handle only (no data; per-instance duplication harmless)
+      'src/services/funnel-stats.js': 1,
+      'src/bot/brain-handler.js': 1,
     },
   },
   {
@@ -91,11 +97,17 @@ const CHECKS = [
       'src/bot/ai-handler.js': 7,
       'src/bot/admin-handler.js': 15,
       'src/routes/payment.js': 2,
-      // 33 since the vendor KPI endpoint (epoch math for accept-time + ilDayKey month fallback)
-      'src/routes/dashboard-api.js': 33,
+      // 36 since the Bot Brain endpoints (staleness epoch math + decided_at ISO stamping;
+      // the cost-today window uses il-time periodRange, not raw dates)
+      'src/routes/dashboard-api.js': 36,
       'src/services/vendor-alerts.js': 1,
       'src/services/supabase.js': 13,
       'src/services/order-state.js': 4,
+      // rolling N-day window (epoch math) + accept-latency duration — no local
+      // calendar bucketing, so il-time is not the right tool here
+      'src/services/funnel-stats.js': 3,
+      // decided_at ISO stamping only
+      'src/bot/brain-handler.js': 1,
       'src/services/slug.js': 1,
       'src/services/settings.js': 8,
       'src/services/push-notifier.js': 1,
