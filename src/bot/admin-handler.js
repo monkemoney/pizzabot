@@ -654,7 +654,7 @@ async function handleAdminMessage(phone, userMessage, adminUser, tenantId = DEFA
 
   let assistantText;
   try {
-    assistantText = await callClaude(systemPrompt, history.slice(-20), userMessage);
+    assistantText = await callClaude(systemPrompt, history.slice(-20), userMessage, tenantId);
   } catch (err) {
     console.error('[admin-bot] Claude error:', err.message);
     await reply(phone, '⚠️ שגיאה זמנית, נסה שוב.', tenantId);

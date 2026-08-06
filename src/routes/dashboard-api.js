@@ -9,6 +9,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { signDashboard, requireAuth, requireAdmin, requireVendor, requireKitchenOrAdmin, DEFAULT_TENANT_ID } = require('../middleware/auth');
 const sse = require('../services/sse');
 const { cancelDeal } = require('../services/cardcom');
+const { costOf } = require('../services/claude-pricing');
 const { getOrderById, updateOrderStatus, updateOrder, updateSession,
         getInboxSessions, setBotActive, markInboxRead } = require('../services/supabase');
 const { notifyStatusChange }              = require('../services/status-notifier');
@@ -1151,20 +1152,17 @@ router.get('/vendor/clients', requireVendor, async (_req, res) => {
   const [{ data: clients, error }, { data: usage }] = await Promise.all([
     supabase.from('clients').select('*').order('created_at', { ascending: false }),
     supabase.from('api_usage')
-      .select('tenant_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens')
+      .select('tenant_id, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens')
       .gte('created_at', monthStart.toISOString()),
   ]);
   if (error) return res.status(500).json({ error: error.message });
 
-  const P = { input: 15/1e6, output: 75/1e6, cache_read: 1.5/1e6, cache_write: 18.75/1e6 };
   const byTenant = {};
   for (const r of usage || []) {
     if (!r.tenant_id) continue;
     if (!byTenant[r.tenant_id]) byTenant[r.tenant_id] = { calls: 0, cost: 0 };
     byTenant[r.tenant_id].calls++;
-    byTenant[r.tenant_id].cost +=
-      (r.input_tokens||0)*P.input + (r.output_tokens||0)*P.output +
-      (r.cache_read_tokens||0)*P.cache_read + (r.cache_write_tokens||0)*P.cache_write;
+    byTenant[r.tenant_id].cost += costOf(r);
   }
 
   res.json((clients || []).map(c => ({
@@ -1238,15 +1236,13 @@ router.get('/vendor/usage', requireVendor, async (_req, res) => {
 
   const { data, error } = await supabase
     .from('api_usage')
-    .select('tenant_id, created_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens')
+    .select('tenant_id, created_at, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens')
     .gte('created_at', since.toISOString())
     .order('created_at', { ascending: false });
 
   if (error) return res.status(500).json({ error: error.message });
 
   // Pricing per token (claude-opus-4-7)
-  const P = { input: 15 / 1e6, output: 75 / 1e6, cache_read: 1.5 / 1e6, cache_write: 18.75 / 1e6 };
-
   const byKey = {};
   for (const row of data) {
     const month = ilDayKey(row.created_at).slice(0, 7); // YYYY-MM in Israel time (class 12)
@@ -1267,7 +1263,7 @@ router.get('/vendor/usage', requireVendor, async (_req, res) => {
       input:      r.input,
       output:     r.output,
       cache_read: r.cache_read,
-      cost_usd:   r.input * P.input + r.output * P.output + r.cache_read * P.cache_read + r.cache_write * P.cache_write,
+      cost_usd:   costOf(r),
     }))
     .sort((a, b) => b.month.localeCompare(a.month));
 
@@ -1295,7 +1291,7 @@ router.get('/vendor/kpi/:tenantId', requireVendor, async (req, res) => {
         .select('caller, outcome, channel, responded_at, recovered_order_id')
         .eq('tenant_id', tenantId).gte('created_at', start).lt('created_at', end),
       supabase.from('api_usage')
-        .select('input_tokens, output_tokens, cache_read_tokens, cache_write_tokens')
+        .select('model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens')
         .eq('tenant_id', tenantId).gte('created_at', start).lt('created_at', end),
       supabase.from('sessions')
         .select('phone', { count: 'exact', head: true })
@@ -1358,13 +1354,9 @@ router.get('/vendor/kpi/:tenantId', requireVendor, async (req, res) => {
       .sort((a, b) => a - b);
     const pick = (arr, q) => (arr.length ? Math.round(arr[Math.min(arr.length - 1, Math.floor(q * arr.length))] * 10) / 10 : null);
 
-    // ── Costs (Claude; same claude-opus-4-7 pricing as /vendor/usage) ─────────
-    const P = { input: 15 / 1e6, output: 75 / 1e6, cache_read: 1.5 / 1e6, cache_write: 18.75 / 1e6 };
+    // ── Costs (Claude; rates from services/claude-pricing) ───────────────────
     let claudeCost = 0;
-    for (const u of usageRes.data || []) {
-      claudeCost += (u.input_tokens || 0) * P.input + (u.output_tokens || 0) * P.output
-        + (u.cache_read_tokens || 0) * P.cache_read + (u.cache_write_tokens || 0) * P.cache_write;
-    }
+    for (const u of usageRes.data || []) claudeCost += costOf(u);
 
     const aggregatorRate = Number(aggRateRes) > 0 && Number(aggRateRes) < 1 ? Number(aggRateRes) : 0.25;
 

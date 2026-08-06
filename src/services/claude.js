@@ -12,14 +12,18 @@ function getSupabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 }
 
-function logUsage(usage) {
+const MODEL = 'claude-opus-4-7';
+
+function logUsage(usage, tenantId, durationMs) {
   if (!usage) return;
   getSupabase().from('api_usage').insert({
-    tenant_id:          TENANT_ID,
+    tenant_id:          tenantId || TENANT_ID,
     input_tokens:       usage.input_tokens        || 0,
     output_tokens:      usage.output_tokens       || 0,
     cache_read_tokens:  usage.cache_read_input_tokens  || 0,
     cache_write_tokens: usage.cache_creation_input_tokens || 0,
+    duration_ms:        durationMs || null,
+    model:              MODEL,
   }).then(({ error }) => {
     if (error) console.error('[claude] usage log error:', error.message);
   });
@@ -34,9 +38,13 @@ const MAX_HISTORY_MESSAGES = 40; // keep last 20 exchanges to bound context size
  * @param {string}   systemPrompt        full system prompt text
  * @param {Array}    conversationHistory  prior [{role,content},...] messages
  * @param {string}   userMessage         the new incoming message
+ * @param {string}  [tenantId]           tenant to attribute the usage to — REQUIRED for
+ *                                       correct per-tenant billing (defaults to env for
+ *                                       legacy callers; every row used to land on the
+ *                                       default tenant regardless of who talked)
  * @returns {Promise<string>}
  */
-async function callClaude(systemPrompt, conversationHistory, userMessage) {
+async function callClaude(systemPrompt, conversationHistory, userMessage, tenantId = TENANT_ID) {
   // Trim history to stay within token budget
   const history = conversationHistory.slice(-MAX_HISTORY_MESSAGES);
 
@@ -45,8 +53,9 @@ async function callClaude(systemPrompt, conversationHistory, userMessage) {
     { role: 'user', content: userMessage },
   ];
 
+  const t0 = Date.now();
   const response = await client.messages.create({
-    model: 'claude-opus-4-7',
+    model: MODEL,
     max_tokens: 1024,
     system: [
       {
@@ -58,7 +67,7 @@ async function callClaude(systemPrompt, conversationHistory, userMessage) {
     messages,
   });
 
-  logUsage(response.usage);
+  logUsage(response.usage, tenantId, Date.now() - t0);
 
   const block = response.content.find((b) => b.type === 'text');
   return block ? block.text : '';

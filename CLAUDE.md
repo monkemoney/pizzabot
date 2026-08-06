@@ -579,6 +579,8 @@ Bot isolation is stateless by design: handlers hold zero module-level mutable st
 
 **Shared working directory:** multiple Claude sessions can work in this folder simultaneously (no separate worktrees). An uncommitted edit can get swept into another session's `git add -A` commit. If `git diff` shows nothing for a change you just made, `git log -S"<unique string>"` finds which commit took it.
 
+**Claude usage attribution (fixed 2026-08-06):** `callClaude(systemPrompt, history, userMessage, tenantId)` — the 4th arg is REQUIRED for correct billing; before it, `api_usage.tenant_id` came from a module-level env const, so every row (all tenants) was attributed to the default tenant and per-client cost KPIs were structurally wrong. Rows also log `duration_ms` + `model`. Rates live in `src/services/claude-pricing.js` (`costOf(row)`) — previously duplicated in three places in dashboard-api.js; null `model` (pre-2026-08-06 rows) prices as opus-4-7.
+
 **claude.js uses its own Supabase client** (not importing supabase.js) to avoid circular dependencies; api_usage rows are logged fire-and-forget from `response.usage`.
 
 ### WhatsApp

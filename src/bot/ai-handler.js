@@ -445,7 +445,7 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
 
   let assistantText;
   try {
-    assistantText = await callClaude(systemPrompt, history, userMessage + stockNote);
+    assistantText = await callClaude(systemPrompt, history, userMessage + stockNote, tid);
   } catch (err) {
     console.error('[ai-handler] Claude error:', err.message);
     require('../services/vendor-alerts').alerts.botError(phone, err).catch(() => {});

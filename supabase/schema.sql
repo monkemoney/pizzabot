@@ -335,6 +335,8 @@ CREATE TABLE IF NOT EXISTS api_usage (
   output_tokens      INTEGER NOT NULL DEFAULT 0,
   cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
   cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+  duration_ms        INTEGER,                  -- model call latency
+  model              TEXT,                     -- null on rows predating model logging
   created_at         TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_api_usage_tenant  ON api_usage(tenant_id);
