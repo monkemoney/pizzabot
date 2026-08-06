@@ -380,6 +380,8 @@ The redaction is the point, not the plumbing: in this system the customer's phon
 
 Why this matters: a forged payload naming a phone that exists in `admin_users` reaches `admin-handler` — which can cancel orders **with automatic Cardcom refunds**, mark orders paid, change prices and close the business.
 
+**Order totals are computed server-side (since 2026-08-06).** `services/pricing.js` `authoritativeTotal(payload, tenantId)` recomputes from the live menu (product prices, `product_additions` topping prices, `portion` × `topping_half_pct`/`topping_quarter_pct`, delivery via `delivery-fee`). Before this, the number written to `orders.total_price` AND charged through Cardcom was the model's own arithmetic — a slip or a customer talking the bot into a discount became a real charge. Policy: all items matched and |server − model| > ₪1 → the server total wins (and raises a deduped Bot Brain insight); any unmatched item → keep the model's total and log (never block a real order over a name-match miss). Hooked in `ai-handler` at SAVE_ORDER (before `saveOrder`) and CREATE_PAYMENT (**before** `createPaymentPage`, so the card is charged the corrected amount).
+
 ### Payments (Cardcom v11)
 
 ```

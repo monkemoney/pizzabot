@@ -96,6 +96,32 @@ async function getTenantToppings(tid) {
   return data || [];
 }
 
+// ─── Authoritative pricing ───────────────────────────────────────────────────
+/**
+ * Recompute an order total server-side and report a correction.
+ * A mismatch raises a Bot Brain insight (deduped) so the pattern is visible in
+ * the vendor's decision queue rather than only in logs.
+ */
+async function priceOrder(payload, tid, where, phone) {
+  const { authoritativeTotal } = require('../services/pricing');
+  const priced = await authoritativeTotal(payload, tid);
+  if (priced.corrected) {
+    console.warn(`[pricing] ${where} total corrected ${priced.claimedTotal} → ${priced.total} (tenant ${tid}, ${phone})`);
+    require('../services/insights').addInsightOnce({
+      source: 'system',
+      title: 'פער בין המחיר שהמודל חישב למחיר מהתפריט',
+      evidence: `${where}: המודל חישב ₪${priced.claimedTotal}, השרת ₪${priced.total} (פער ₪${priced.diff.toFixed(2)}). נגבה מחיר השרת.`,
+      metrics: { claimed: priced.claimedTotal, server: priced.total, diff: priced.diff },
+      proposal: 'לבדוק את כללי התמחור בפרומפט; אם הפער חוזר — לחדד את הוראות חישוב הסכום.',
+      type: 'info',
+      tenantId: tid,
+    }).catch(() => {});
+  } else if (priced.unmatched.length) {
+    console.warn(`[pricing] ${where} kept model total (unmatched: ${priced.unmatched.join(', ')})`);
+  }
+  return priced;
+}
+
 // ─── Item dispute response handler ───────────────────────────────────────────
 
 async function handleDisputeResponse(phone, userMessage, session, tenantId) {
@@ -553,6 +579,12 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
 
       const isScheduled = !!scheduledFor;
 
+      // The total the customer is charged is recomputed from the menu — the
+      // model's arithmetic is a proposal, not the price. (delivery_fee comes
+      // from the same pass, recorded at order time so later zone edits cannot
+      // rewrite what this customer was actually charged.)
+      const priced = await priceOrder(payload, tid, 'SAVE_ORDER', phone);
+
       const { orderNumber, order: savedOrder } = await saveOrder({
         phone,
         customer_name:   payload.customer_name   || null,
@@ -560,19 +592,16 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
         items:           payload.items           || [],
         delivery_method: payload.delivery_method,
         address:         payload.address         || null,
-        // Recorded at order time so a later change to the zone table cannot
-        // rewrite what this customer was actually charged.
-        delivery_fee:    payload.delivery_method === 'delivery'
-          ? await require('../services/delivery-fee').resolveDeliveryFee(payload.address, tid)
-          : 0,
+        delivery_fee:    payload.delivery_method === 'delivery' ? priced.deliveryFee : 0,
         notes:           payload.notes           || null,
         payment_method:  isBit ? 'bit' : 'cash',
         payment_status:  isBit ? 'pending' : 'paid',
-        total_price:     payload.total,
+        total_price:     priced.total,
         status:          isScheduled ? 'scheduled' : 'new',
         scheduled_for:   scheduledFor,
         tenant_id:       tid,
       });
+      payload.total = priced.total;   // downstream messages quote the real price
 
       const lang = detectLang(userMessage, history);
 
@@ -648,8 +677,13 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
     const returnValue = makeReturnValue();
     try {
       const maxPayments = await settings.get('max_payments', tid).catch(() => 1);
+      // Price BEFORE charging: the card is charged the server total, never the
+      // model's. Also yields the delivery fee carried through the round-trip.
+      const priced = await priceOrder(payload, tid, 'CREATE_PAYMENT', phone);
+      payload.total = priced.total;
+
       const { lowProfileCode, paymentUrl } = await createPaymentPage({
-        amount:      payload.total,
+        amount:      priced.total,
         returnValue,
         productName: `הזמנה`,
         phone,
@@ -664,11 +698,10 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
         orderData:    {
           ...payload,
           tenant_id: tid,
-          // Carried through the payment round-trip so the order records what
-          // the zone charged at the time, not what it charges when it lands.
-          delivery_fee: payload.delivery_method === 'delivery'
-            ? await require('../services/delivery-fee').resolveDeliveryFee(payload.address, tid)
-            : 0,
+          total: priced.total,
+          // Recorded at order time so a later change to the zone table cannot
+          // rewrite what this customer was actually charged.
+          delivery_fee: payload.delivery_method === 'delivery' ? priced.deliveryFee : 0,
         },
       });
 

@@ -71,6 +71,10 @@ const CHECKS = [
       'src/services/supabase.js': 1,
       // lazy supabase client handle, not state (rebuilt on restart; per-instance is harmless)
       'src/services/recovery-attribution.js': 1,
+      // lazy client + 3s topping-price cache; reset/scale-out answered in-file
+      'src/services/pricing.js': 2,
+      // lazy client handle only; insight dedup is enforced by a DB query, not memory
+      'src/services/insights.js': 1,
     },
   },
   {
