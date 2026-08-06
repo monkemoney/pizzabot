@@ -942,16 +942,53 @@ router.get('/public-menu', async (req, res) => {
       .filter((c) => !c.is_topping_addon && catMap[c.id]?.products?.length)
       .map((c) => catMap[c.id]);
 
+    // Effective open state — the raw is_open flag alone misleads (hours window
+    // + open_override are part of the answer; same rule as GET /settings).
+    const [effectiveOpen, effectiveDelivery] = await Promise.all([
+      settings.isOpen(publicTid).catch(() => allSettings.is_open !== false),
+      settings.isDeliveryOpen(publicTid).catch(() => allSettings.delivery_enabled !== false),
+    ]);
+
+    // Today's hours window, for the "we're closed" state (IL calendar, not server-local).
+    const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const todayHours = allSettings.business_hours?.[dayNames[ilParts().weekday]] || null;
+
+    // Customers only need the fields that affect them; zones may carry more.
+    const zones = (Array.isArray(allSettings.delivery_zones) ? allSettings.delivery_zones : [])
+      .map((z) => ({
+        city:        z.city || '',
+        fee:         z.fee ?? null,
+        min_order:   z.min_order ?? null,
+        eta_minutes: z.eta_minutes ?? null,
+      }))
+      .filter((z) => z.city);
+
+    const halfPct    = Number(allSettings.topping_half_pct    ?? 100);
+    const quarterPct = Number(allSettings.topping_quarter_pct ?? 100);
+
     res.json({
       menu,
       business_name:    allSettings.business_name    || 'פיצה דליבריס',
-      whatsapp_number:  allSettings.bot_whatsapp      || process.env.GREEN_API_WHATSAPP_NUMBER || '13237748500',
+      // No hardcoded fallback number — a tenant without a configured bot number
+      // must not route customers to someone else's WhatsApp. The client hides
+      // the order CTAs when this is null.
+      whatsapp_number:  allSettings.bot_whatsapp || process.env.GREEN_API_WHATSAPP_NUMBER || null,
       business_address: allSettings.business_address || '',
       pickup_address:   allSettings.pickup_address   || '',
-      delivery_price:   allSettings.delivery_price   ?? 30,
+      delivery_price:   allSettings.delivery_price   ?? null,
+      delivery_zones:   zones,
       delivery_enabled: allSettings.delivery_enabled !== false,
       pickup_enabled:   allSettings.pickup_enabled   !== false,
-      is_open:          allSettings.is_open           !== false,
+      is_open:          effectiveOpen,
+      is_delivery_open: effectiveDelivery,
+      hours_today:      todayHours && todayHours.is_open !== false
+                          ? { open: todayHours.open || '00:00', close: todayHours.close || '23:59' }
+                          : null,
+      topping_half_pct:    Number.isFinite(halfPct)    ? halfPct    : 100,
+      topping_quarter_pct: Number.isFinite(quarterPct) ? quarterPct : 100,
+      brand_color:      allSettings.menu_brand_color || null,
+      logo_url:         allSettings.menu_logo_url    || null,
+      tagline:          allSettings.menu_tagline     || null,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

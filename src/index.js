@@ -38,6 +38,39 @@ app.use(express.json({
   verify: (req, _res, buf) => { req.rawBody = buf; },
 }));
 
+// ─── Public menu — per-tenant <head> ─────────────────────────────────────────
+// The menu link's whole job is to be shared in WhatsApp, and link crawlers read
+// og tags, not JS — so the business name/logo must be in the served HTML.
+// Registered BEFORE express.static, which would otherwise serve the raw file.
+app.get('/menu.html', async (req, res) => {
+  const file = path.join(__dirname, '..', 'public', 'menu.html');
+  try {
+    let tid = DEFAULT_TENANT_ID;
+    if (req.query.biz) {
+      const { resolveTenantBySlug } = require('./services/slug');
+      tid = (await resolveTenantBySlug(String(req.query.biz))) || DEFAULT_TENANT_ID;
+    } else if (req.query.tenant) {
+      tid = String(req.query.tenant);
+    }
+    const all  = await settings.loadAll(tid);
+    const esc  = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const name = esc(all.business_name || 'התפריט שלנו');
+    const desc = esc(all.menu_tagline || all.business_address || 'הזמנה אונליין דרך וואטסאפ');
+    const img  = /^https?:\/\//.test(all.menu_logo_url || '')
+      ? `\n  <meta property="og:image" content="${esc(all.menu_logo_url)}"/>` : '';
+    const head = `<title>התפריט של ${name}</title>
+  <meta property="og:title" content="התפריט של ${name}"/>
+  <meta property="og:description" content="${desc}"/>
+  <meta property="og:type" content="website"/>${img}
+  <meta name="description" content="${desc}"/>`;
+    const html = require('fs').readFileSync(file, 'utf8').replace('<title>התפריט שלנו</title>', head);
+    res.type('html').send(html);
+  } catch (err) {
+    console.error('[menu] head injection failed, serving raw file:', err.message);
+    res.sendFile(file);
+  }
+});
+
 // ─── Static dashboard ─────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, '..', 'public')));
 

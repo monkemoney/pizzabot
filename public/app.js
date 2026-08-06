@@ -2547,9 +2547,10 @@ function renderSettingsForm(s) {
     pin:   ico('<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>'),
     truck: ico('<rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 7v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>'),
     phone: ico('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>'),
+    brush: ico('<path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/>'),
   };
 
-  const NAV_LABELS = ['פרטי העסק','מע"מ','תשלום','סוגי הזמנה','אישור הזמנות','תוספות','מתוזמנות','שינויי הזמנות','שיחה עם נציג','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים','שיחות שלא נענו'];
+  const NAV_LABELS = ['פרטי העסק','מיתוג תפריט','מע"מ','תשלום','סוגי הזמנה','אישור הזמנות','תוספות','מתוזמנות','שינויי הזמנות','שיחה עם נציג','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים','שיחות שלא נענו'];
 
   // Effective state banner — what customers experience RIGHT NOW (flag ∧ hours
   // ∧ override), not the raw is_open toggle below, which alone can mislead.
@@ -2586,6 +2587,20 @@ function renderSettingsForm(s) {
       ${sField('biz_pickup',  'כתובת לאיסוף עצמי', s.pickup_address   || '', 'text', 'רוטשילד 19, תל אביב')}
       ${sField('biz_whatsapp','מספר וואטסאפ להזמנות (בתפריט הציבורי)', s.bot_whatsapp || '', 'tel', '972500000000')}
       ${saveBtn('saveBizInfo')}
+    `)}
+
+    ${sCard(ICONS.brush, 'מיתוג תפריט', 'צבע, לוגו וסלוגן של דף התפריט הציבורי שנשלח ללקוחות', `
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+        <label style="font-size:.84rem;font-weight:600;min-width:150px">${TR('צבע ראשי')}</label>
+        <input type="color" id="menuBrandColor" value="${/^#[0-9a-fA-F]{6}$/.test(s.menu_brand_color || '') ? s.menu_brand_color : '#5e17eb'}"
+          style="width:52px;height:36px;padding:2px;border:1px solid var(--border);border-radius:var(--radius-md);cursor:pointer;background:var(--white)">
+        <span style="font-size:.78rem;color:var(--text-muted)">${TR('כל התפריט נצבע לפי הצבע הזה — כפתורים, כותרת ומחירים')}</span>
+        <button onclick="resetBrandColor()" class="btn btn-outline btn-sm">${TR('איפוס לברירת מחדל')}</button>
+      </div>
+      ${sField('menuLogoUrl', 'כתובת לוגו (URL לתמונה)', s.menu_logo_url || '', 'url', 'https://.../logo.png')}
+      ${sField('menuTagline', 'סלוגן בכותרת התפריט', s.menu_tagline || '', 'text', 'הפיצה הכי טעימה בעיר 🍕')}
+      <div style="font-size:.78rem;color:var(--text-muted)">${TR('שינויים נראים בתפריט הציבורי מיד אחרי שמירה.')}</div>
+      ${saveBtn('saveMenuBranding')}
     `)}
 
     ${sCard(ICONS.pay, 'מע"מ וחיוב', 'שיעור המע"מ המוצג בקבלות ובסיכומי הזמנה', `
@@ -2788,6 +2803,20 @@ async function saveBizInfo() {
     pickup_address:   document.getElementById('biz_pickup').value.trim(),
     bot_whatsapp:     document.getElementById('biz_whatsapp').value.trim().replace(/\D/g, ''),
   });
+}
+
+async function saveMenuBranding() {
+  const color = document.getElementById('menuBrandColor')?.value || '';
+  await saveSection({
+    menu_brand_color: /^#[0-9a-fA-F]{6}$/.test(color) ? color : '',
+    menu_logo_url:    document.getElementById('menuLogoUrl')?.value?.trim() || '',
+    menu_tagline:     document.getElementById('menuTagline')?.value?.trim() || '',
+  });
+}
+
+function resetBrandColor() {
+  const el = document.getElementById('menuBrandColor');
+  if (el) el.value = '#5e17eb';
 }
 
 async function savePayments() {
