@@ -85,8 +85,22 @@ async function lastCompletedRun(excludeId = null) {
   } catch (e) { console.error('[db-sink] lastCompletedRun:', e.message); return null; }
 }
 
-/** Active lessons text — Phase C reads bot_lessons; until then, the file. */
-async function getActiveLessonsText() {
+/**
+ * Active lessons, from the same table the live bot reads — so `--with-lessons`
+ * measures what production actually has, not a file that drifted from it.
+ * Falls back to the markdown file when the DB is unreachable.
+ */
+async function getActiveLessonsText(tenantId = null) {
+  try {
+    const tid = tenantId || process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
+    const { data, error } = await db().from('bot_lessons')
+      .select('text').eq('active', true)
+      .or(`tenant_id.is.null,tenant_id.eq.${tid}`)
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(error.message);
+    const text = (data || []).map((r) => `- ${r.text}`).join('\n');
+    if (text) return text;
+  } catch (e) { console.error('[db-sink] lessons read, using file:', e.message); }
   const fs = require('fs');
   const path = require('path');
   try {
@@ -94,4 +108,29 @@ async function getActiveLessonsText() {
   } catch (_) { return ''; }
 }
 
-module.exports = { startRun, finishRun, addInsight, openInsights, lastCompletedRun, getActiveLessonsText };
+/** Record the exact lesson set a run measured, so a drop can be diffed later. */
+async function snapshotLessons(runId) {
+  if (!runId) return;
+  try {
+    const { data } = await db().from('bot_lessons').select('id, text, active').eq('active', true);
+    await db().from('bot_lesson_snapshots').insert({ run_id: runId, lessons: data || [] });
+  } catch (e) { console.error('[db-sink] snapshotLessons:', e.message); }
+}
+
+/** Regenerate the markdown fallback from the DB (keeps it fresh + git history). */
+async function writeLessonsFile() {
+  try {
+    const text = await getActiveLessonsText();
+    if (!text) return;
+    const fs = require('fs');
+    const path = require('path');
+    const header = '# לקחים פעילים — נוצר אוטומטית מ-bot_lessons\n\n' +
+      '_מקור האמת הוא הטבלה; הקובץ הזה הוא fallback ומעקב היסטורי. אין לערוך ידנית._\n\n';
+    fs.writeFileSync(path.join(__dirname, '..', 'knowledge', 'lessons.md'), header + text + '\n');
+  } catch (e) { console.error('[db-sink] writeLessonsFile:', e.message); }
+}
+
+module.exports = {
+  startRun, finishRun, addInsight, openInsights, lastCompletedRun,
+  getActiveLessonsText, snapshotLessons, writeLessonsFile,
+};

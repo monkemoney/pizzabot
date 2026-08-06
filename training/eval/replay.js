@@ -90,7 +90,8 @@ async function main() {
   }
   let cases = fs.readFileSync(CASES, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
   if (Number.isFinite(args.n)) cases = cases.slice(0, args.n);
-  const lessons = args.withLessons ? knowledge.readLessons() : '';
+  // Same source the live bot reads (bot_lessons), so an A/B measures production.
+  const lessons = args.withLessons ? await require('../lib/db-sink').getActiveLessonsText() : '';
 
   console.log(`\n🎬 Replay eval — ${cases.length} שיחות אמיתיות | לקחים: ${args.withLessons ? 'כן' : 'לא'}\n`);
 

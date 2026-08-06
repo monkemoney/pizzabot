@@ -72,6 +72,9 @@ async function main() {
   const dbSink = require('./lib/db-sink');
   const runId = await dbSink.startRun(QUICK ? 'manual' : 'weekly', { quick: QUICK, withLessons: WITH_LESSONS });
   if (runId) console.log(`   run id: ${runId}`);
+  // Record exactly which lessons this run measured — a later score drop is then
+  // a diff against a known-good set, not a guess.
+  await dbSink.snapshotLessons(runId);
 
   try {
     const lessonFlag = WITH_LESSONS ? ['--with-lessons'] : [];
@@ -119,6 +122,30 @@ async function main() {
         runId,
       });
     }
+
+    // Regression guard: lessons are applied by a click now, so a bad one has to
+    // be caught by measurement. ±4 is the judge's measured noise band.
+    const prevRun = await dbSink.lastCompletedRun(runId);
+    if (prevRun && prevRun.scores) {
+      for (const [key, label] of [['replay', 'שיחות אמיתיות'], ['synthetic', 'סינתטי']]) {
+        const now = scores[key], before = prevRun.scores[key];
+        if (typeof now === 'number' && typeof before === 'number' && before - now > 4) {
+          await dbSink.addInsight({
+            source: 'bootcamp',
+            title: `חשד ללקח מזיק — ירידה בציון ${label}`,
+            evidence: `${label}: ${before} → ${now} (ירידה של ${before - now} נק', מעבר לרעש ±4). ` +
+              `ראה bot_lesson_snapshots של ריצה זו מול ${prevRun.id} כדי לאתר איזה לקח נוסף בין הריצות.`,
+            metrics: { before, after: now, drop: before - now, sample_size: CFG.replayN },
+            proposal: 'לכבות את הלקחים שנוספו מאז הריצה הקודמת (מוח הבוט → לקחים) ולמדוד שוב.',
+            type: 'info',
+            runId,
+          });
+        }
+      }
+    }
+
+    // Keep the markdown fallback in step with the table (and give lessons a git history).
+    await dbSink.writeLessonsFile();
     await dbSink.finishRun(runId, { status: 'completed', verdict, scores, meta: { report_file: file } });
 
     const { sendWeeklyDigest } = require('./lib/digest');

@@ -1492,14 +1492,31 @@ router.patch('/vendor/brain/insights/:id', requireVendor, async (req, res) => {
       return res.status(409).json({ error: `התובנה כבר ב-${cur.status}` });
     }
 
+    // A lesson approved here becomes active immediately — that is the whole
+    // point of moving lessons into the DB: the loop closes without a deploy.
+    let applied = false;
+    if (action === 'approve' && cur.type === 'lesson') {
+      const text = (cur.proposal || cur.title || '').trim();
+      if (text) {
+        const { error: lErr } = await supabase.from('bot_lessons').insert({
+          text, tenant_id: cur.tenant_id || null, active: true,
+          source_insight_id: cur.id, applied_at: new Date().toISOString(),
+          note: `אושר מהפורטל — מקור: ${cur.source}`,
+        });
+        if (lErr) console.error('[brain] lesson insert failed:', lErr.message);
+        else { applied = true; require('../services/lessons').invalidate(); }
+      }
+    }
+
     const { data, error } = await supabase.from('bot_insights').update({
-      status: action === 'approve' ? 'approved' : 'rejected',
+      // an applied lesson is done, not merely approved-and-waiting
+      status: action === 'approve' ? (applied ? 'implemented' : 'approved') : 'rejected',
       decided_at: new Date().toISOString(),
       decided_via: 'portal',
       notes: notes || cur.notes,
     }).eq('id', req.params.id).select('*').single();
     if (error) throw new Error(error.message);
-    res.json(data);
+    res.json({ ...data, lesson_applied: applied });
   } catch (err) {
     console.error('[brain/insights PATCH] error:', err.message);
     res.status(500).json({ error: 'שגיאה בעדכון התובנה' });
@@ -1527,6 +1544,38 @@ router.get('/vendor/brain/funnel', requireVendor, async (req, res) => {
   } catch (err) {
     console.error('[brain/funnel] error:', err.message);
     res.status(500).json({ error: 'שגיאה בחישוב משפך' });
+  }
+});
+
+// GET /vendor/brain/lessons — what the live bot currently knows
+router.get('/vendor/brain/lessons', requireVendor, async (req, res) => {
+  try {
+    const { data } = await supabase.from('bot_lessons').select('*').order('created_at', { ascending: false });
+    const lessonsSvc = require('../services/lessons');
+    res.json({ lessons: data || [], enabled: await lessonsSvc.isEnabled(tid(req)) });
+  } catch (err) {
+    console.error('[brain/lessons] error:', err.message);
+    res.status(500).json({ error: 'שגיאה בטעינת לקחים' });
+  }
+});
+
+// PATCH /vendor/brain/lessons/:id {active, note} — switch a lesson off/on live
+router.patch('/vendor/brain/lessons/:id', requireVendor, async (req, res) => {
+  const { active, note } = req.body || {};
+  try {
+    const patch = { note };
+    if (typeof active === 'boolean') {
+      patch.active = active;
+      patch.deactivated_at = active ? null : new Date().toISOString();
+    }
+    const { data, error } = await supabase.from('bot_lessons')
+      .update(patch).eq('id', req.params.id).select('*').single();
+    if (error) throw new Error(error.message);
+    require('../services/lessons').invalidate();   // next message uses the new set
+    res.json(data);
+  } catch (err) {
+    console.error('[brain/lessons PATCH] error:', err.message);
+    res.status(500).json({ error: 'שגיאה בעדכון הלקח' });
   }
 });
 

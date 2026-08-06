@@ -1,28 +1,15 @@
 'use strict';
 
-const fs                = require('fs');
-const path              = require('path');
 const settings          = require('../services/settings');
 const { buildMenuText } = require('../services/menu-service');
+const lessonsService    = require('../services/lessons');
 
-// Optional "seniority" injection: lessons accumulated by the training network
-// (training/knowledge/lessons.md). OFF by default — production behavior is
-// unchanged unless BOT_LESSONS_ENABLED=true is set in the environment.
-let _lessonsCache = null;
-function loadLessons() {
-  if (process.env.BOT_LESSONS_ENABLED !== 'true') return '';
-  if (_lessonsCache !== null) return _lessonsCache;
-  try {
-    const file = path.join(__dirname, '../../training/knowledge/lessons.md');
-    _lessonsCache = fs.readFileSync(file, 'utf8').trim();
-  } catch (_) {
-    _lessonsCache = '';
-  }
-  return _lessonsCache;
-}
-
-function injectLessons(prompt) {
-  const lessons = loadLessons();
+// Accumulated lessons are injected at the END of the prompt (highest recency).
+// They live in the bot_lessons table — approving one in the vendor portal
+// reaches the live bot within the lessons cache TTL, with no deploy. The old
+// implementation read a markdown file into a module variable that never
+// refreshed, so a lesson change needed a commit AND a restart.
+function injectLessons(prompt, lessons) {
   if (!lessons) return prompt;
   return prompt +
     `\n\n══════════════════════════════════════════\n` +
@@ -32,12 +19,14 @@ function injectLessons(prompt) {
 
 async function buildSystemPrompt(customerProfile = null, tenantId = null) {
   const tid = tenantId || settings.DEFAULT_TENANT_ID;
-  const [allSettings, menuText, deliveryNowOpen, isOpenNow] = await Promise.all([
+  const [allSettings, menuText, deliveryNowOpen, isOpenNow, lessonsOn] = await Promise.all([
     settings.loadAll(tid),
     settings.loadAll(tid).then((s) => buildMenuText(s, tid)),
     settings.isDeliveryOpen(tid),
     settings.isOpen(tid),
+    lessonsService.isEnabled(tid),
   ]);
+  const lessonsText = lessonsOn ? await lessonsService.getLessonsText(tid) : '';
 
   const prepLeadTime = allSettings.prep_lead_time ?? 45;
   const nowIL  = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
@@ -341,7 +330,7 @@ ACTION blocks
 • אל תוסיף scheduled_for אם הלקוח רוצה "עכשיו" / "מוקדם ככל האפשר" / לא ציין שעה
 • אם השעה המבוקשת קרובה מדי (פחות מ-${prepLeadTime} דקות מ-${nowStr}) — אמור ללקוח שהשעה המוקדמת ביותר לתזמון היא ${nowStr} + ${prepLeadTime} דקות, ואל תפלוט SAVE_ORDER עם scheduled_for
 `;
-  return injectLessons(__base);
+  return injectLessons(__base, lessonsText);
 }
 
 module.exports = { buildSystemPrompt };

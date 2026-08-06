@@ -63,7 +63,7 @@ const CHECKS = [
     advice: 'State in a module variable resets on every deploy and breaks on scale-out. New store? Answer both questions in a comment (what happens on reset / on 2 instances), then raise the baseline.',
     baseline: {
       'src/index.js': 1,
-      'src/bot/prompts.js': 1,
+      // prompts.js no longer caches lessons — the lessons service owns that now
       'src/bot/ai-handler.js': 4,
       'src/routes/call-events.js': 1,
       'src/services/sse.js': 1,
@@ -80,6 +80,8 @@ const CHECKS = [
       'src/services/insights.js': 1,
       // lazy client handle only (no data; per-instance duplication harmless)
       'src/services/funnel-stats.js': 1,
+      // lazy client + 60s lessons cache; reset/scale-out answered in-file
+      'src/services/lessons.js': 2,
       'src/bot/brain-handler.js': 1,
     },
   },
@@ -97,17 +99,17 @@ const CHECKS = [
       'src/bot/ai-handler.js': 7,
       'src/bot/admin-handler.js': 15,
       'src/routes/payment.js': 2,
-      // 36 since the Bot Brain endpoints (staleness epoch math + decided_at ISO stamping;
-      // the cost-today window uses il-time periodRange, not raw dates)
-      'src/routes/dashboard-api.js': 36,
+      // 38 since the Bot Brain endpoints + lessons apply/deactivate (staleness epoch
+      // math + ISO stamping; the cost-today window uses il-time periodRange)
+      'src/routes/dashboard-api.js': 38,
       'src/services/vendor-alerts.js': 1,
       'src/services/supabase.js': 13,
       'src/services/order-state.js': 4,
       // rolling N-day window (epoch math) + accept-latency duration — no local
       // calendar bucketing, so il-time is not the right tool here
       'src/services/funnel-stats.js': 3,
-      // decided_at ISO stamping only
-      'src/bot/brain-handler.js': 1,
+      // decided_at + applied_at ISO stamping only
+      'src/bot/brain-handler.js': 2,
       'src/services/slug.js': 1,
       'src/services/settings.js': 8,
       'src/services/push-notifier.js': 1,

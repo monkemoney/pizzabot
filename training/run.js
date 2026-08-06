@@ -73,7 +73,8 @@ function buildSchedule(args) {
 async function main() {
   const args = parseArgs(process.argv);
   const runStamp = stamp();
-  const lessons = args.withLessons ? knowledge.readLessons() : '';
+  // Same source the live bot reads (bot_lessons), so an A/B measures production.
+  const lessons = args.withLessons ? await require('./lib/db-sink').getActiveLessonsText() : '';
 
   console.log(`\n🍕 רשת אימון בוט ההזמנות`);
   console.log(`   שיחות: ${args.n} | מקביליות: ${CONCURRENCY} | לקחים מוזרקים: ${args.withLessons ? 'כן' : 'לא'}`);

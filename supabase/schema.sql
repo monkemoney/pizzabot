@@ -401,3 +401,29 @@ CREATE TABLE IF NOT EXISTS bot_insights (
   notes       TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_bot_insights_status ON bot_insights(status);
+
+-- Living lessons: what the bot has learned, editable without a deploy.
+-- Approving a lesson-type insight in the portal inserts an active row here and
+-- the live system prompt picks it up within the service cache TTL (~60s).
+-- tenant_id NULL = applies to every tenant.
+CREATE TABLE IF NOT EXISTS bot_lessons (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id         UUID,                             -- NULL = global
+  text              TEXT NOT NULL,
+  active            BOOLEAN NOT NULL DEFAULT TRUE,
+  source_insight_id UUID REFERENCES bot_insights(id),
+  created_at        TIMESTAMPTZ DEFAULT NOW(),
+  applied_at        TIMESTAMPTZ,
+  deactivated_at    TIMESTAMPTZ,
+  note              TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_bot_lessons_active ON bot_lessons(active);
+
+-- The exact lesson set each eval run measured — so a score drop can be diffed
+-- against the last known-good set instead of guessed at.
+CREATE TABLE IF NOT EXISTS bot_lesson_snapshots (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_id     UUID REFERENCES bot_runs(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  lessons    JSONB NOT NULL                           -- [{id, text, active}]
+);

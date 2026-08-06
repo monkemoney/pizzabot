@@ -975,11 +975,12 @@ async function loadBrain() {
   const body = document.getElementById('brainBody');
   body.innerHTML = '<div class="empty-note">טוען…</div>';
   try {
-    const [ov, insights, trends, funnel] = await Promise.all([
+    const [ov, insights, trends, funnel, lessons] = await Promise.all([
       api('GET', '/vendor/brain/overview'),
       api('GET', '/vendor/brain/insights?status=proposed'),
       api('GET', '/vendor/brain/trends'),
       api('GET', '/vendor/brain/funnel?days=7'),
+      api('GET', '/vendor/brain/lessons'),
     ]);
 
     // Pending count on the nav, so a decision is visible without opening the page.
@@ -1046,8 +1047,42 @@ async function loadBrain() {
           </div>`).join('') : '<div class="empty-note">אין נתונים בחלון.</div>'}
       </div>`;
 
-    body.innerHTML = banner + cards + queue + trendsHtml + funnelHtml;
+    const active = (lessons.lessons || []).filter((l) => l.active);
+    const off = (lessons.lessons || []).filter((l) => !l.active);
+    const lessonRow = (l) => `
+      <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)">
+        <input type="checkbox" ${l.active ? 'checked' : ''} onchange="toggleLesson('${l.id}', this.checked)"
+               style="margin-top:3px;width:15px;height:15px;flex-shrink:0;cursor:pointer">
+        <div style="min-width:0">
+          <div style="font-size:.84rem;color:${l.active ? 'var(--text)' : 'var(--text-muted)'};line-height:1.5">${esc(l.text)}</div>
+          ${l.note ? `<div style="font-size:.7rem;color:var(--text-muted);margin-top:3px">${esc(l.note)}</div>` : ''}
+        </div>
+      </div>`;
+
+    const lessonsHtml = `
+      <div class="card" style="padding:20px 22px;margin-bottom:20px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+          <div style="font-weight:800">לקחים פעילים בבוט (${active.length})</div>
+          <span class="chip ${lessons.enabled ? '' : 'thin'}">${lessons.enabled ? 'הזרקה פעילה' : 'הזרקה כבויה'}</span>
+        </div>
+        <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">
+          כיבוי לקח משפיע על הבוט החי תוך כדקה — בלי פריסה.
+        </div>
+        ${active.map(lessonRow).join('')}
+        ${off.length ? `<div style="font-weight:700;font-size:.8rem;color:var(--text-muted);margin-top:16px;margin-bottom:4px">כבויים (${off.length})</div>${off.map(lessonRow).join('')}` : ''}
+        ${!(lessons.lessons || []).length ? '<div class="empty-note">אין לקחים.</div>' : ''}
+      </div>`;
+
+    body.innerHTML = banner + cards + queue + lessonsHtml + trendsHtml + funnelHtml;
   } catch (err) {
     body.innerHTML = `<div class="stale-banner stale-bad">שגיאה בטעינה: ${esc(err.message)}</div>`;
   }
+}
+
+async function toggleLesson(id, active) {
+  try {
+    await api('PATCH', `/vendor/brain/lessons/${id}`, { active });
+    showToast(active ? 'הלקח הופעל' : 'הלקח כובה');
+    loadBrain();
+  } catch (err) { alert(err.message); loadBrain(); }
 }

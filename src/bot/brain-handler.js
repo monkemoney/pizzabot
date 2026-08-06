@@ -68,13 +68,29 @@ async function handleBrainReply(phone, interactiveId, textMessage, tenantId) {
       return true;
     }
 
+    // Same apply-on-approve as the portal — approving a lesson from WhatsApp
+    // must reach the live bot too, or the two surfaces would disagree.
+    let applied = false;
+    if (action === 'approve' && cur.type === 'lesson') {
+      const text = (cur.proposal || cur.title || '').trim();
+      if (text) {
+        const { error: lErr } = await db().from('bot_lessons').insert({
+          text, tenant_id: cur.tenant_id || null, active: true,
+          source_insight_id: cur.id, applied_at: new Date().toISOString(),
+          note: `אושר מוואטסאפ — מקור: ${cur.source}`,
+        });
+        if (lErr) console.error('[brain] lesson insert failed:', lErr.message);
+        else { applied = true; require('../services/lessons').invalidate(); }
+      }
+    }
+
     await db().from('bot_insights').update({
-      status: action === 'approve' ? 'approved' : 'rejected',
+      status: action === 'approve' ? (applied ? 'implemented' : 'approved') : 'rejected',
       decided_at: new Date().toISOString(),
       decided_via: 'whatsapp',
     }).eq('id', id);
 
-    const verb = action === 'approve' ? 'אושרה' : 'נדחתה';
+    const verb = action === 'approve' ? (applied ? 'אושרה והוחלה על הבוט' : 'אושרה') : 'נדחתה';
     await sendMessage(phone, `${verb}: ${cur.title}`, tenantId || DEFAULT_TENANT_ID).catch(() => {});
     console.log(`[brain] insight ${id.slice(0, 8)} ${action}d via whatsapp`);
   } catch (err) {
