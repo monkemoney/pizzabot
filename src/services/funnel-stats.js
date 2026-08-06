@@ -42,7 +42,7 @@ async function realTenantIds() {
 /** Funnel for one tenant over a window. Returns null when there is no activity. */
 async function analyzeTenant(tid, sinceISO) {
   const { data: orders } = await db().from('orders').select(
-    'status, created_at, accepted_at, cancelled_by, dispute_status, payment_method, total_price, escalation_level, scheduled_for'
+    'status, created_at, accepted_at, cancelled_by, dispute_status, payment_method, total_price, escalation_level, scheduled_for, csat_rating'
   ).eq('tenant_id', tid).gte('created_at', sinceISO);
 
   const { count: convCount } = await db().from('sessions')
@@ -56,6 +56,7 @@ async function analyzeTenant(tid, sinceISO) {
 
   const done = o.filter((x) => ['done', 'delivered', 'ready', 'out_for_delivery', 'preparing'].includes(x.status));
   const cancelled = o.filter((x) => x.status === 'cancelled');
+  const rated = o.filter((x) => x.csat_rating != null);
   const acceptLatencies = o
     .filter((x) => x.accepted_at && !x.scheduled_for)
     .map((x) => (new Date(x.accepted_at) - new Date(x.created_at)) / 60000);
@@ -72,6 +73,8 @@ async function analyzeTenant(tid, sinceISO) {
     disputes: o.filter((x) => x.dispute_status).length,
     escalated: o.filter((x) => (x.escalation_level || 0) > 0).length,
     medianAcceptMin: acceptLatencies.length ? Math.round(median(acceptLatencies)) : null,
+    csatCount: rated.length,
+    csatAvg: rated.length ? Math.round((rated.reduce((s2, x) => s2 + x.csat_rating, 0) / rated.length) * 10) / 10 : null,
     avgOrder: o.length ? Math.round(o.reduce((s, x) => s + (parseFloat(x.total_price) || 0), 0) / o.length) : 0,
     paymentSplit: o.reduce((m, x) => ((m[x.payment_method] = (m[x.payment_method] || 0) + 1), m), {}),
   };

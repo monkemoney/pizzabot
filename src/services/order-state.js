@@ -100,6 +100,15 @@ async function transition(orderId, to, opts = {}) {
       .catch((err) => console.error('[order-state] notify error:', err.message));
   }
 
+  // Ask the customer how it went once the order is finished. Hooked on the
+  // transition (not on a status message) so it covers BOTH paths to 'done':
+  // delivered→done auto-complete, which passes notify:false, and the pickup
+  // ready→done route that never reaches 'delivered' at all.
+  if (to === 'done') {
+    require('./csat').askCsat(updated, tenantId, lang)
+      .catch((err) => console.error('[order-state] csat ask error:', err.message));
+  }
+
   console.log(`[order-state] #${updated.order_number} ${from} → ${to}${by ? ` (${by})` : ''}`);
   return { order: updated, changed: true };
 }

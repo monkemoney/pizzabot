@@ -295,6 +295,16 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
     return handleDisputeResponse(phone, userMessage, session, tid);
   }
 
+  // A pending 1-5 rating. Deliberately AFTER the dispute check: while a dispute
+  // is open a bare "1" cancels the order and refunds it, and that must win.
+  // The handler itself only captures a rating on an idle conversation and
+  // clears itself otherwise, so it can never swallow an order confirmation.
+  if (session.pending_csat) {
+    const { handleCsatReply } = require('../services/csat');
+    if (await handleCsatReply(phone, userMessage, session, tid)) return;
+    session.pending_csat = null;   // cleared — continue with the normal flow
+  }
+
   // Human agent takeover — save message + notify dashboard, skip Claude
   if (session.is_bot_active === false) {
     const newHistory = Array.isArray(session.conversation_history) ? session.conversation_history : [];

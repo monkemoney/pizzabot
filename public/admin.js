@@ -1043,6 +1043,7 @@ async function loadBrain() {
               ${kv('המרה', f.conversionPct + '%')}
               ${kv('חציון זמן אישור', f.medianAcceptMin != null ? f.medianAcceptMin + ' דק׳' : '—')}
               ${kv('ממוצע הזמנה', '₪' + f.avgOrder)}
+              ${kv('שביעות רצון', f.csatAvg != null ? `${f.csatAvg}/5 (${f.csatCount} דירוגים)` : 'אין דירוגים עדיין')}
             </div>
           </div>`).join('') : '<div class="empty-note">אין נתונים בחלון.</div>'}
       </div>`;

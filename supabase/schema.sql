@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   -- Privacy notice sent once per customer lifetime (re-sent only if the row
   -- is pruned after 90d inactivity). Survives clearSession like customer_profile.
   privacy_sent_at       TIMESTAMPTZ,
+  pending_csat          JSONB,                -- open rating ask; self-expires after 24h
   updated_at            TIMESTAMPTZ DEFAULT NOW(),
   PRIMARY KEY (tenant_id, phone)
 );
@@ -166,6 +167,9 @@ CREATE TABLE IF NOT EXISTS orders (
 
   created_at          TIMESTAMPTZ DEFAULT NOW(),
   updated_at          TIMESTAMPTZ DEFAULT NOW()
+,
+  csat_rating         SMALLINT,                 -- 1-5, asked once on 'done'
+  csat_comment        TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_orders_phone          ON orders(phone);
@@ -427,3 +431,10 @@ CREATE TABLE IF NOT EXISTS bot_lesson_snapshots (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   lessons    JSONB NOT NULL                           -- [{id, text, active}]
 );
+
+-- Customer satisfaction: the only signal in the loop that comes from customers
+-- rather than the system grading itself. Asked once, on the transition to
+-- 'done'; a rating ≤2 collects a reason and raises an insight.
+-- orders.csat_rating SMALLINT, orders.csat_comment TEXT (see orders above)
+-- sessions.pending_csat JSONB — {order_id, order_number, asked_at, rating?,
+-- awaiting_comment?}; self-expiring after 24h, so no cleanup job is needed.

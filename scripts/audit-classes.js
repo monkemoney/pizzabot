@@ -39,6 +39,10 @@ const CHECKS = [
       // confirmation replies only: the decision is already committed to the DB,
       // and a failed courtesy message must not roll it back or throw
       'src/bot/brain-handler.js': 3,
+      // a rating is a courtesy ask on a finished order: a failed thank-you or a
+      // session write must never surface to the customer or block the flow. The
+      // rating itself IS checked — its update is awaited, not swallowed.
+      'src/services/csat.js': 7,
       'public/sw.js': 1,
       'public/admin.js': 2,
       'public/app.js': 11,
@@ -82,6 +86,9 @@ const CHECKS = [
       'src/services/funnel-stats.js': 1,
       // lazy client + 60s lessons cache; reset/scale-out answered in-file
       'src/services/lessons.js': 2,
+      // lazy client handle only; the pending ask lives in sessions.pending_csat
+      // (DB), so a restart or a second instance loses nothing
+      'src/services/csat.js': 1,
       'src/bot/brain-handler.js': 1,
     },
   },
@@ -110,6 +117,8 @@ const CHECKS = [
       'src/services/funnel-stats.js': 3,
       // decided_at + applied_at ISO stamping only
       'src/bot/brain-handler.js': 2,
+      // asked_at ISO stamping + a 24h elapsed check (epoch math, not calendar)
+      'src/services/csat.js': 3,
       'src/services/slug.js': 1,
       'src/services/settings.js': 8,
       'src/services/push-notifier.js': 1,
