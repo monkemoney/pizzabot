@@ -364,3 +364,38 @@ CREATE TABLE IF NOT EXISTS call_events (
 );
 CREATE INDEX IF NOT EXISTS idx_call_events_tenant_created ON call_events(tenant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_call_events_tenant_caller  ON call_events(tenant_id, caller, created_at DESC);
+
+-- ═══ Bot Brain — insights, runs, decisions (2026-08-06) ═════════════════════
+-- The sustainable learning loop's source of truth: every eval run and every
+-- proposed/decided improvement lives here (not in files, not in chat).
+-- Retention: keep forever — decision history is the point (class-13 reviewed).
+
+CREATE TABLE IF NOT EXISTS bot_runs (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_at      TIMESTAMPTZ DEFAULT NOW(),
+  kind        TEXT NOT NULL DEFAULT 'weekly',   -- weekly | manual | replay | funnel
+  status      TEXT NOT NULL DEFAULT 'started' CHECK (status IN ('started','completed','failed')),
+  verdict     TEXT,                             -- GO | NO-GO | null while running
+  scores      JSONB DEFAULT '{}',               -- {synthetic, replay, autonomy_pct, security, ...}
+  meta        JSONB DEFAULT '{}',               -- {report_file, digest, error}
+  finished_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_bot_runs_run_at ON bot_runs(run_at DESC);
+
+CREATE TABLE IF NOT EXISTS bot_insights (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  source      TEXT NOT NULL,                    -- bootcamp | mine-live | funnel | csat | system | user | backlog-migration
+  title       TEXT NOT NULL,
+  evidence    TEXT,
+  metrics     JSONB DEFAULT '{}',               -- {sample_size, score_delta, ...}
+  proposal    TEXT,
+  type        TEXT NOT NULL DEFAULT 'info' CHECK (type IN ('lesson','code','setting','info')),
+  status      TEXT NOT NULL DEFAULT 'proposed' CHECK (status IN ('proposed','approved','implemented','rejected','monitoring')),
+  decided_at  TIMESTAMPTZ,
+  decided_via TEXT,                             -- portal | whatsapp | migration
+  run_id      UUID REFERENCES bot_runs(id),
+  tenant_id   UUID,                             -- NULL = platform-wide
+  notes       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_bot_insights_status ON bot_insights(status);

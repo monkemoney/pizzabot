@@ -67,31 +67,68 @@ async function main() {
   console.log(`\n🎓 בוטקאמפ בוט ההזמנות — ${QUICK ? 'QUICK' : 'FULL'}${WITH_LESSONS ? ' + lessons' : ''}`);
   console.log(`   synthetic=${CFG.syntheticN} · replay=${CFG.replayN} · load K=${CFG.loadK}`);
 
-  const lessonFlag = WITH_LESSONS ? ['--with-lessons'] : [];
+  // Bot Brain heartbeat: a run row opens FIRST — a silent death still leaves a
+  // 'started' row behind, so the portal can show staleness instead of nothing.
+  const dbSink = require('./lib/db-sink');
+  const runId = await dbSink.startRun(QUICK ? 'manual' : 'weekly', { quick: QUICK, withLessons: WITH_LESSONS });
+  if (runId) console.log(`   run id: ${runId}`);
 
-  // Phase 1 — synthetic competence (writes/updates knowledge only if you add --apply; here read-only via --dry).
-  await run('שלב 1 — כשירות סינתטית', path.join(ROOT, 'run.js'), ['--n', String(CFG.syntheticN), '--dry', ...lessonFlag]);
-  const synthetic = knowledge.latestSummary('run-');
+  try {
+    const lessonFlag = WITH_LESSONS ? ['--with-lessons'] : [];
 
-  // Phase 2 — real-data competence.
-  await run('שלב 2 — כשירות על דאטה אמיתי', path.join(ROOT, 'eval', 'replay.js'), ['--n', String(CFG.replayN), ...lessonFlag]);
-  const replay = knowledge.latestSummary('replay-');
+    // Phase 1 — synthetic competence (writes/updates knowledge only if you add --apply; here read-only via --dry).
+    await run('שלב 1 — כשירות סינתטית', path.join(ROOT, 'run.js'), ['--n', String(CFG.syntheticN), '--dry', ...lessonFlag]);
+    const synthetic = knowledge.latestSummary('run-');
 
-  // Phase 3 — concurrency / autonomy.
-  await run('שלב 3 — מקביליות ואוטונומיה', path.join(ROOT, 'concurrency', 'load.js'), ['--k', String(CFG.loadK)]);
-  const concurrency = knowledge.latestSummary('concurrency-');
+    // Phase 2 — real-data competence.
+    await run('שלב 2 — כשירות על דאטה אמיתי', path.join(ROOT, 'eval', 'replay.js'), ['--n', String(CFG.replayN), ...lessonFlag]);
+    const replay = knowledge.latestSummary('replay-');
 
-  // Report card.
-  const gates = grade(synthetic, replay, concurrency);
-  const pass = gates.every((x) => x.pass);
-  const md = renderCard({ runStamp, CFG, synthetic, replay, concurrency, gates, pass });
-  const file = knowledge.saveReport(`bootcamp-${runStamp}.md`, md);
+    // Phase 3 — concurrency / autonomy.
+    await run('שלב 3 — מקביליות ואוטונומיה', path.join(ROOT, 'concurrency', 'load.js'), ['--k', String(CFG.loadK)]);
+    const concurrency = knowledge.latestSummary('concurrency-');
 
-  console.log(`\n╔══════════════════════════════════════╗`);
-  console.log(`  תעודת בוגר: ${pass ? '🎓 GO — מוכן לאוטונומיה' : '⛔ NO-GO — עדיין לא'}`);
-  console.log(`╚══════════════════════════════════════╝`);
-  for (const x of gates) console.log(`  ${x.pass ? '✅' : '❌'} ${x.name} (${x.detail})`);
-  console.log(`\n📄 report card: ${file}`);
+    // Report card.
+    const gates = grade(synthetic, replay, concurrency);
+    const pass = gates.every((x) => x.pass);
+    const md = renderCard({ runStamp, CFG, synthetic, replay, concurrency, gates, pass });
+    const file = knowledge.saveReport(`bootcamp-${runStamp}.md`, md);
+
+    console.log(`\n╔══════════════════════════════════════╗`);
+    console.log(`  תעודת בוגר: ${pass ? '🎓 GO — מוכן לאוטונומיה' : '⛔ NO-GO — עדיין לא'}`);
+    console.log(`╚══════════════════════════════════════╝`);
+    for (const x of gates) console.log(`  ${x.pass ? '✅' : '❌'} ${x.name} (${x.detail})`);
+    console.log(`\n📄 report card: ${file}`);
+
+    // ── Bot Brain: persist scores + failed gates as insights + digest ─────────
+    const verdict = pass ? 'GO' : 'NO-GO';
+    const scores = {
+      synthetic: synthetic?.avg ?? null,
+      replay: replay?.avg ?? null,
+      autonomy_pct: concurrency?.autonomyRate ?? null,
+      p95_ms: concurrency?.p95 ?? null,
+      race_loss_pct: concurrency?.raceLossRate ?? null,
+    };
+    for (const g of gates.filter((x) => !x.pass)) {
+      await dbSink.addInsight({
+        source: 'bootcamp',
+        title: `שער נכשל: ${g.name}`,
+        evidence: `ערך בפועל: ${g.detail} (ריצת ${runStamp})`,
+        metrics: { sample_size: CFG.replayN },
+        type: 'info',
+        runId,
+      });
+    }
+    await dbSink.finishRun(runId, { status: 'completed', verdict, scores, meta: { report_file: file } });
+
+    const { sendWeeklyDigest } = require('./lib/digest');
+    const digestResult = await sendWeeklyDigest({ runId, verdict, scores });
+    console.log(`📨 digest: ${digestResult}`);
+    await dbSink.finishRun(runId, { status: 'completed', verdict, scores, meta: { report_file: file, digest: digestResult } });
+  } catch (err) {
+    await dbSink.finishRun(runId, { status: 'failed', meta: { error: String(err.message || err).slice(0, 300) } });
+    throw err;
+  }
 }
 
 function renderCard({ runStamp, CFG, synthetic, replay, concurrency, gates, pass }) {
