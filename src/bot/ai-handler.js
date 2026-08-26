@@ -64,6 +64,37 @@ function detectLang(lastMessage, history) {
   return enChars > heChars * 2 ? 'en' : 'he';
 }
 
+/**
+ * The customer's language, sticky across resets.
+ *
+ * detectLang() alone is recomputed per message from a history that the 3h
+ * stale-session guard wipes, so an English customer answering "ok" or a phone
+ * number scored as Hebrew and got a Hebrew reply. `sessions.language` is the
+ * durable answer — it existed since the first schema but was only ever WRITTEN
+ * as 'he' (and reset to 'he' on every clearSession), so the one place that read
+ * it, the after-hours message, always spoke Hebrew.
+ *
+ * A clear signal updates it; ambiguity keeps what we already know.
+ */
+function resolveLang(userMessage, history, session) {
+  const stored = session?.language === 'en' ? 'en' : session?.language === 'he' ? 'he' : null;
+  const allText = [userMessage, ...(history || []).map((m) => m.content)].join(' ');
+  const he = (allText.match(/[א-ת]/g) || []).length;
+  const en = (allText.match(/[a-zA-Z]/g) || []).length;
+
+  if (he + en < 3)       return stored || 'he';   // "ok", "👍", a house number
+  if (en > he * 2)       return 'en';
+  if (he > en * 2)       return 'he';
+  return stored || 'he';                          // genuinely mixed — do not flip
+}
+
+/** Persist the resolved language when it changed. Fire-and-forget by design. */
+function rememberLang(phone, lang, session, tenantId) {
+  if (!lang || session?.language === lang) return;
+  updateSession(phone, { language: lang }, tenantId)
+    .catch((err) => console.error('[ai-handler] language persist failed:', err.message));
+}
+
 /** Generate a unique return value for Cardcom (used to look up pending payment) */
 function makeReturnValue() {
   return 'PB-' + crypto.randomBytes(6).toString('hex').toUpperCase();
@@ -322,9 +353,15 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
   // small gap — their conversation already surfaced via earlier messages).
   await recordInboundForInbox(phone, userMessage, session, tid);
 
+  // The customer's language is resolved ONCE per message and persisted here, so
+  // every branch below — and every later dashboard action, which reads
+  // sessions.language through order-state — speaks the same language. Deciding
+  // it per branch is what let the after-hours reply disagree with the rest.
+  const lang = resolveLang(userMessage, session.conversation_history, session);
+  rememberLang(phone, lang, session, tid);
+
   const open = await settings.isOpen(tid);
   if (!open) {
-    const lang = session.language || 'he';
     await reply(phone, lang === 'en'
       ? "Sorry, we're currently closed. Please try again during business hours"
       : 'מצטערים, אנחנו כרגע סגורים. אנא נסה שוב בשעות הפתיחה', tid);
@@ -371,7 +408,6 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
       const paidKeywords = ['שילמתי', 'שולם', 'העברתי', 'ביצעתי תשלום', 'paid', 'i paid', 'sent the money'];
       const claimsPaid = paidKeywords.some((k) => userMessage.toLowerCase().includes(k));
       if (claimsPaid) {
-        const lang = detectLang(userMessage, []);
         const orderState = require('../services/order-state');
         const relayed = await orderState.notifyAdminsPaymentClaim(lastOrder).catch(() => false);
         const msg = lang === 'en'
@@ -386,7 +422,6 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
     // Editable only while the order hasn't started preparing yet ('new' or 'scheduled').
     // The moment the kitchen moves it to 'preparing', the customer can no longer change/cancel it.
     if (lastOrder && ['new', 'scheduled'].includes(lastOrder.status) && editsAllowed !== false) {
-      const lang = detectLang(userMessage, []);
       const cancelKeywords = ['בטל', 'ביטול', 'לבטל', 'cancel', 'שנה', 'לשנות'];
       const wantsCancel = cancelKeywords.some((k) => userMessage.toLowerCase().includes(k));
       if (wantsCancel) {
@@ -542,7 +577,6 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
     // source (poll parse loops, Meta single-select). The prompt no longer emits
     // this, but if the model does anyway, fall back to the free-text question
     // rather than a poll.
-    const lang = detectLang(userMessage, history);
     const q = lang === 'en'
       ? 'Which toppings would you like? Feel free to describe — e.g. half olives, quarter mushrooms, onion on all — or no toppings.'
       : 'אילו תוספות תרצה? אפשר לפרט חופשי — למשל חצי זיתים, רבע פטריות, בצל על הכל — או בלי תוספות.';
@@ -620,7 +654,6 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
       });
       payload.total = priced.total;   // downstream messages quote the real price
 
-      const lang = detectLang(userMessage, history);
 
       // Acceptance flow — every creation path goes through it: manual (default)
       // leaves the order awaiting approval and WhatsApps the admins; auto
@@ -726,7 +759,6 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
 
       console.log(`[ai-handler] CREATE_PAYMENT — phone=${phone} tenant=${tid} code=${lowProfileCode} rv=${returnValue} total=${payload.total}`);
 
-      const lang = detectLang(userMessage, history);
       const linkMsg = lang === 'en'
         ? `Please complete your payment here:\n${paymentUrl}\n\nThe link is valid for 30 minutes.`
         : `לסיום ביצוע ההזמנה, שלם כאן:\n${paymentUrl}\n\nהקישור בתוקף ל-30 דקות.`;
@@ -734,7 +766,6 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
       await reply(phone, linkMsg, tid);
     } catch (err) {
       console.error('[ai-handler] createPaymentPage error:', err.message);
-      const lang = detectLang(userMessage, history);
       await reply(phone, lang === 'en'
         ? 'Sorry, could not generate a payment link. Please try again.'
         : 'מצטערים, לא הצלחנו ליצור קישור תשלום. אנא נסה שוב.', tid);
@@ -763,4 +794,4 @@ function handleMessage(phone, userMessage, tenantId = null) {
   return run; // caller still sees this call's own success/failure
 }
 
-module.exports = { handleMessage, stripAction, detectLang, parsePayload };
+module.exports = { handleMessage, stripAction, detectLang, resolveLang, parsePayload };

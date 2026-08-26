@@ -51,12 +51,37 @@ function _err(code, message) {
  *   notify     send the standard customer/courier WhatsApp for this status (default true).
  *              Callers that send a custom message pass false.
  *   extra      additional column updates written atomically with the status
- *   lang       customer language for the standard notification
+ *   lang       customer language for the standard notification. OMIT IT and the
+ *              customer's own `sessions.language` is used — the dashboard,
+ *              kitchen and admin bot all called this without one, so every
+ *              staff-triggered update reached an English customer in Hebrew.
  * @returns {Promise<{order, changed}>}  updated row; changed=false if already in target status
  * @throws  {code: 'ORDER_NOT_FOUND'|'INVALID_TRANSITION'|'CONFLICT'}
  */
+/**
+ * The customer's language, from their session.
+ *
+ * This is resolved HERE rather than at each call site on purpose: `lang` was an
+ * optional parameter defaulting to 'he', and every dashboard/kitchen/admin-bot
+ * caller omitted it. A default that callers forget is not a safety net, it is
+ * the trap (failure class 6). Routing it through the one exit point every
+ * status change already passes through fixes all of them at once.
+ */
+async function customerLang(phone, tenantId) {
+  if (!phone) return 'he';
+  try {
+    const { data } = await supabase
+      .from('sessions').select('language')
+      .eq('tenant_id', tenantId).eq('phone', phone).maybeSingle();
+    return data?.language === 'en' ? 'en' : 'he';
+  } catch (err) {
+    console.error('[order-state] language lookup failed:', err.message);
+    return 'he';
+  }
+}
+
 async function transition(orderId, to, opts = {}) {
-  const { force = false, by = null, notify = true, extra = {}, lang = 'he' } = opts;
+  const { force = false, by = null, notify = true, extra = {} } = opts;
 
   if (!STATUSES.includes(to)) throw _err('INVALID_TRANSITION', `סטטוס לא מוכר: ${to}`);
 
@@ -93,6 +118,10 @@ async function transition(orderId, to, opts = {}) {
   const tenantId = updated.tenant_id || DEFAULT_TENANT_ID;
 
   sse.broadcast(tenantId, 'order_updated', updated);
+
+  // Explicit override wins (the admin bot knows the language of the exchange it
+  // is in); otherwise ask the customer's session.
+  const lang = opts.lang || await customerLang(updated.phone, tenantId);
 
   if (notify) {
     const { notifyStatusChange } = require('./status-notifier');
@@ -133,7 +162,8 @@ function scheduledTimeLabel(order) {
  * Idempotent: an already-accepted order returns unchanged with no second
  * customer message (the dashboard, the KDS and the WhatsApp button can race).
  */
-async function accept(orderId, { prepMinutes = null, by = 'dashboard', lang = 'he' } = {}) {
+async function accept(orderId, opts = {}) {
+  const { prepMinutes = null, by = 'dashboard' } = opts;
   const prep = Number(prepMinutes) || null;
   const now  = new Date().toISOString();
 
@@ -144,6 +174,10 @@ async function accept(orderId, { prepMinutes = null, by = 'dashboard', lang = 'h
 
   const { sendMessage } = require('./greenapi');
   const tenantId = existing.tenant_id || DEFAULT_TENANT_ID;
+  // Same rule as transition(): the caller may know better, otherwise ask the
+  // customer's session. Accepting an order is the message an English customer
+  // is most likely to receive from a Hebrew-speaking dashboard.
+  const lang = opts.lang || await customerLang(existing.phone, tenantId);
 
   // ── Pre-order: approve in place, no status change ──────────────────────────
   if (existing.status === 'scheduled') {
@@ -380,7 +414,10 @@ async function notifyAdminsPaymentClaim(order) {
  * confirm-payment path passes false to avoid a duplicate ping).
  * Returns 'auto' | 'manual' so the caller can word its confirmation message.
  */
-async function afterCreate(order, { lang = 'he', notifyAdmins = false } = {}) {
+async function afterCreate(order, opts = {}) {
+  const { notifyAdmins = false } = opts;
+  const lang = opts.lang
+    || await customerLang(order?.phone, order?.tenant_id || DEFAULT_TENANT_ID);
   const tenantId = order.tenant_id || DEFAULT_TENANT_ID;
   const mode = await getAcceptanceMode(tenantId);
 

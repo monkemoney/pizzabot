@@ -110,7 +110,7 @@ logs=data if isinstance(data,list) else data.get('logs',data.get('data',[]))
 
 # Before every push (MANDATORY)
 node --check public/app.js && node --check public/admin.js
-npm test -- --forceExit     # 411 tests across 24 suites; --forceExit avoids hanging on setInterval timers
+npm test -- --forceExit     # 422 tests across 24 suites; --forceExit avoids hanging on setInterval timers
 
 # Deploy (auto on push)
 git push origin main
@@ -164,7 +164,7 @@ pizza-bot/
 │   └── sw.js                     # Service Worker — push notifications only (no fetch caching)
 ├── supabase/schema.sql           # Full DB schema (documentation — NOT auto-applied, see Schema drift)
 ├── scripts/                      # backup/sync Render env, render-guard
-├── tests/                        # 24 suites / 411 tests — auth, sessions, admin bot, webhook routing
+├── tests/                        # 24 suites / 422 tests — auth, sessions, admin bot, webhook routing
 │                                 #   (incl. Meta), onboarding+draft, payments, audit, settings+overnight,
 │                                 #   meta-whatsapp parsing, slug, inbox/handoff, missed-call recovery
 ├── .design/jasell-dashboard/     # Design brief + review (Confident SaaS direction)
@@ -296,6 +296,22 @@ ACTION blocks: `SET_AVAILABLE` (checks ALL occurrences of a name — standalone 
 - `ADMIN:OVERRIDE:{state,hours}` (≤24h, default 3) / `{cancel:true}`; prompt rules route temporary/out-of-hours requests to OVERRIDE and keep `SET is_open` for permanent kill.
 - **Closed loop:** every open/delivery-touching action (SET is_open/delivery_enabled, both HOURS actions, OVERRIDE) is followed by a read-back of the effective state, appended as "📍 מצב בפועל: …"; flag-on-but-outside-hours adds a hint to use the override. Success is reported from the outcome, never the write.
 - Dashboard: settings page shows an effective-state banner (`GET /api/settings` returns `_effective {open, delivery, override}`; `_`-prefixed keys are never persisted by PATCH) with an override chip + "בטל חריגה".
+
+### Customer Language & Menu Names (2026-08-26)
+
+Two separate defects, both of which made an English-speaking customer read Hebrew.
+
+**`sessions.language` was a dead column that produced wrong behaviour.** It has existed since the first schema, but was only ever *written* as `'he'` — in `DEFAULT_SESSION` and again on every `clearSession`, which the 3h stale-session guard calls routinely. The one place that *read* it (the after-hours "we're closed" reply) therefore always spoke Hebrew. Meanwhile `detectLang()` was recomputed per message from a history that same guard wipes, so an English customer answering "ok", "👍" or a house number scored as Hebrew and got flipped mid-conversation.
+- `resolveLang(msg, history, session)` is sticky: a clear signal updates the language, ambiguity (<3 letters, or genuinely mixed) keeps what is already known. It is resolved **once per message** at the top of `handleMessageInner` and persisted, so every branch below agrees — deciding per branch is what let the after-hours reply disagree with the rest.
+- `clearSession` no longer resets it. Language is a fact about the **person**, like `customer_profile` and `privacy_sent_at` — not about the conversation.
+- **`order-state.js` resolves it from the session when the caller doesn't pass one.** `lang` was an optional parameter defaulting to `'he'` and *every* dashboard/kitchen/admin-bot caller omitted it, so every staff-triggered status update reached an English customer in Hebrew — while `status-notifier.js` had carried `he`/`en` variants for every message all along and nothing ever selected the English one. Fixed at the single exit point rather than by asking each caller (a default that callers forget is failure class 6: the trap, not the safety net). An explicit `lang` still wins — the admin bot knows the language of the exchange it is in.
+
+**`name_en` was backfilled with the Hebrew name**, in five insert paths (`name_en: name_en || name_he`), on a `NOT NULL` column with an optional form field. So "has an English name" and "never got one" were indistinguishable — every `if (p.name_en)` was true, the dashboard could not report an untranslated menu, and nothing could fall back sensibly. Now `enName()` stores `''` for a blank or Hebrew-equal value, and `normaliseNameEn()` covers the PATCH paths.
+- **`hasEnglishName(row)` = `name_en` non-empty AND ≠ `name_he`** — the same test `menu.html` has always used, so old rows carrying the backfill are read correctly without a migration.
+- `nameOf(row)` (menu rows) and `itemNameOf(it)` (order items, a JSONB snapshot that historically held only `name`) render by language. Before this, every render took `name_he` unconditionally: switching the dashboard to English still listed products in Hebrew even where a real English name existed.
+- ⚠️ Topping handlers (`toggleToppingByName`, `updateToppingPrice`, `deleteToppingByName`) and `_unavailableTag` match on **`name_he`** — those are lookup keys, not display. Only the visible text switches.
+- **מוצרים tab shows a coverage banner** in English mode listing rows with no English name. Without it a tenant who skipped the field finds out when a customer reads their order back in Hebrew.
+- Still open (plan item B3): `orders.items` stores only `name`, so historical orders cannot be shown in English — the longer this waits the more history is unrecoverable.
 
 ### Region, Currency & Tax (2026-08-26)
 
@@ -471,6 +487,7 @@ settings            key/value JSONB per tenant — UNIQUE(tenant_id, key); inclu
                     (meta_phone_number_id/meta_access_token/meta_waba_id | green_api_*), cardcom_*,
                     public_slug, business/delivery hours, zones, couriers, vendor prefs
 sessions            per-phone (customer: phone, admin: 'admin:phone') — UNIQUE(tenant_id, phone);
+                    language ('he'|'en', sticky per customer, survives clearSession);
                     conversation_history, pending_order, pending_dispute, customer_profile,
                     is_bot_active, unread_count, last_customer_message, last_message_at
 pending_payments    Cardcom pendings; tenant_id real column (indexed)

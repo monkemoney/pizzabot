@@ -27,10 +27,26 @@ function seedOrder(overrides = {}) {
   return mockOrders[id];
 }
 
+// Sessions the customer-language lookup reads. Keyed `tenant|phone`.
+const mockSessions = {};
+
 // ── @supabase/supabase-js mock (supports order-state's exact chains) ──────────
 jest.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
-    from: () => {
+    from: (table) => {
+      // sessions: only order-state's language lookup reads this table
+      if (table === 'sessions') {
+        const f = {};
+        const sb = {
+          select: () => sb,
+          eq: (col, val) => { f[col] = val; return sb; },
+          maybeSingle: async () => ({
+            data: mockSessions[`${f.tenant_id}|${f.phone}`] || null,
+            error: null,
+          }),
+        };
+        return sb;
+      }
       let _filters = {};
       let _updateVals = null;
       const b = {
@@ -104,6 +120,7 @@ beforeEach(() => {
   mockButtonLog.length = 0;
   mockSettingsValues = {};
   mockAdmins = [];
+  for (const k of Object.keys(mockSessions)) delete mockSessions[k];
   mockSseBroadcast.mockClear();
   mockNotify.mockClear();
 });
@@ -320,5 +337,68 @@ describe('afterCreate', () => {
     const mode = await orderState.afterCreate(o);
     expect(mode).toBe('auto');
     expect(mockOrders[o.id].status).toBe('new');
+  });
+});
+
+/**
+ * Customer language on staff-triggered updates.
+ *
+ * `lang` used to be an optional parameter defaulting to 'he', and every
+ * dashboard/kitchen caller omitted it — so an English customer whose order was
+ * accepted from the dashboard was told about it in Hebrew. status-notifier had
+ * carried he/en variants for every message all along; nothing ever selected the
+ * English one. It is resolved here now, at the single exit point, rather than
+ * asked of each caller.
+ */
+describe('customer language', () => {
+  const setSession = (phone, language) => {
+    mockSessions[`${TENANT}|${phone}`] = { language };
+  };
+
+  test('a dashboard transition with NO lang uses the customer\'s session', async () => {
+    const o = seedOrder({ status: 'preparing', phone: '972502222222' });
+    setSession('972502222222', 'en');
+
+    await orderState.transition(o.id, 'ready', { by: 'dashboard' });
+
+    expect(mockNotify).toHaveBeenCalled();
+    expect(mockNotify.mock.calls[0][2]).toBe('en');   // 3rd arg is lang
+  });
+
+  test('a Hebrew customer still gets Hebrew', async () => {
+    const o = seedOrder({ status: 'preparing', phone: '972503333333' });
+    setSession('972503333333', 'he');
+
+    await orderState.transition(o.id, 'ready', { by: 'dashboard' });
+    expect(mockNotify.mock.calls[0][2]).toBe('he');
+  });
+
+  test('no session at all falls back to Hebrew rather than failing', async () => {
+    const o = seedOrder({ status: 'preparing', phone: '972504444444' });
+
+    await orderState.transition(o.id, 'ready', { by: 'dashboard' });
+    expect(mockNotify.mock.calls[0][2]).toBe('he');
+  });
+
+  test('an explicit lang from the caller still wins', async () => {
+    // The admin bot knows the language of the exchange it is answering in.
+    const o = seedOrder({ status: 'preparing', phone: '972505555555' });
+    setSession('972505555555', 'he');
+
+    await orderState.transition(o.id, 'ready', { by: 'admin-bot', lang: 'en' });
+    expect(mockNotify.mock.calls[0][2]).toBe('en');
+  });
+
+  test('accept() speaks the customer\'s language without being told', async () => {
+    // The approval message is the one an English customer is most likely to get
+    // from a Hebrew-speaking dashboard.
+    const o = seedOrder({ status: 'scheduled', scheduled_for: null, phone: '972506666666' });
+    setSession('972506666666', 'en');
+
+    await orderState.accept(o.id, { by: 'dashboard' });
+
+    expect(mockSendLog).toHaveLength(1);
+    expect(mockSendLog[0].text).toMatch(/confirmed/i);
+    expect(mockSendLog[0].text).not.toMatch(/[א-ת]/);
   });
 });

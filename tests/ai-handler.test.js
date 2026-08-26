@@ -8,7 +8,7 @@ jest.mock('../src/services/cardcom');
 jest.mock('../src/services/settings');
 jest.mock('../src/bot/prompts');
 
-const { stripAction, detectLang, parsePayload } = require('../src/bot/ai-handler');
+const { stripAction, detectLang, resolveLang, parsePayload } = require('../src/bot/ai-handler');
 
 describe('stripAction', () => {
   test('removes RESET action', () => {
@@ -89,5 +89,57 @@ describe('parsePayload', () => {
     const result = parsePayload(payload);
     expect(result.customer_name).toBe('ישראל');
     expect(result.total).toBe(120);
+  });
+});
+
+/**
+ * resolveLang — the customer's language, sticky across resets.
+ *
+ * detectLang() alone is recomputed per message from a history the 3h
+ * stale-session guard wipes, so an English customer answering "ok" or a house
+ * number scored as Hebrew. sessions.language is the durable answer — it existed
+ * from the first schema but was only ever WRITTEN as 'he', and clearSession
+ * reset it to 'he' every few hours, so the one place that read it (the
+ * after-hours reply) always spoke Hebrew.
+ */
+describe('resolveLang', () => {
+  const en = { language: 'en' };
+  const he = { language: 'he' };
+
+  test('a clear signal sets the language', () => {
+    expect(resolveLang('I would like a large pizza please', [], null)).toBe('en');
+    expect(resolveLang('אני רוצה פיצה משפחתית בבקשה', [], null)).toBe('he');
+  });
+
+  test('an ambiguous reply keeps what we already know', () => {
+    // This is the whole point: these used to score as Hebrew and flip the
+    // customer mid-conversation.
+    for (const msg of ['ok', '👍', '12', '3', '']) {
+      expect(resolveLang(msg, [], en)).toBe('en');
+      expect(resolveLang(msg, [], he)).toBe('he');
+    }
+  });
+
+  test('a mixed message does not flip an established language', () => {
+    expect(resolveLang('אוקיי thanks', [], en)).toBe('en');
+    expect(resolveLang('ok תודה', [], he)).toBe('he');
+  });
+
+  test('a genuine switch is still honoured', () => {
+    expect(resolveLang('Actually can I change my order to a small one', [], he)).toBe('en');
+    expect(resolveLang('רגע, אני רוצה לשנות את ההזמנה שלי לקטנה', [], en)).toBe('he');
+  });
+
+  test('no stored language and no signal defaults to Hebrew', () => {
+    expect(resolveLang('', [], null)).toBe('he');
+    expect(resolveLang('7', [], {})).toBe('he');
+  });
+
+  test('history counts toward the decision', () => {
+    const history = [
+      { role: 'user', content: 'Hi, do you deliver to Santa Monica?' },
+      { role: 'assistant', content: 'Yes we do!' },
+    ];
+    expect(resolveLang('ok', history, null)).toBe('en');
   });
 });

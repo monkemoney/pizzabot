@@ -69,10 +69,12 @@ async function updateSession(phone, updates, tenantId = DEFAULT_TENANT_ID) {
 }
 
 async function clearSession(phone, tenantId = DEFAULT_TENANT_ID) {
-  // Keep customer_profile across resets — it's permanent per-customer memory
+  // Keep customer_profile across resets — it's permanent per-customer memory.
+  // `language` is likewise a fact about the PERSON, not the conversation:
+  // resetting it to 'he' every 3h (the stale-session guard) is what made an
+  // English customer's after-hours reply come back in Hebrew.
   await updateSession(phone, {
     state: 'IDLE',
-    language: 'he',
     cart: [],
     current_item: {},
     data: {},

@@ -143,7 +143,7 @@ const TR = (str) => (typeof tr === 'function' ? tr(str) : str);
 // Topping display label — includes the portion when partial, e.g. "זיתים (חצי)".
 // Toppings are free-text since 2026-07-28; portion ∈ {"חצי","רבע",...} or absent (whole pizza).
 function topLabel(t) {
-  const n = (t && (t.name || t.name_he)) || '';
+  const n = itemNameOf(t);
   return n && t.portion ? `${n} (${t.portion})` : n;
 }
 // Date/number locale follows the DASHBOARD language (whose eyes are reading),
@@ -293,6 +293,39 @@ function deliveryFeeOf(o) {
   return Number.isFinite(flat) ? flat : null;   // null = unknown, show nothing
 }
 
+// ─── Business content names ───────────────────────────────────────────────────
+// Menu names are TENANT data, not UI chrome, so they are not in the i18n
+// dictionary — they live in the row as name_he/name_en. Until now every render
+// took name_he unconditionally, so switching the dashboard to English still
+// listed the products in Hebrew even when a real English name existed.
+//
+// `name_en` was also backfilled with the Hebrew name on insert, so a row can
+// still carry a fallback rather than a translation. Treating name_en === name_he
+// as "not translated" is the same test the public menu has always used.
+function hasEnglishName(row) {
+  const en = (row?.name_en || '').trim();
+  return !!en && en !== (row?.name_he || '').trim();
+}
+
+/** The name to show for a product / category / topping in the current language. */
+function nameOf(row) {
+  if (!row) return '';
+  const en = typeof LANG !== 'undefined' && LANG === 'en';
+  return (en && hasEnglishName(row) ? row.name_en : row.name_he) || row.name_he || row.name_en || '';
+}
+
+/**
+ * The name to show for an ITEM INSIDE AN ORDER. Order items are a JSONB
+ * snapshot written by the bot — historically with only `name` — so there is
+ * frequently nothing to switch to. This never invents one.
+ */
+function itemNameOf(it) {
+  if (!it) return '';
+  const en = typeof LANG !== 'undefined' && LANG === 'en';
+  if (en && hasEnglishName(it)) return it.name_en;
+  return it.name || it.name_he || it.name_en || '';
+}
+
 // ─── ORDERS ───────────────────────────────────────────────────────────────────
 
 let currentOrders   = [];
@@ -431,7 +464,7 @@ function exportOrdersCSV() {
     const time    = d.toLocaleTimeString(LOCALE, { hour:'2-digit', minute:'2-digit' });
     const items   = (o.items||[]).map(it => {
       const qty = it.quantity || it.qty || 1;
-      return `${it.name||it.name_he||''}${qty>1?` ×${qty}`:''}`;
+      return `${itemNameOf(it)}${qty>1?` ×${qty}`:''}`;
     }).join(' | ');
     const toppings = (o.items||[]).flatMap(it =>
       (it.toppings||[]).map(topLabel)
@@ -530,7 +563,7 @@ function renderOrderRow(o) {
     const lineTotal = ((parseFloat(it.price)||0)*qty).toFixed(0);
     return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--border)">
       <div>
-        <span style="font-weight:600;font-size:.85rem">${it.name||it.name_he||TR('פריט')}</span>
+        <span style="font-weight:600;font-size:.85rem">${itemNameOf(it) || TR('פריט')}</span>
         ${qty>1?`<span style="color:var(--text-muted);font-size:.78rem"> ×${qty}</span>`:''}
         ${tops?`<div style="font-size:.72rem;color:var(--text-muted)">+ ${tops}</div>`:''}
       </div>
@@ -779,7 +812,7 @@ function _incomingCard(o) {
     return `<div style="padding:7px 0;border-bottom:1px solid var(--border);font-size:.9rem">
       <div style="display:flex;align-items:baseline;gap:8px">
         <span style="font-weight:800;color:var(--text);min-width:30px">×${qty}</span>
-        <span style="font-weight:700">${it.name || it.name_he || TR('פריט')}</span>${_unavailableTag(it.name || it.name_he)}
+        <span style="font-weight:700">${itemNameOf(it) || TR('פריט')}</span>${_unavailableTag(it.name || it.name_he)}
       </div>
       ${tops.length ? `<div style="font-size:.76rem;color:var(--text-muted);margin-inline-start:38px">+ ${tops.map(t => t + _unavailableTag(t)).join(', ')}</div>` : ''}
     </div>`;
@@ -1330,7 +1363,7 @@ function openDisputeModal(orderId) {
   const list  = document.getElementById('disputeItemList');
 
   list.innerHTML = items.map((it, i) => {
-    const name     = it.name || it.name_he || TR('פריט');
+    const name     = itemNameOf(it) || TR('פריט');
     const qty      = it.quantity || it.qty || 1;
     const price    = parseFloat(it.price) || 0;
     const toppings = (it.toppings || []).filter(t => (t.name || t.name_he));
@@ -1602,7 +1635,7 @@ function printOrder(orderId) {
     return `
       <tr>
         <td style="padding:8px 0;border-bottom:1px dashed #e5e7eb">
-          <strong>${it.name || it.name_he || 'פריט'}</strong>
+          <strong>${itemNameOf(it) || TR('פריט')}</strong>
           ${tops ? `<br><span style="font-size:.78rem;color:#6b7280">+ ${tops}</span>` : ''}
         </td>
         <td style="padding:8px 0;border-bottom:1px dashed #e5e7eb;text-align:center;color:#6b7280">${qty}</td>
@@ -1759,7 +1792,7 @@ function renderEditItems() {
     return `
       <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--color-bg);border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px">
         <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:.88rem">${item.name||item.name_he||TR('פריט')}</div>
+          <div style="font-weight:700;font-size:.88rem">${itemNameOf(item) || TR('פריט')}</div>
           ${toppings ? `<div style="font-size:.75rem;color:var(--text-muted)">+ ${toppings}</div>` : ''}
         </div>
         <div style="font-weight:700;color:var(--text);min-width:50px;text-align:center">${money((item.price||0)*qty, 0)}</div>
@@ -1869,6 +1902,47 @@ function toggleSwitch(isOn, onClickFn) {
   </button>`;
 }
 
+/**
+ * Menu rows still missing a real English name.
+ *
+ * This is the control that makes an honest `name_en` usable. Before it, the API
+ * backfilled the Hebrew name on insert, so nothing could tell a translated menu
+ * from an untranslated one — and a tenant who skipped the field had no way to
+ * find out until an English customer read their own order back in Hebrew.
+ * Only shown when the dashboard is in English, where the gap is visible anyway.
+ */
+function untranslatedMenuBanner() {
+  if (typeof LANG === 'undefined' || LANG !== 'en') return '';
+
+  const missing = [];
+  for (const cat of categoriesWithProducts) {
+    if (!hasEnglishName(cat)) missing.push(cat.name_he);
+    for (const p of cat.products || []) {
+      if (!hasEnglishName(p)) missing.push(p.name_he);
+      for (const a of p.additions || []) if (!hasEnglishName(a)) missing.push(a.name_he);
+    }
+  }
+  if (!missing.length) return '';
+
+  const shown = [...new Set(missing)];
+  const preview = shown.slice(0, 6).join(' · ');
+  return `
+    <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px;padding:14px 18px;border:1px solid #fcd34d;background:#fffbeb;border-radius:var(--radius-lg)">
+      <span style="font-size:1.1rem;line-height:1.2">⚠️</span>
+      <div style="min-width:0">
+        <div style="font-weight:700;font-size:.88rem;color:#92400e">
+          ${shown.length} ${TR('פריטים בתפריט בלי שם באנגלית')}
+        </div>
+        <div style="font-size:.8rem;color:#a16207;margin-top:3px;line-height:1.55">
+          ${TR('הם יוצגו בעברית ללקוחות שמזמינים באנגלית. פתח כל פריט ומלא את שדה השם באנגלית.')}
+        </div>
+        <div style="font-size:.78rem;color:#a16207;margin-top:6px;opacity:.85" dir="rtl">
+          ${preview}${shown.length > 6 ? ` … +${shown.length - 6}` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
 function renderProductsTable() {
   const container = document.getElementById('productsTable');
   if (!categoriesWithProducts.length) {
@@ -1887,7 +1961,7 @@ function renderProductsTable() {
           <div style="display:flex;align-items:center;gap:12px">
             <span style="width:36px;height:36px;border-radius:var(--radius-sm);background:var(--color-bg);color:var(--text-muted);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${_catIcon(cat)}</span>
             <div>
-              <span style="font-weight:700;font-size:.95rem;color:var(--text)">${cat.name_he}</span>
+              <span style="font-weight:700;font-size:.95rem;color:var(--text)">${nameOf(cat)}</span>
               <span style="font-size:.75rem;color:var(--text-muted);margin-inline-start:8px">${_aggToppings().length} ${TR('תוספות')}</span>
             </div>
           </div>
@@ -1905,7 +1979,7 @@ function renderProductsTable() {
           <span style="font-size:.9rem;color:var(--text-muted);transition:transform .2s;display:inline-block;transform:rotate(${isCatExpanded?'0deg':'-90deg'})"">▾</span>
           <span style="width:36px;height:36px;border-radius:var(--radius-sm);background:var(--color-bg);color:var(--text-muted);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${_catIcon(cat)}</span>
           <div>
-            <span style="font-weight:700;font-size:.95rem;color:var(--text)">${cat.name_he}</span>
+            <span style="font-weight:700;font-size:.95rem;color:var(--text)">${nameOf(cat)}</span>
             <span style="font-size:.75rem;color:var(--text-muted);margin-right:8px">${products.length} ${TR('פריטים')}</span>
             ${cat.has_toppings ? `<span style="font-size:.72rem;background:#f0f0f0;color:#666;padding:2px 10px;border-radius:50px;font-weight:600">${TR('תוספות')}</span>` : ''}
           </div>
@@ -1913,7 +1987,7 @@ function renderProductsTable() {
         <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
           <button onclick="openProductModal(null,'${cat.id}')" class="btn btn-primary btn-sm">${TR('+ מוצר')}</button>
           <button onclick="openCategoryModal(${encodeProduct(cat)})" class="btn btn-ghost btn-sm">${TR('עריכה')}</button>
-          <button onclick="deleteCategory('${cat.id}','${cat.name_he}')" class="btn-danger">${TR('מחיקה')}</button>
+          <button onclick="deleteCategory('${cat.id}','${nameOf(cat)}')" class="btn-danger">${TR('מחיקה')}</button>
         </div>
       </div>`;
 
@@ -1926,7 +2000,7 @@ function renderProductsTable() {
     return `<div style="margin-bottom:12px;border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border);box-shadow:var(--shadow-sm);background:var(--white)">${catHeader}${productRows}</div>`;
   }).join('');
 
-  container.innerHTML = `<div>${categoryBlocks}</div>`;
+  container.innerHTML = `${untranslatedMenuBanner()}<div>${categoryBlocks}</div>`;
 }
 
 function renderProductRow(p, cat) {
@@ -1936,7 +2010,7 @@ function renderProductRow(p, cat) {
       ${imgThumb(p.image_url)}
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-weight:700;font-size:.92rem">${p.name_he}</span>
+          <span style="font-weight:700;font-size:.92rem">${nameOf(p)}</span>
           ${!p.is_available ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:.68rem;background:#fff1f2;color:#be123c;padding:1px 8px;border-radius:var(--radius-sm);font-weight:600;border:1px solid #fecdd3"><span style="width:6px;height:6px;border-radius:50%;background:#e11d48"></span>${TR('אזל')}</span>` : ''}
         </div>
         ${p.name_en ? `<div style="font-size:.75rem;color:var(--text-muted)" dir="ltr">${p.name_en}</div>` : ''}
@@ -1946,7 +2020,7 @@ function renderProductRow(p, cat) {
       ${toggleSwitch(p.is_available, `toggleProduct('${p.id}',${!p.is_available})`)}
       <div style="display:flex;gap:6px;margin-inline-start:4px">
         <button onclick="openProductModal(${pData},'${p.category_id||''}')" class="btn btn-ghost btn-sm">${TR('עריכה')}</button>
-        <button onclick="deleteProduct('${p.id}','${p.name_he}')" class="btn-danger">${TR('מחק')}</button>
+        <button onclick="deleteProduct('${p.id}','${nameOf(p)}')" class="btn-danger">${TR('מחק')}</button>
       </div>
     </div>`;
 }
@@ -1979,7 +2053,7 @@ function renderGlobalToppings() {
       title="${a.is_available ? TR('זמין — לחץ לסימון כאזל') : TR('אזל — לחץ להחזרה')}"
       style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--radius-sm);border:1px solid ${a.is_available ? '#bbf7d0' : '#fecdd3'};background:${a.is_available ? '#f0fdf4' : '#fff1f2'};cursor:pointer;font-family:inherit;font-size:.76rem;font-weight:600;color:${a.is_available ? '#15803d' : '#be123c'};transition:all .15s">
       <span style="width:6px;height:6px;border-radius:50%;background:${a.is_available ? '#22c55e' : '#e11d48'};flex-shrink:0"></span>
-      ${a.name_he}
+      ${nameOf(a)}
       <span style="font-weight:400;opacity:.75">+${money(a.price, 0)}</span>
     </button>`).join('');
 
@@ -1990,11 +2064,11 @@ function renderGlobalToppings() {
       </div>
       ${tops.map((a) => `
         <div style="display:grid;grid-template-columns:1fr 110px 90px;padding:9px 14px;border-top:1px solid var(--border);align-items:center;gap:12px;font-size:.83rem">
-          <span style="font-weight:600">${a.name_he}</span>
+          <span style="font-weight:600">${nameOf(a)}</span>
           <input type="number" value="${parseFloat(a.price).toFixed(0)}" min="0" dir="ltr"
             onchange="updateToppingPrice('${a.name_he.replace(/'/g, "\\'")}',this.value)"
             style="padding:5px 10px;font-size:.8rem;width:100%">
-          <button onclick="deleteToppingByName('${a.name_he.replace(/'/g, "\\'")}')" class="btn-danger" style="font-size:.72rem;padding:3px 7px">מחק</button>
+          <button onclick="deleteToppingByName('${a.name_he.replace(/'/g, "\\'")}')" class="btn-danger" style="font-size:.72rem;padding:3px 7px">${TR('מחק')}</button>
         </div>`).join('')}
       <div style="display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--border);align-items:center">
         <input id="newTopName-global" type="text" placeholder="${TR('שם תוספת')}" style="flex:1;padding:6px 10px;font-size:.8rem">
@@ -3382,7 +3456,7 @@ function _kitchenCard(o) {
     const tops = (it.toppings || []).map(topLabel).filter(Boolean).join(', ');
     return `<div style="font-size:1.5rem;font-weight:700;padding:10px 0;border-bottom:1px solid #f0f0f0;display:flex;align-items:baseline;gap:12px">
       <span style="font-size:1.7rem;font-weight:800;color:#111;min-width:44px">×${qty}</span>
-      <span>${it.name || it.name_he}${tops ? `<div style="font-size:1.05rem;font-weight:500;color:#666;margin-top:2px">+ ${tops}</div>` : ''}</span>
+      <span>${itemNameOf(it)}${tops ? `<div style="font-size:1.05rem;font-weight:500;color:#666;margin-top:2px">+ ${tops}</div>` : ''}</span>
     </div>`;
   }).join('');
 

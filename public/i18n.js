@@ -302,6 +302,10 @@ const HE2EN = {
   'פתיחה חריגה עד': 'Temporarily open until', 'סגירה חריגה עד': 'Temporarily closed until',
   'בטל חריגה': 'Cancel override',
   'החריגה בוטלה — חוזרים ללוח השעות הרגיל': 'Override cancelled — back to the regular schedule',
+  // Menu translation coverage (2026-08-26)
+  'פריטים בתפריט בלי שם באנגלית': 'menu items have no English name',
+  'הם יוצגו בעברית ללקוחות שמזמינים באנגלית. פתח כל פריט ומלא את שדה השם באנגלית.':
+    'They will show in Hebrew to customers ordering in English. Open each one and fill in its English name.',
   // Login page
   'שם משתמש': 'Username', 'סיסמא': 'Password', 'כניסה': 'Sign in', 'מתחבר...': 'Signing in...',
   'שגיאת כניסה': 'Sign-in failed',

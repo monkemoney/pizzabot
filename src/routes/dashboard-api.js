@@ -8,6 +8,24 @@ const bcrypt     = require('bcryptjs');
 const { createClient } = require('@supabase/supabase-js');
 const { signDashboard, requireAuth, requireAdmin, requireVendor, requireKitchenOrAdmin, DEFAULT_TENANT_ID } = require('../middleware/auth');
 const sse = require('../services/sse');
+// `name_en` is NOT NULL, so a blank English name has to be stored as ''. It used
+// to be backfilled with the Hebrew name, which made "has an English name" and
+// "never got one" indistinguishable — every `if (p.name_en)` was true, so the
+// dashboard could not report an untranslated menu and could not fall back
+// sensibly either. Empty string is the honest value.
+const enName = (v, he) => {
+  const t = String(v ?? '').trim();
+  return t && t !== String(he ?? '').trim() ? t : '';
+};
+
+/** Normalise name_en on any partial update that touches it. */
+function normaliseNameEn(updates, currentHe) {
+  if ('name_en' in updates) {
+    updates.name_en = enName(updates.name_en, updates.name_he ?? currentHe);
+  }
+  return updates;
+}
+
 const { cancelDeal } = require('../services/cardcom');
 const { costOf } = require('../services/claude-pricing');
 const { getOrderById, updateOrderStatus, updateOrder, updateSession,
@@ -515,7 +533,7 @@ router.get('/categories', requireAuth, async (req, res) => {
 router.post('/categories', requireAdmin, async (req, res) => {
   const { name_he, name_en, emoji, has_toppings, sort_order } = req.body;
   const { data, error } = await supabase.from('categories')
-    .insert({ name_he, name_en: name_en || name_he, emoji: emoji || '🍽️',
+    .insert({ name_he, name_en: enName(name_en, name_he), emoji: emoji || '🍽️',
               has_toppings: !!has_toppings, sort_order: sort_order || 99, tenant_id: tid(req) })
     .select().single();
   if (error) return res.status(400).json({ error: error.message });
@@ -524,7 +542,7 @@ router.post('/categories', requireAdmin, async (req, res) => {
 });
 
 router.patch('/categories/:id', requireAdmin, async (req, res) => {
-  const updates = { ...req.body };
+  const updates = normaliseNameEn({ ...req.body });
   delete updates.id; delete updates.created_at;
   const { data, error } = await supabase.from('categories')
     .update(updates).eq('id', req.params.id).eq('tenant_id', tid(req)).select().single();
@@ -614,7 +632,7 @@ router.get('/products', requireAuth, async (req, res) => {
 router.post('/products', requireAdmin, async (req, res) => {
   const { name_he, name_en, price, category_id, sort_order, image_url, description } = req.body;
   const { data, error } = await supabase.from('products')
-    .insert({ name_he, name_en: name_en || name_he, price, category_id, sort_order: sort_order || 0, image_url, description: description || null, tenant_id: tid(req) })
+    .insert({ name_he, name_en: enName(name_en, name_he), price, category_id, sort_order: sort_order || 0, image_url, description: description || null, tenant_id: tid(req) })
     .select().single();
   if (error) return res.status(400).json({ error: error.message });
 
@@ -633,7 +651,7 @@ router.post('/products', requireAdmin, async (req, res) => {
     const seen = new Map();
     for (const t of tops || []) if (!seen.has(t.name_he)) seen.set(t.name_he, t);
     const rows = [...seen.values()].map(t => ({
-      product_id: data.id, name_he: t.name_he, name_en: t.name_en || t.name_he,
+      product_id: data.id, name_he: t.name_he, name_en: enName(t.name_en, t.name_he),
       price: t.price, is_available: t.is_available, sort_order: 0,
     }));
     if (rows.length) {
@@ -647,7 +665,7 @@ router.post('/products', requireAdmin, async (req, res) => {
 });
 
 router.patch('/products/:id', requireAdmin, async (req, res) => {
-  const updates = { ...req.body, updated_at: new Date().toISOString() };
+  const updates = normaliseNameEn({ ...req.body, updated_at: new Date().toISOString() });
   delete updates.id; delete updates.created_at; delete updates.additions;
   const { data, error } = await supabase.from('products')
     .update(updates).eq('id', req.params.id).eq('tenant_id', tid(req)).select().single();
@@ -668,7 +686,7 @@ router.delete('/products/:id', requireAdmin, async (req, res) => {
 router.post('/products/:id/additions', requireAdmin, async (req, res) => {
   const { name_he, name_en, price, image_url, sort_order } = req.body;
   const { data, error } = await supabase.from('product_additions')
-    .insert({ product_id: req.params.id, name_he, name_en, price, image_url, sort_order: sort_order || 0 })
+    .insert({ product_id: req.params.id, name_he, name_en: enName(name_en, name_he), price, image_url, sort_order: sort_order || 0 })
     .select().single();
   if (error) return res.status(400).json({ error: error.message });
   invalidateCache();
@@ -676,7 +694,7 @@ router.post('/products/:id/additions', requireAdmin, async (req, res) => {
 });
 
 router.patch('/products/:id/additions/:addId', requireAdmin, async (req, res) => {
-  const updates = { ...req.body, updated_at: new Date().toISOString() };
+  const updates = normaliseNameEn({ ...req.body, updated_at: new Date().toISOString() });
   delete updates.id; delete updates.product_id; delete updates.created_at;
   const { data, error } = await supabase.from('product_additions')
     .update(updates)
@@ -763,7 +781,7 @@ router.post('/additions/by-name', requireAdmin, async (req, res) => {
     .select('product_id').eq('name_he', name_he).in('product_id', ids);
   const has = new Set((existing || []).map(e => e.product_id));
   const rows = ids.filter(id => !has.has(id)).map(id => ({
-    product_id: id, name_he, name_en: name_he, price, sort_order: 0,
+    product_id: id, name_he, name_en: '', price, sort_order: 0,
   }));
   if (rows.length) {
     const { error } = await supabase.from('product_additions').insert(rows);
@@ -777,7 +795,7 @@ router.post('/additions/by-name', requireAdmin, async (req, res) => {
       .select('id').eq('tenant_id', tid(req)).eq('name_he', name_he).in('category_id', addonCats).limit(1);
     if (!exists?.length) {
       await supabase.from('products').insert({
-        name_he, name_en: name_he, price, category_id: addonCats[0], tenant_id: tid(req), sort_order: 0,
+        name_he, name_en: '', price, category_id: addonCats[0], tenant_id: tid(req), sort_order: 0,
       });
     }
   }
