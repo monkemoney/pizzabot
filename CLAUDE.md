@@ -110,7 +110,7 @@ logs=data if isinstance(data,list) else data.get('logs',data.get('data',[]))
 
 # Before every push (MANDATORY)
 node --check public/app.js && node --check public/admin.js
-npm test -- --forceExit     # 435 tests across 24 suites; --forceExit avoids hanging on setInterval timers
+npm test -- --forceExit     # 495 tests across 25 suites; --forceExit avoids hanging on setInterval timers
 
 # Deploy (auto on push)
 git push origin main
@@ -164,7 +164,7 @@ pizza-bot/
 │   └── sw.js                     # Service Worker — push notifications only (no fetch caching)
 ├── supabase/schema.sql           # Full DB schema (documentation — NOT auto-applied, see Schema drift)
 ├── scripts/                      # backup/sync Render env, render-guard
-├── tests/                        # 24 suites / 435 tests — auth, sessions, admin bot, webhook routing
+├── tests/                        # 25 suites / 495 tests — auth, sessions, admin bot, webhook routing
 │                                 #   (incl. Meta), onboarding+draft, payments, audit, settings+overnight,
 │                                 #   meta-whatsapp parsing, slug, inbox/handoff, missed-call recovery
 ├── .design/jasell-dashboard/     # Design brief + review (Confident SaaS direction)
@@ -339,7 +339,8 @@ Two separate defects, both of which made an English-speaking customer read Hebre
 Israel and the US do not disagree about the tax *rate* — they disagree about what a menu price **means**. Israel prices tax-inclusive (₪50 on the menu is ₪50 charged; the receipt back-computes the VAT inside it). The US prices tax-exclusive ($12.99 on the menu is $12.99 **plus** tax at checkout). `vat_rate` was a bare number and the only formula in the codebase was the Israeli one, so changing 18 to 9.5 would not have localised anything: `pricing.js` would still hand the processor a **pre-tax** amount while the receipt printed a tax nobody collected — a tax document with a fabricated line on it (failure class 8, with the payment processor as the diverging source).
 
 - **`src/services/locale.js` is the single resolver.** `resolveLocale(allSettings)` → `{region, currency, taxMode, taxRate, taxLabel, taxOnDelivery, locale, addsTaxAtCheckout, …}`. `region` (`IL`|`US`) supplies **defaults only**; every individual key overrides it, because a tenant's real rate is a fact about their address (City of LA 9.5%, Santa Monica 10.25%), not their country. No second cache — it derives from `settings.loadAll()`'s existing 3s snapshot.
-- **Backward compatibility is load-bearing:** no `region` = `IL`, and the legacy `vat_rate` is still read when `tax_rate` was never written. An existing Israeli tenant prices **identically** — pinned by test, because the alternative is silently repricing live businesses on deploy.
+- **Backward compatibility is load-bearing:** no `region` = `IL`, and the legacy `vat_rate` is still read when `tax_rate` was never written. An existing Israeli tenant prices **identically** — the alternative is silently repricing live businesses on deploy, a defect nobody notices until a customer argues about a receipt.
+- **`tests/il-pricing-frozen.test.js` is the guard, and its numbers were CAPTURED, not chosen.** A temporary A/B harness ran `main`'s `pricing.js` against the new one across 12 order shapes × 5 settings variants; all 61 comparisons matched, and those outputs are now frozen as the expectations. An inclusive-region total that moves off one of them is a regression whatever the reason. Verified to actually bite: making inclusive tenants charge tax on top turns 55 of the 60 red. **Never edit a number there to make a test pass** — add a case when a new pricing input appears.
 - **`pricing.js` adds the tax to the authoritative total in exclusive regions.** This is the only change here that alters what a card is charged. The model is judged on the **pre-tax subtotal** (it quotes from a pre-tax menu), and the server adds tax on whichever base survived that check — comparing its quote to a tax-inclusive total would flag every US order as a model error and drown the insight queue.
 - **`orders.tax_rate` + `orders.tax_amount` are frozen at order time**, exactly like `delivery_fee` and for the same reason: districts vote on levies, and a receipt reprinted next year must show the rate actually charged. ⚠️ **The migration (`supabase/migrations/2026-08-26-order-tax.sql`) must be applied BEFORE deploying** — `saveOrder` passes the object straight to `insert()`, so a missing column fails order creation.
 - **Dashboard:** הגדרות → "אזור ומטבע" (region + currency) and "מס" (model, rate, receipt label, tax-on-delivery). The tax card renders a **live worked example** — the same percentage produces different money in the two models, and a number alone does not show that. `tax_on_delivery` only appears in exclusive mode, where it is a real question.
