@@ -110,7 +110,7 @@ logs=data if isinstance(data,list) else data.get('logs',data.get('data',[]))
 
 # Before every push (MANDATORY)
 node --check public/app.js && node --check public/admin.js
-npm test -- --forceExit     # 422 tests across 24 suites; --forceExit avoids hanging on setInterval timers
+npm test -- --forceExit     # 433 tests across 24 suites; --forceExit avoids hanging on setInterval timers
 
 # Deploy (auto on push)
 git push origin main
@@ -164,7 +164,7 @@ pizza-bot/
 │   └── sw.js                     # Service Worker — push notifications only (no fetch caching)
 ├── supabase/schema.sql           # Full DB schema (documentation — NOT auto-applied, see Schema drift)
 ├── scripts/                      # backup/sync Render env, render-guard
-├── tests/                        # 24 suites / 422 tests — auth, sessions, admin bot, webhook routing
+├── tests/                        # 24 suites / 433 tests — auth, sessions, admin bot, webhook routing
 │                                 #   (incl. Meta), onboarding+draft, payments, audit, settings+overnight,
 │                                 #   meta-whatsapp parsing, slug, inbox/handoff, missed-call recovery
 ├── .design/jasell-dashboard/     # Design brief + review (Confident SaaS direction)
@@ -322,7 +322,8 @@ Two separate defects, both of which made an English-speaking customer read Hebre
 - `nameOf(row)` (menu rows) and `itemNameOf(it)` (order items, a JSONB snapshot that historically held only `name`) render by language. Before this, every render took `name_he` unconditionally: switching the dashboard to English still listed products in Hebrew even where a real English name existed.
 - ⚠️ Topping handlers (`toggleToppingByName`, `updateToppingPrice`, `deleteToppingByName`) and `_unavailableTag` match on **`name_he`** — those are lookup keys, not display. Only the visible text switches.
 - **מוצרים tab shows a coverage banner** in English mode listing rows with no English name. Without it a tenant who skipped the field finds out when a customer reads their order back in Hebrew.
-- Still open (plan item B3): `orders.items` stores only `name`, so historical orders cannot be shown in English — the longer this waits the more history is unrecoverable.
+- **`orders.items` now carries `name_he`/`name_en`** (2026-08-26). It is a JSONB snapshot that used to hold only `name` — the language the bot happened to be speaking — so a finished order could never be re-rendered in the other language, and no later fix could recover it (the menu row may have been renamed or deleted by then). `pricing.js` was already matching each item to its menu row for pricing and simply discarded the row; it now copies the names onto the stored item. **Additive only**: the original `name` is never rewritten, and an unmatched item is stored exactly as it arrived. Orders created before this stay Hebrew — that history is gone.
+- **`pricing.js` matches on EITHER name, and so does the stock check.** Once the public menu became bilingual, a US customer's WhatsApp message says "2× Family Pizza" — a Hebrew-only match would score every American order as `unmatched`, silently handing pricing authority back to the model on exactly the orders the server-side recompute exists for. The same applied to `ai-handler`'s mid-conversation availability injection: an English customer writing "no olives" never triggered it. That block exists precisely because a prompt instruction did not hold, so it has to hold in both languages or it only half-exists.
 
 ### Region, Currency & Tax (2026-08-26)
 

@@ -11,12 +11,12 @@
  */
 
 const mockProducts = [
-  { id: 'p1', name_he: 'פיצה משפחתית', price: 58 },
-  { id: 'p2', name_he: 'קולה',        price: 17 },
+  { id: 'p1', name_he: 'פיצה משפחתית', name_en: 'Family Pizza', price: 58 },
+  { id: 'p2', name_he: 'קולה',        name_en: 'קולה',         price: 17 },  // legacy backfill
 ];
 const mockAdditions = [
-  { name_he: 'זיתים',   price: 5, product_id: 'p1' },
-  { name_he: 'פטריות',  price: 6, product_id: 'p1' },
+  { name_he: 'זיתים',   name_en: 'Olives',    price: 5, product_id: 'p1' },
+  { name_he: 'פטריות',  name_en: '',          price: 6, product_id: 'p1' },  // never translated
 ];
 let mockSettings = {};
 
@@ -248,5 +248,119 @@ describe('tax by region', () => {
     const r = await authoritativeTotal({ ...pizza, total: 58 }, TID);
     expect(r.taxRate).toBe(9.5);
     expect(r.taxMode).toBe('exclusive');
+  });
+});
+
+/**
+ * Item name snapshots.
+ *
+ * orders.items is a JSONB snapshot that historically held only `name` — the
+ * language the bot happened to be speaking. So a finished order could never be
+ * shown in the other language, and no later fix could recover it: the menu row
+ * it came from may have been renamed or deleted by then. The match was already
+ * happening here for pricing; it just threw the row away.
+ */
+describe('item name enrichment', () => {
+  test('a matched item carries both names', async () => {
+    const r = await computeTotal([{ name: 'פיצה משפחתית', qty: 1 }], { delivery_method: 'pickup', tenantId: TID });
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].name).toBe('פיצה משפחתית');      // what the bot said, untouched
+    expect(r.items[0].name_he).toBe('פיצה משפחתית');
+    expect(r.items[0].name_en).toBe('Family Pizza');
+  });
+
+  test('a legacy backfilled row contributes no English name', async () => {
+    // name_en === name_he means "never translated", not "translates to itself".
+    const r = await computeTotal([{ name: 'קולה', qty: 1 }], { delivery_method: 'pickup', tenantId: TID });
+    expect(r.items[0].name_he).toBe('קולה');
+    expect(r.items[0]).not.toHaveProperty('name_en');
+  });
+
+  test('an unmatched item is stored exactly as it arrived', async () => {
+    // Never invent a name for something that is not on the menu.
+    const r = await computeTotal(
+      [{ name: 'משהו חדש בתפריט', qty: 1, price: 70 }],
+      { delivery_method: 'pickup', tenantId: TID },
+    );
+    expect(r.items[0]).toEqual({ name: 'משהו חדש בתפריט', qty: 1, price: 70 });
+  });
+
+  test('toppings are enriched too, and keep their portion', async () => {
+    const r = await computeTotal(
+      [{ name: 'פיצה משפחתית', qty: 1, toppings: [
+        { name: 'זיתים', portion: 'חצי' },
+        { name: 'פטריות' },
+      ] }],
+      { delivery_method: 'pickup', tenantId: TID },
+    );
+    const tops = r.items[0].toppings;
+    expect(tops[0]).toMatchObject({ name: 'זיתים', name_he: 'זיתים', name_en: 'Olives', portion: 'חצי' });
+    expect(tops[1]).toMatchObject({ name: 'פטריות', name_he: 'פטריות' });
+    expect(tops[1]).not.toHaveProperty('name_en');   // that topping has no English name
+  });
+
+  test('an item with no toppings does not gain an empty toppings array', async () => {
+    const r = await computeTotal([{ name: 'קולה', qty: 2 }], { delivery_method: 'pickup', tenantId: TID });
+    expect(r.items[0]).not.toHaveProperty('toppings');
+  });
+
+  test('enrichment never changes the money', async () => {
+    const withTops = [{ name: 'פיצה משפחתית', qty: 2, toppings: [{ name: 'זיתים', portion: 'חצי' }] }];
+    mockSettings = { delivery_price: 30, delivery_zones: [], topping_half_pct: 50 };
+    const r = await computeTotal(withTops, { delivery_method: 'pickup', tenantId: TID });
+    expect(r.itemsTotal).toBe(58 * 2 + 2.5 * 2);
+  });
+
+  test('authoritativeTotal passes the enriched items through', async () => {
+    const r = await authoritativeTotal(
+      { items: [{ name: 'פיצה משפחתית', qty: 1 }], delivery_method: 'pickup', total: 58 },
+      TID,
+    );
+    expect(r.items[0].name_en).toBe('Family Pizza');
+  });
+});
+
+/**
+ * Bilingual matching.
+ *
+ * The public menu composes the WhatsApp message in the customer's language, so
+ * a US order arrives saying "Family Pizza". Matching only on name_he would mark
+ * every American order unmatched — which silently hands pricing authority back
+ * to the model on exactly the orders this server-side recompute exists for.
+ */
+describe('matching by either name', () => {
+  test('an English item name resolves to the menu row and its price', async () => {
+    const r = await computeTotal([{ name: 'Family Pizza', qty: 1, price: 999 }],
+      { delivery_method: 'pickup', tenantId: TID });
+    expect(r.unmatched).toEqual([]);
+    expect(r.itemsTotal).toBe(58);              // menu price, not the model's 999
+    expect(r.items[0].name_he).toBe('פיצה משפחתית');
+    expect(r.items[0].name_en).toBe('Family Pizza');
+  });
+
+  test('an English topping name resolves too', async () => {
+    const r = await computeTotal(
+      [{ name: 'Family Pizza', qty: 1, toppings: [{ name: 'Olives', price: 999 }] }],
+      { delivery_method: 'pickup', tenantId: TID });
+    expect(r.unmatched).toEqual([]);
+    expect(r.itemsTotal).toBe(58 + 5);          // menu topping price
+    expect(r.items[0].toppings[0].name_he).toBe('זיתים');
+  });
+
+  test('a US order is priced and corrected end to end', async () => {
+    mockSettings = { region: 'US', tax_rate: 9.5, delivery_zones: [] };
+    const r = await authoritativeTotal(
+      { items: [{ name: 'Family Pizza', qty: 1 }], delivery_method: 'pickup', total: 40 },
+      TID);
+    expect(r.corrected).toBe(true);             // the model's 40 loses to the menu
+    expect(r.subtotal).toBe(58);
+    expect(r.total).toBeCloseTo(63.51, 2);      // plus LA sales tax
+  });
+
+  test('Hebrew matching is unchanged', async () => {
+    const r = await computeTotal([{ name: 'פיצה משפחתית', qty: 1 }],
+      { delivery_method: 'pickup', tenantId: TID });
+    expect(r.unmatched).toEqual([]);
+    expect(r.itemsTotal).toBe(58);
   });
 });

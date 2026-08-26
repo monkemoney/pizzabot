@@ -48,17 +48,24 @@ const _additionsCache = new Map(); // tenantId → {map: Map<normName, price>, t
 async function toppingPrices(tenantId, products) {
   const hit = _additionsCache.get(tenantId);
   if (hit && Date.now() - hit.time < ADDITIONS_TTL) return hit.map;
-  const map = new Map();
+  const map = new Map();   // normName → {price, name_he, name_en}
   try {
     const ids = (products || []).map((p) => p.id);
     if (ids.length) {
       const { data } = await db().from('product_additions')
-        .select('name_he, price').in('product_id', ids);
+        .select('name_he, name_en, price').in('product_id', ids);
       for (const a of data || []) {
         const n = norm(a.name_he);
         // Same topping across products: keep the lowest configured price so a
         // recompute can never inflate what the customer was quoted.
-        if (!map.has(n) || Number(a.price) < map.get(n)) map.set(n, Number(a.price));
+        const rec = { price: Number(a.price), name_he: a.name_he, name_en: a.name_en || '' };
+        // Indexed under both names for the same reason products are: the public
+        // menu now sends whichever one the customer was reading.
+        for (const key of [n, norm(a.name_en)]) {
+          if (!key) continue;
+          const prev = map.get(key);
+          if (!prev || rec.price < prev.price) map.set(key, rec);
+        }
       }
     }
   } catch (e) { console.error('[pricing] additions fetch:', e.message); }
@@ -68,6 +75,25 @@ async function toppingPrices(tenantId, products) {
 
 function norm(s) {
   return String(s || '').trim().toLowerCase().replace(/["'`־–—]/g, '').replace(/\s+/g, ' ');
+}
+
+/**
+ * A copy of `obj` carrying the matched menu row's names.
+ *
+ * Additive only: the original `name` is never rewritten, because it is what the
+ * customer and the bot actually said, and `name_en` is only set when the menu
+ * has a real one (the column used to be backfilled with the Hebrew name, so
+ * "has a translation" and "never got one" were indistinguishable).
+ */
+function withNames(obj, row) {
+  if (!row) return { ...obj };
+  const he = String(row.name_he || '').trim();
+  const en = String(row.name_en || '').trim();
+  return {
+    ...obj,
+    ...(he ? { name_he: he } : {}),
+    ...(en && en !== he ? { name_en: en } : {}),
+  };
 }
 
 /** portion → multiplier from tenant settings (default: partial costs full price). */
@@ -101,39 +127,59 @@ async function computeTotal(items = [], { delivery_method, address, tenantId } =
   const products = menu.main || [];
   const unmatched = [];
 
-  // name → price lookups (products carry their per-product additions separately;
-  // topping prices are matched across the tenant's whole addition set).
-  const productPrice = (name) => {
+  // name → menu row. Matched against BOTH names: since the public menu became
+  // bilingual, a US customer's WhatsApp message says "2× Family Pizza", so a
+  // Hebrew-only match would score every American order as unmatched — losing
+  // the server's pricing authority on exactly the orders it was built for.
+  const productRow = (name) => {
     const n = norm(name);
-    const hit = products.find((p) => norm(p.name_he) === n) ||
-                products.find((p) => n && (norm(p.name_he).includes(n) || n.includes(norm(p.name_he))));
-    return hit ? Number(hit.price) : null;
+    if (!n) return null;
+    const names = (p) => [norm(p.name_he), norm(p.name_en)].filter(Boolean);
+    return products.find((p) => names(p).includes(n)) ||
+           products.find((p) => names(p).some((x) => x.includes(n) || n.includes(x))) ||
+           null;
   };
 
   const toppingIndex = await toppingPrices(tenantId, products);
 
+  // The matched row's names are copied onto the item that gets STORED.
+  // orders.items is a JSONB snapshot that historically held only `name` — the
+  // language the bot happened to be speaking — so a finished order could never
+  // be rendered in the other language, and no later fix could recover it. The
+  // lookup was already happening here for pricing; it just threw the row away.
+  const enriched = [];
+
   let itemsTotal = 0;
   for (const it of items) {
     const qty = Number(it.qty || it.quantity || 1) || 1;
-    const base = productPrice(it.name || it.name_he);
-    if (base == null) {
+    const row = productRow(it.name || it.name_he);
+    if (!row) {
       unmatched.push(String(it.name || it.name_he || '?'));
       // Trust the model's line price for this item rather than dropping it.
       itemsTotal += (Number(it.price) || 0) * qty;
     } else {
-      itemsTotal += base * qty;
+      itemsTotal += Number(row.price) * qty;
     }
 
+    const tops = [];
     for (const top of it.toppings || []) {
       const tname = norm(top.name || top.name_he);
-      let tprice = toppingIndex.has(tname) ? toppingIndex.get(tname) : null;
+      const trow  = toppingIndex.get(tname) || null;
+      let tprice  = trow ? trow.price : null;
       if (tprice == null) {
         // Unknown topping: keep the model's price, note it.
         tprice = Number(top.price) || 0;
         if (tname) unmatched.push(`תוספת ${top.name || top.name_he}`);
       }
       itemsTotal += tprice * portionFactor(top.portion, allSettings) * qty;
+      tops.push(withNames(top, trow));
     }
+
+    // An unmatched item is stored exactly as it arrived — never invent a name.
+    enriched.push({
+      ...withNames(it, row),
+      ...((it.toppings || []).length ? { toppings: tops } : {}),
+    });
   }
 
   const deliveryFee = delivery_method === 'delivery' ? feeForAddress(address, allSettings) : 0;
@@ -151,6 +197,7 @@ async function computeTotal(items = [], { delivery_method, address, tenantId } =
     total, subtotal, tax, loc,
     taxRate: loc.taxRate, taxMode: loc.taxMode,
     deliveryFee, unmatched, itemsTotal,
+    items: enriched,
   };
 }
 
@@ -164,8 +211,8 @@ async function computeTotal(items = [], { delivery_method, address, tenantId } =
  * a tax-inclusive server total would instead flag every single US order as a
  * model error and drown the insight feed.
  *
- * Returns {total, subtotal, tax, taxRate, taxMode, deliveryFee, corrected,
- *          serverTotal, claimedTotal, unmatched, diff}.
+ * Returns {total, subtotal, tax, taxRate, taxMode, deliveryFee, items,
+ *          corrected, serverTotal, claimedTotal, unmatched, diff}.
  * Never throws — pricing must not be able to break order taking.
  */
 async function authoritativeTotal(payload, tenantId) {
@@ -197,6 +244,8 @@ async function authoritativeTotal(payload, tenantId) {
       taxRate: r.loc.taxRate,
       taxMode: r.loc.taxMode,
       deliveryFee: r.deliveryFee,
+      // Items carrying the matched menu row's names, for storing on the order.
+      items: r.items,
       corrected,
       serverTotal: r.total,
       claimedTotal: claimed,
@@ -207,7 +256,9 @@ async function authoritativeTotal(payload, tenantId) {
     console.error('[pricing] compute failed, keeping model total:', err.message);
     return {
       total: claimed, subtotal: claimed, tax: 0, taxRate: null, taxMode: null,
-      deliveryFee: null, corrected: false, serverTotal: null,
+      // No enrichment when the lookup failed — the caller keeps the original
+      // items rather than storing a half-populated snapshot.
+      deliveryFee: null, items: null, corrected: false, serverTotal: null,
       claimedTotal: claimed, unmatched: ['<error>'], diff: 0,
     };
   }

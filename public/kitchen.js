@@ -3,6 +3,18 @@
 // tr() comes from i18n.js (loaded before this script); guard just in case
 const TR = (str) => (typeof tr === 'function' ? tr(str) : str);
 
+// Order items are a JSONB snapshot; since 2026-08-26 a matched item also carries
+// name_he/name_en, so a finished order can be read in either language. An older
+// row has only `name` — there is nothing to switch to, and nothing is invented.
+function itemNameOf(it) {
+  if (!it) return '';
+  const he = (it.name_he || '').trim();
+  const en = (it.name_en || '').trim();
+  if (typeof LANG !== 'undefined' && LANG === 'en' && en && en !== he) return en;
+  return it.name || he || en || '';
+}
+
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 let _token = null;
 
@@ -60,10 +72,10 @@ function renderCard(order) {
     const qty   = it.quantity || it.qty || 1;
     // Portion-aware label — the kitchen must see "זיתים (חצי)" exactly as ordered
     const tops  = (it.toppings || [])
-      .map(t => { const n = t.name || t.name_he; return n && t.portion ? `${n} (${t.portion})` : n; })
+      .map(t => { const n = itemNameOf(t); return n && t.portion ? `${n} (${t.portion})` : n; })
       .filter(Boolean).join(', ');
     return `<li>
-      <span class="item-qty">×${qty}</span>${it.name || it.name_he}
+      <span class="item-qty">×${qty}</span>${itemNameOf(it)}
       ${tops ? `<span class="item-toppings">(${tops})</span>` : ''}
     </li>`;
   }).join('');

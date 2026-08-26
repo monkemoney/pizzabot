@@ -113,7 +113,7 @@ function stockDB() {
   return _stockSB;
 }
 const TOPPINGS_TTL = 3_000;
-const _toppingsCache = new Map(); // tenantId → { data: [{name_he,is_available}], time }
+const _toppingsCache = new Map(); // tenantId → { data: [{name_he,name_en,is_available}], time }
 async function getTenantToppings(tid) {
   const hit = _toppingsCache.get(tid);
   if (hit && Date.now() - hit.time < TOPPINGS_TTL) return hit.data;
@@ -121,7 +121,7 @@ async function getTenantToppings(tid) {
   const { data: tenantProds } = await sb.from('products').select('id').eq('tenant_id', tid);
   const productIds = (tenantProds || []).map((p) => p.id);
   const { data } = productIds.length
-    ? await sb.from('product_additions').select('name_he, is_available').in('product_id', productIds)
+    ? await sb.from('product_additions').select('name_he, name_en, is_available').in('product_id', productIds)
     : { data: [] };
   _toppingsCache.set(tid, { data: data || [], time: Date.now() });
   return data || [];
@@ -495,22 +495,33 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
       // a measurable latency hit under concurrent load.
       const allToppings = await toppingsPromise;
 
-      const mentioned = new Map(); // name → is_available (unavailable wins if mixed across products)
+      // Matched against BOTH names — an English customer writes "no olives", and
+      // a Hebrew-only scan would never fire the out-of-stock injection for them.
+      // This whole block exists because a prompt instruction did not hold; it
+      // has to hold in both languages or it only half-exists.
+      const mentioned = new Map(); // name_he → {ok, label} (unavailable wins across products)
       for (const a of allToppings || []) {
-        const name = a.name_he || '';
-        if (!name || !customerText.includes(name.toLowerCase())) continue;
-        mentioned.set(name, mentioned.has(name) ? (mentioned.get(name) && a.is_available) : a.is_available);
+        const he = (a.name_he || '').trim();
+        const en = (a.name_en || '').trim();
+        if (!he) continue;
+        const hitHe = customerText.includes(he.toLowerCase());
+        const hitEn = en && en !== he && customerText.includes(en.toLowerCase());
+        if (!hitHe && !hitEn) continue;
+        // Name the topping back in the language the customer used for it.
+        const label = hitEn && !hitHe ? en : he;
+        const prev  = mentioned.get(he);
+        mentioned.set(he, { ok: prev ? prev.ok && a.is_available : a.is_available, label });
       }
 
       if (mentioned.size > 0) {
-        const lines = [...mentioned.entries()]
-          .map(([name, ok]) => `- ${name}: ${ok ? 'זמינה במלאי' : 'אזלה — לא זמינה'}`)
+        const lines = [...mentioned.values()]
+          .map(({ label, ok }) => `- ${label}: ${ok ? 'זמינה במלאי' : 'אזלה — לא זמינה'}`)
           .join('\n');
         systemPrompt += `\n\nסטטוס מלאי עדכני לתוספות שהוזכרו בשיחה — נתון זה גובר על כל אמירה קודמת בשיחה (כולל הודעות קודמות שלך או של נציג):\n${lines}\nאם תוספת שסומנה קודם כחסרה מופיעה כאן כזמינה — היא חזרה למלאי ואפשר להציע אותה. תוספת שאינה זמינה אסור לכלול ב-SAVE_ORDER/CREATE_PAYMENT, ויש להציע חלופה.`;
         // Also attach to the current message — history full of stale "ran out"
         // statements otherwise outweighs a note at the end of the system prompt
         stockNote = `\n\n[עדכון מערכת — מלאי נבדק הרגע מול מסד הנתונים:\n${lines}\nזהו המצב הנכון כרגע, גם אם קודם בשיחה נאמר אחרת.]`;
-        console.log(`[ai-handler] availability status ${phone}: ${[...mentioned.entries()].map(([n,ok]) => `${n}=${ok}`).join(', ')}`);
+        console.log(`[ai-handler] availability status ${phone}: ${[...mentioned.entries()].map(([n, v]) => `${n}=${v.ok}`).join(', ')}`);
       }
     } catch (e) {
       console.error('[ai-handler] availability check error:', e.message);
@@ -636,7 +647,10 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
         phone,
         customer_name:   payload.customer_name   || null,
         customer_phone:  payload.customer_phone  || null,
-        items:           payload.items           || [],
+        // Enriched with the matched menu row's name_he/name_en so this order can
+        // be rendered in either language later. orders.items is a snapshot —
+        // whatever is not captured here is unrecoverable once the order is done.
+        items:           priced.items || payload.items || [],
         delivery_method: payload.delivery_method,
         address:         payload.address         || null,
         delivery_fee:    payload.delivery_method === 'delivery' ? priced.deliveryFee : 0,
@@ -747,6 +761,7 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
         returnValue,
         orderData:    {
           ...payload,
+          items: priced.items || payload.items || [],
           tenant_id: tid,
           total: priced.total,
           // Recorded at order time so a later change to the zone table — or to
