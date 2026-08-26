@@ -217,6 +217,15 @@ ${parts.join('\n')}
     }), lessonsText);
   }
 
+  // The tax model is a fact about the TENANT; the language is a fact about the
+  // CUSTOMER. A Hebrew-speaking customer at a Los Angeles business needs the
+  // same warning an English-speaking one does — a live eval caught the bot
+  // quoting "סה"כ: $58" to one, with $63.51 actually charged. Injected only in
+  // exclusive mode, so an inclusive tenant's prompt is byte-for-byte unchanged.
+  const heTaxBlock = loc.addsTaxAtCheckout
+    ? `\n\n${require('./prompt-en').taxRule(loc, 'he')}`
+    : '';
+
   const __base = `אתה ג׳אסל, מלצר-בוט של ${businessName}.${returningBlock}
 אתה מנהל שיחות ב-WhatsApp בדיוק כמו מלצר מקצועי במסעדה — חם, קצר, יעיל.
 
@@ -235,7 +244,7 @@ ${liveStatus}
 ══════════════════════════════════════════
 ${menuText}
 ══════════════════════════════════════════
-קישור לתפריט המלא עם תמונות: ${menuUrl}
+קישור לתפריט המלא עם תמונות: ${menuUrl}${heTaxBlock}
 
 ══════════════════════════════════════════
 אזורי משלוח ומחירים

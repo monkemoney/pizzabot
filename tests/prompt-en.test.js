@@ -188,3 +188,32 @@ describe('no Hebrew leaks into the English prompt', () => {
     expect(p).not.toContain('You are Jasell');
   });
 });
+
+describe('the tax rule follows the TENANT, in whichever language the customer speaks', () => {
+  /**
+   * The tax model is a fact about the business; the language is a fact about
+   * the person. They move independently, and putting the rule only in the
+   * English prompt assumed they moved together. A live eval caught it: a
+   * Hebrew-speaking customer at a Los Angeles business was quoted "סה"כ: $58"
+   * on an order the server charges $63.51 for.
+   */
+  test('a Hebrew customer at a US business is warned about tax, in Hebrew', async () => {
+    const p = await build(US, 'he');
+    expect(p).toContain('מחירי התפריט הם לפני מס');
+    expect(p).toContain('Sales Tax 9.5%');
+    expect(p).toMatch(/הסכום לפני מס \(פריטים \+ משלוח\)/);
+  });
+
+  test('an English customer at an Israeli business gets no tax warning', async () => {
+    // Inclusive pricing has nothing to warn about — the price is the price.
+    const p = await build(IL, 'en');
+    expect(p).toContain('tax is already included');
+    expect(p).not.toContain('BEFORE tax');
+  });
+
+  test('an inclusive tenant\'s Hebrew prompt gains nothing at all', async () => {
+    // Not even a blank line — the byte-for-byte freeze has to keep meaning it.
+    const p = await build(IL, 'he');
+    expect(p).not.toContain('לפני מס');
+  });
+});

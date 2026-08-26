@@ -98,6 +98,18 @@ async function buildMenuText(settingsObj, tenantId = DEFAULT_TENANT_ID, lang = n
     return `${cat.emoji} ${nameOf(cat)}:\n${lines}`;
   }).filter(Boolean);
 
+  // Toppings WITH their prices. They were filtered out entirely, so the bot had
+  // no way to know what one costs and simply guessed — a live eval caught it
+  // pricing mushrooms at 0, quoting the customer $62.99 on an order the server
+  // then charged $69.99 for. pricing.js protects the charge; nothing protected
+  // the quote, and a quote that is wrong by a topping is still a dispute.
+  const toppingCat = categories.find((c) => c.is_topping_addon);
+  const toppingItems = toppingCat ? (byCategory[toppingCat.id]?.items || []) : [];
+  if (toppingItems.length) {
+    const lines = toppingItems.map((p) => `• ${nameOf(p)} — ${money(p.price)}`).join('\n');
+    sections.push(`${toppingCat.emoji || '🧀'} ${nameOf(toppingCat)}:\n${lines}`);
+  }
+
   // The delivery line used to read "(לתל אביב בלבד)" — a hardcoded city that
   // stopped being true the moment delivery_zones existed. The zone table in the
   // prompt is the authority on where and for how much, so this line no longer

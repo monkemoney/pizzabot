@@ -110,7 +110,7 @@ logs=data if isinstance(data,list) else data.get('logs',data.get('data',[]))
 
 # Before every push (MANDATORY)
 node --check public/app.js && node --check public/admin.js
-npm test -- --forceExit     # 528 tests across 28 suites; --forceExit avoids hanging on setInterval timers
+npm test -- --forceExit     # 535 tests across 29 suites; --forceExit avoids hanging on setInterval timers
 
 # Deploy (auto on push)
 git push origin main
@@ -166,7 +166,7 @@ pizza-bot/
 │   └── sw.js                     # Service Worker — push notifications only (no fetch caching)
 ├── supabase/schema.sql           # Full DB schema (documentation — NOT auto-applied, see Schema drift)
 ├── scripts/                      # backup/sync Render env, render-guard
-├── tests/                        # 28 suites / 528 tests — auth, sessions, admin bot, webhook routing
+├── tests/                        # 29 suites / 535 tests — auth, sessions, admin bot, webhook routing
 │                                 #   (incl. Meta), onboarding+draft, payments, audit, settings+overnight,
 │                                 #   meta-whatsapp parsing, slug, inbox/handoff, missed-call recovery
 ├── .design/jasell-dashboard/     # Design brief + review (Confident SaaS direction)
@@ -309,7 +309,10 @@ ACTION blocks: `SET_AVAILABLE` (checks ALL occurrences of a name — standalone 
 - **C5 — the tax rule is explicit about two different numbers.** In an exclusive region the bot must say a quoted total is pre-tax (quoting $12.99 and charging $14.22 is a dispute), *and* keep the ACTION's `total` PRE-TAX, because `pricing.js` compares the model's number against the server's pre-tax subtotal and adds the tax itself. Without that second half the customer is taxed twice.
 - **Three leaks got past the structural tests and were only caught by reading the rendered prompt**: the live-state block (the one section the prompt says to answer from *exclusively*), the zone ETA suffix, and the greeting questions — the bot's literal first message. `tests/prompt-en.test.js` now asserts a fully configured US tenant produces no Hebrew letter at all, across returning-customer, closed-business and no-delivery variants. That guard then found a fourth: an unconfigured tenant had **`'תל אביב'` hardcoded** as the delivery-city fallback, putting another business's city in their bot's mouth. Now stated as unconfigured — same rule as the WhatsApp number.
 - `buildMenuText()` takes a language, renders `name_en` where a real one exists, and no longer claims delivery is "(לתל אביב בלבד)" — a hardcoded city that stopped being true the moment `delivery_zones` existed.
-- ⚠️ **Not yet validated against the training network.** The prompt is structurally tested but has not been scored by `training/` — that costs Anthropic credits and is the tenant's call.
+- **Validated against the real model (2026-08-26, ~$2.50).** Three conversations through the real `buildSystemPrompt` + production Opus, with a US tenant config supplied by the harness rather than written to settings (menu read from Supabase read-only, conversation in memory — same footprint as `training/lib/order-bot.js`). It found two defects that every structural test had passed:
+  - **The tax rule was only in the English prompt.** The tax model is a fact about the TENANT; the language is a fact about the CUSTOMER — they move independently, and putting the rule in one prompt assumed they moved together. A Hebrew-speaking customer at a Los Angeles business was quoted `סה"כ: $58` on an order the server charges $63.51 for. Now injected into the Hebrew prompt too, but **only in exclusive mode**, so an inclusive tenant's prompt stays byte-for-byte unchanged and the freeze keeps meaning what it says.
+  - **The bot had never been shown topping prices.** `buildMenuText` filtered the topping-addon category out entirely, so the model guessed — it priced mushrooms at 0 and quoted $62.99 on an order the server charged $69.99 for. `pricing.js` protected the charge; nothing protected the QUOTE, and a quote wrong by a topping is still a dispute. Toppings now appear with prices; the re-run quoted the correct $69.99 with `corrected: false`.
+  - The run also confirmed the bilingual matching from B3 doing real work: the model emitted `"name": "Mushrooms"` in English and the server still matched it (`unmatched: []`). Before that fix it would have kept the model's price of 0.
 - ⚠️ The live-state block still reports **Israel time** for every tenant. The label no longer claims otherwise, but the value is wrong for a US tenant until D3 (per-tenant timezone) lands.
 
 ### Attributes, Exports & Phone Numbers (2026-08-26)
