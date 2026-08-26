@@ -110,7 +110,7 @@ logs=data if isinstance(data,list) else data.get('logs',data.get('data',[]))
 
 # Before every push (MANDATORY)
 node --check public/app.js && node --check public/admin.js
-npm test -- --forceExit     # 495 tests across 25 suites; --forceExit avoids hanging on setInterval timers
+npm test -- --forceExit     # 509 tests across 26 suites; --forceExit avoids hanging on setInterval timers
 
 # Deploy (auto on push)
 git push origin main
@@ -143,6 +143,7 @@ pizza-bot/
 │   │   ├── menu-service.js       # Live products from DB, 3s TTL cache
 │   │   ├── status-notifier.js    # Customer + courier WhatsApp notifications on status change
 │   │   ├── locale.js             # Per-tenant region/currency/tax model (IL inclusive | US exclusive)
+│   │   ├── phone.js              # E.164 normalisation; dial code per tenant (also a comparison key)
 │   │   ├── slug.js               # Business-name slugs for public menu URLs (Hebrew transliteration)
 │   │   ├── sse.js                # SSE broker — Map<tenantId, Set<res>>, broadcast(), subscribe();
 │   │   │                         #   25s keepalive is a REAL 'ping' event (client heartbeat), not a comment
@@ -164,7 +165,7 @@ pizza-bot/
 │   └── sw.js                     # Service Worker — push notifications only (no fetch caching)
 ├── supabase/schema.sql           # Full DB schema (documentation — NOT auto-applied, see Schema drift)
 ├── scripts/                      # backup/sync Render env, render-guard
-├── tests/                        # 25 suites / 495 tests — auth, sessions, admin bot, webhook routing
+├── tests/                        # 26 suites / 509 tests — auth, sessions, admin bot, webhook routing
 │                                 #   (incl. Meta), onboarding+draft, payments, audit, settings+overnight,
 │                                 #   meta-whatsapp parsing, slug, inbox/handoff, missed-call recovery
 ├── .design/jasell-dashboard/     # Design brief + review (Confident SaaS direction)
@@ -296,6 +297,16 @@ ACTION blocks: `SET_AVAILABLE` (checks ALL occurrences of a name — standalone 
 - `ADMIN:OVERRIDE:{state,hours}` (≤24h, default 3) / `{cancel:true}`; prompt rules route temporary/out-of-hours requests to OVERRIDE and keep `SET is_open` for permanent kill.
 - **Closed loop:** every open/delivery-touching action (SET is_open/delivery_enabled, both HOURS actions, OVERRIDE) is followed by a read-back of the effective state, appended as "📍 מצב בפועל: …"; flag-on-but-outside-hours adds a hint to use the override. Success is reported from the outcome, never the write.
 - Dashboard: settings page shows an effective-state banner (`GET /api/settings` returns `_effective {open, delivery, override}`; `_`-prefixed keys are never persisted by PATCH) with an override chip + "בטל חריגה".
+
+### Attributes, Exports & Phone Numbers (2026-08-26)
+
+Three leftovers from the localisation sweep, all of the same shape: a mechanism that covered the common case and silently skipped the rest.
+
+- **Attributes translate with no opt-in marker.** `i18n.js` only ever translated `textContent`, so 19 `title` attributes and 13 `placeholder`s stayed Hebrew — nobody forgot a marker, the marker never existed for attributes. `translateAttrs(root)` now translates `title`/`aria-label`/`placeholder` straight from `HE2EN` at DOMContentLoaded (and is exported for markup rendered later). **Having a dictionary entry IS the opt-in**; a value with no entry is left alone, so a business name or address in an attribute is never touched. Attributes built inside template literals still wrap inline with `TR()` — they are not in the DOM when the pass runs. The audit enforces the contract, and the language toggle's `title="English / עברית"` carries an explicit identity entry — considered, not forgotten.
+- **The CSV export leaked Hebrew under translated headers.** `statusHe` was a second, untranslated copy of `STATUS_LABELS`; the column values bypassed `TR` entirely while the headers above them were translated. Deleted — there is one status vocabulary now. The filename was Hebrew too.
+- **`services/phone.js` is the single phone normaliser.** The rule lived twice, character for character, in `greenapi.js` and `meta-whatsapp.js`, and both were Israel-only (`startsWith('0') && length === 10 → '972' + …`). That rule is *safe* for a US number — an area code cannot begin with 0 — but not *sufficient*: a US number arrives as ten bare digits and WhatsApp needs the country code, so an American tenant's messages would have gone to a malformed recipient. The dial code comes from `resolveLocale()` and defaults to Israel, so every existing call is unchanged.
+  - ⚠️ **The output is a COMPARISON KEY as well as a destination** — `call-events.js` matches a caller against couriers and the forward number on it. Every number in one comparison must be normalised with the SAME dial code, or equal numbers stop looking equal. That file resolves the dial code once and funnels all of them through one `fmt()`.
+  - An unrecognised length is passed through untouched rather than guessed at, for the same reason.
 
 ### Onboarding Wizard Localisation (2026-08-26)
 

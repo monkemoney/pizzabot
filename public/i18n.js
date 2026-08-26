@@ -306,6 +306,23 @@ const HE2EN = {
   'פריטים בתפריט בלי שם באנגלית': 'menu items have no English name',
   'הם יוצגו בעברית ללקוחות שמזמינים באנגלית. פתח כל פריט ומלא את שדה השם באנגלית.':
     'They will show in Hebrew to customers ordering in English. Open each one and fill in its English name.',
+  // ── Tooltips, aria-labels and placeholders (2026-08-26) ──────────────────
+  // These translate without an opt-in marker; an entry here IS the opt-in.
+  'תפריט': 'Menu',
+  'English / עברית': 'English / עברית',   // the language toggle names both, deliberately
+  'התראות push': 'Push notifications',
+  'הזמנות חדשות': 'New orders',
+  'מצב לילה/יום': 'Dark / light mode',
+  'ייצוא הזמנות מסוננות לאקסל': 'Export the filtered orders to Excel',
+  'אפס לברירת מחדל': 'Reset to default',
+  'הדפסת קבלה': 'Print receipt',
+  'עריכה': 'Edit',
+  'מחלוקת פתוחה': 'Open dispute',
+  'פריט חסר': 'Missing item',
+  'ביטול': 'Cancel',
+  // Example placeholders — a US tenant should not be shown Israeli samples.
+  'ישראל ישראלי': 'Jane Smith',
+  'פיצות': 'Pizzas',
   // Login page
   'שם משתמש': 'Username', 'סיסמא': 'Password', 'כניסה': 'Sign in', 'מתחבר...': 'Signing in...',
   'שגיאת כניסה': 'Sign-in failed',
@@ -339,6 +356,25 @@ function toggleLang() {
   setLang(LANG === 'en' ? 'he' : 'en');
 }
 
+/**
+ * Translate title / aria-label / placeholder inside `root`.
+ *
+ * Only values that have a dictionary entry are touched, so a business name or a
+ * customer's address in an attribute is left alone. Exported for markup
+ * rendered after load — call it on the container you just filled.
+ */
+function translateAttrs(root) {
+  if (LANG !== 'en' || !root) return;
+  for (const attr of ['title', 'aria-label', 'placeholder']) {
+    root.querySelectorAll(`[${attr}]`).forEach((el) => {
+      const v = (el.getAttribute(attr) || '').trim();
+      if (!v) return;
+      const hit = HE2EN[v];
+      if (hit) el.setAttribute(attr, hit);
+    });
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('[data-i18n]').forEach((el) => {
     const key = el.dataset.i18n;
@@ -356,5 +392,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('[data-tr-placeholder]').forEach((el) => {
       el.placeholder = tr(el.placeholder.trim());
     });
+
+    // Attributes translate WITHOUT an opt-in marker: a tooltip's Hebrew IS its
+    // key, so having an entry in HE2EN is the opt-in. Requiring data-tr on each
+    // one is why 19 title attributes and 13 placeholders stayed Hebrew — the
+    // mechanism only ever covered textContent, and nobody remembered the rest.
+    translateAttrs(document);
   }
 });

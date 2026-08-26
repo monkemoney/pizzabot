@@ -442,10 +442,6 @@ function exportOrdersCSV() {
 
   if (!list.length) { showToast(TR('אין הזמנות לייצוא')); return; }
 
-  const statusHe = {
-    new:'חדשה', preparing:'בהכנה', ready:'מוכן', out_for_delivery:'יצא למשלוח',
-    delivered:'נמסרה', done:'הסתיימה', cancelled:'בוטלה',
-  };
 
   const headers = [
     TR('מספר הזמנה'),TR('תאריך'),TR('שעה'),TR('שם לקוח'),TR('טלפון'),
@@ -479,7 +475,7 @@ function exportOrdersCSV() {
       o.address || '',
       o.payment_method === 'cash' ? TR('מזומן') : o.payment_method === 'bit' ? 'Bit' : TR('אשראי'),
       o.payment_status === 'paid'  ? TR('שולם')  : TR('ממתין'),
-      statusHe[o.status] || o.status || '',
+      STATUS_LABELS[o.status] || o.status || '',
       items,
       toppings,
       (parseFloat(o.total_price)||0).toFixed(2),
@@ -493,7 +489,7 @@ function exportOrdersCSV() {
   const url  = URL.createObjectURL(blob);
   const a    = Object.assign(document.createElement('a'), {
     href:     url,
-    download: `הזמנות_${new Date().toISOString().slice(0,10)}.csv`,
+    download: `${TR('הזמנות')}_${new Date().toISOString().slice(0,10)}.csv`,
   });
   document.body.appendChild(a);
   a.click();
@@ -526,15 +522,15 @@ function renderOrderCard(o) {
         style="flex:1;padding:8px 10px;border-radius:10px;border:2px solid var(--border);font-family:inherit;font-size:.8rem;cursor:pointer">
         ${statusOpts}
       </select>
-      <button onclick="openOrderEdit('${o.id}')" title="עריכה"
+      <button onclick="openOrderEdit('${o.id}')" title="${TR('עריכה')}"
         style="background:var(--color-bg);border:none;border-radius:10px;padding:8px 12px;cursor:pointer;color:var(--text);display:flex;align-items:center">${SVG.edit}</button>
-      <button onclick="printOrder('${o.id}')" title="הדפסת קבלה"
+      <button onclick="printOrder('${o.id}')" title="${TR('הדפסת קבלה')}"
         style="background:#f0fdf4;border:none;border-radius:10px;padding:8px 12px;cursor:pointer;color:#16a34a;display:flex;align-items:center">${SVG.printer}</button>
       ${!['cancelled','done'].includes(o.status) ? `
       ${o.dispute_status === 'pending'
-        ? `<span title="מחלוקת פתוחה" style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:8px 12px;color:#d97706;display:flex;align-items:center;cursor:default">${SVG.alertTriangle}</span>`
-        : `<button onclick="openDisputeModal('${o.id}')" title="פריט חסר" style="background:#fffbeb;border:none;border-radius:10px;padding:8px 12px;cursor:pointer;color:#d97706;display:flex;align-items:center">${SVG.alertTriangle}</button>`}
-      <button onclick="openCancelRefundModal('${o.id}')" title="ביטול" style="background:#fff0f6;border:none;border-radius:10px;padding:8px 12px;cursor:pointer;color:#e0004d;display:flex;align-items:center">${SVG.xCircle}</button>` : ''}
+        ? `<span title="${TR('מחלוקת פתוחה')}" style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:8px 12px;color:#d97706;display:flex;align-items:center;cursor:default">${SVG.alertTriangle}</span>`
+        : `<button onclick="openDisputeModal('${o.id}')" title="${TR('פריט חסר')}" style="background:#fffbeb;border:none;border-radius:10px;padding:8px 12px;cursor:pointer;color:#d97706;display:flex;align-items:center">${SVG.alertTriangle}</button>`}
+      <button onclick="openCancelRefundModal('${o.id}')" title="${TR('ביטול')}" style="background:#fff0f6;border:none;border-radius:10px;padding:8px 12px;cursor:pointer;color:#e0004d;display:flex;align-items:center">${SVG.xCircle}</button>` : ''}
     </div>
     ${o.refund_status==='manual'?`
     <a href="https://secure.cardcom.solutions" target="_blank"

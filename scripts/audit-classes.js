@@ -332,7 +332,47 @@ function pageDictCoverage() {
   return PAGE_DICTS.flatMap(pageCoverage);
 }
 
-const CUSTOM_CHECKS = [i18nCoverage, hardcodedCurrency];
+/**
+ * A Hebrew tooltip, aria-label or placeholder with no dictionary entry.
+ *
+ * The i18n mechanism only ever covered textContent, so 19 title attributes and
+ * 13 placeholders sat untranslated for a year — nobody forgot a marker, the
+ * marker never existed for attributes. i18n.js now translates them from the
+ * dictionary with no opt-in needed, which makes "has an entry" the whole
+ * contract; this check enforces it.
+ */
+function attrCoverage() {
+  const { keys } = he2enKeys();
+  const violations = [];
+  const FILES = ['public/dashboard.html', 'public/kitchen.html', 'public/index.html', 'public/app.js', 'public/kitchen.js'];
+
+  for (const rel of FILES) {
+    const full = path.join(ROOT, rel);
+    if (!fs.existsSync(full)) continue;
+    const src = fs.readFileSync(full, 'utf8');
+    const missing = new Set();
+    for (const attr of ['title', 'aria-label', 'placeholder']) {
+      // Match the whole tag so the key-based markers on it are visible: an
+      // element carrying data-i18n-placeholder is translated by KEY, not by its
+      // Hebrew, and is already covered.
+      const rx = new RegExp(`<[^>]*\\b${attr}="([^"]*)"[^>]*>`, 'g');
+      let m;
+      while ((m = rx.exec(src))) {
+        const v = (m[1] || '').trim();
+        // A value built from a template expression is translated at render time.
+        if (!v || v.includes('${') || !HEB.test(v)) continue;
+        if (/data-(i18n|tr)-placeholder/.test(m[0])) continue;
+        if (!keys.has(v)) missing.add(`${attr}="${v}"`);
+      }
+    }
+    for (const v of missing) {
+      violations.push(`[i18n: untranslated attribute] ${rel}: ${v} — add its Hebrew to HE2EN in public/i18n.js (attributes translate from the dictionary; no marker needed).`);
+    }
+  }
+  return violations;
+}
+
+const CUSTOM_CHECKS = [i18nCoverage, attrCoverage, hardcodedCurrency];
 
 function jsFiles(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

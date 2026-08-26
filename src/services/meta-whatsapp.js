@@ -24,15 +24,12 @@ function authHeaders(creds) {
 }
 
 // Meta wants E.164 digits, no '+', no '@c.us' suffix.
-function formatPhone(raw) {
-  if (!raw) return raw;
-  let phone = raw.split('@')[0].trim().replace(/\D/g, '');
-  if (phone.startsWith('0') && phone.length === 10) phone = '972' + phone.slice(1);
-  return phone;
+function formatPhone(raw, dialCode) {
+  return require('./phone').normalize(raw, dialCode);
 }
 
 async function sendMessage(phone, message, creds = ENV_CREDS) {
-  const to = formatPhone(phone);
+  const to = formatPhone(phone, creds?.dialCode);
   try {
     const r = await axios.post(
       apiUrl(`${creds.phoneNumberId}/messages`),
@@ -53,7 +50,7 @@ async function sendMessage(phone, message, creds = ENV_CREDS) {
  * missed-call recovery). params become {{1}},{{2}},... body variables.
  */
 async function sendTemplate(phone, templateName, langCode = 'he', params = [], creds = ENV_CREDS) {
-  const to = formatPhone(phone);
+  const to = formatPhone(phone, creds?.dialCode);
   const template = { name: templateName, language: { code: langCode } };
   if (Array.isArray(params) && params.length) {
     template.components = [{
@@ -82,7 +79,7 @@ async function sendTemplate(phone, templateName, langCode = 'he', params = [], c
  * Meta limits: max 10 rows total across max 10 sections.
  */
 async function sendList(phone, { header, body, buttonText, rows }, creds = ENV_CREDS) {
-  const to = formatPhone(phone);
+  const to = formatPhone(phone, creds?.dialCode);
   const trimmedRows = rows.slice(0, 10).map((r) => ({
     id: r.id.slice(0, 200),
     title: r.title.slice(0, 24),
@@ -148,7 +145,7 @@ async function sendToppingsList(phone, lang = 'he', toppingOptions = [], creds =
  * buttons: [{ id, title }]
  */
 async function sendButtons(phone, { body, buttons }, creds = ENV_CREDS) {
-  const to = formatPhone(phone);
+  const to = formatPhone(phone, creds?.dialCode);
   try {
     const r = await axios.post(
       apiUrl(`${creds.phoneNumberId}/messages`),

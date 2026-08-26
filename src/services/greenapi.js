@@ -14,31 +14,44 @@ const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-0000
 // (meta_phone_number_id + meta_access_token, seeded during onboarding).
 // Tenants without Meta creds stay on Green API.
 async function _metaCreds(tenantId) {
+  // dialCode rides along with the creds: meta-whatsapp's senders only ever see
+  // this object, and a US tenant's ten-digit recipient needs its country code.
+  const dialCode = await _dialCode(tenantId);
   if (!tenantId || tenantId === DEFAULT_TENANT_ID) {
-    return metaWA.ENV_CREDS.phoneNumberId && metaWA.ENV_CREDS.accessToken ? metaWA.ENV_CREDS : null;
+    return metaWA.ENV_CREDS.phoneNumberId && metaWA.ENV_CREDS.accessToken
+      ? { ...metaWA.ENV_CREDS, dialCode } : null;
   }
   const settings = require('./settings');
   const [phoneNumberId, accessToken] = await Promise.all([
     settings.get('meta_phone_number_id', tenantId).catch(() => null),
     settings.get('meta_access_token', tenantId).catch(() => null),
   ]);
-  return phoneNumberId && accessToken ? { phoneNumberId, accessToken } : null;
+  return phoneNumberId && accessToken ? { phoneNumberId, accessToken, dialCode } : null;
 }
 
 function apiUrl(method, instanceId = INSTANCE_ID, token = TOKEN) {
   return `${BASE_URL}/waInstance${instanceId}/${method}/${token}`;
 }
 
-function formatPhone(raw) {
-  if (!raw) return raw;
-  let phone = raw.split('@')[0].trim().replace(/\D/g, '');
-  if (phone.startsWith('0') && phone.length === 10) phone = '972' + phone.slice(1);
-  return phone;
+// Delegates to services/phone.js — this logic existed here AND in
+// meta-whatsapp.js, character for character, and both were Israel-only.
+// dialCode defaults to Israel so every existing caller is unchanged.
+function formatPhone(raw, dialCode) {
+  return require('./phone').normalize(raw, dialCode);
 }
 
-function toChatId(phone) {
-  const bare = formatPhone(phone);
+function toChatId(phone, dialCode) {
+  const bare = formatPhone(phone, dialCode);
   return bare.includes('@') ? bare : `${bare}@c.us`;
+}
+
+/** The tenant's dial code, for normalising a number the way THEY write it. */
+async function _dialCode(tenantId) {
+  try {
+    const settings = require('./settings');
+    const { resolveLocale } = require('./locale');
+    return resolveLocale(await settings.loadAll(tenantId)).dialCode;
+  } catch { return require('./phone').DEFAULT_DIAL; }
 }
 
 // Resolve Green API credentials for a tenant.
@@ -63,7 +76,7 @@ async function sendMessage(phone, message, tenantId = null) {
   const meta = await _metaCreds(tenantId);
   if (meta) return metaWA.sendMessage(phone, message, meta);
 
-  const chatId = toChatId(phone);
+  const chatId = toChatId(phone, meta ? undefined : await _dialCode(tenantId));
   const { instanceId, token } = await _tenantCreds(tenantId);
   try {
     const r = await axios.post(apiUrl('sendMessage', instanceId, token), { chatId, message });
@@ -362,5 +375,5 @@ module.exports = {
   sendMessage, sendTemplate, sendListMessage, sendMenuList, sendCategoryPoll,
   sendToppingsPoll, sendPoll, resolveCategoryVote,
   isControlOption, CTRL_CONFIRM, CTRL_BACK, CTRL_NO_TOP,
-  sendButtons, sendInteractiveButtons, sendInteractiveList, formatPhone, toChatId, setWebhook,
+  sendButtons, sendInteractiveButtons, sendInteractiveList, formatPhone, toChatId, setWebhook, _dialCode,
 };

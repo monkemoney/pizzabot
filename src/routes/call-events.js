@@ -112,9 +112,15 @@ function parseCallEvents(body) {
 async function processCallEvents(tenantId, events) {
   const all = await settings.loadAll(tenantId);
 
-  const forwardPhone = greenapi.formatPhone(all.missed_call_forward_number || '') || null;
+  // These numbers are COMPARISON KEYS (is this caller the forward target? a
+  // courier?), so every one of them must be normalised with the SAME dial code
+  // — otherwise equal numbers stop looking equal for a non-Israeli tenant.
+  const dial = require('../services/locale').resolveLocale(all).dialCode;
+  const fmt  = (v) => greenapi.formatPhone(v || '', dial);
+
+  const forwardPhone = fmt(all.missed_call_forward_number) || null;
   const couriers = (Array.isArray(all.couriers) ? all.couriers : [])
-    .map((c) => greenapi.formatPhone(c?.phone || ''))
+    .map((c) => fmt(c?.phone))
     .filter(Boolean);
 
   const throttleHours = Number(all.missed_call_throttle_hours) > 0
@@ -122,7 +128,7 @@ async function processCallEvents(tenantId, events) {
   const throttleMs = throttleHours * 60 * 60 * 1000;
 
   for (const event of events) {
-    const caller = greenapi.formatPhone(event.caller || '');
+    const caller = fmt(event.caller);
     const callerOk = caller && /^\d{9,15}$/.test(caller);
 
     // Every event lands in call_events with its outcome — the KPI funnel
@@ -188,11 +194,11 @@ async function processCallEvents(tenantId, events) {
     let sent = false;
     try {
       if (channel === 'sms') {
-        const waDigits = greenapi.formatPhone(all.bot_whatsapp || '');
+        const waDigits = fmt(all.bot_whatsapp);
         const waLink   = waDigits ? ` https://wa.me/${waDigits}` : '';
         const smsText  = all.missed_call_sms_text ||
           `היי, התקשרתם ${all.business_name ? 'ל' + all.business_name : 'אלינו'} ולא הספקנו לענות. אפשר לכתוב לנו בוואטסאפ ונענה מיד:${waLink}`;
-        const source   = greenapi.formatPhone(all.missed_call_sms_sender || all.bot_whatsapp || '');
+        const source   = fmt(all.missed_call_sms_sender || all.bot_whatsapp);
         await sms.sendSms(caller, smsText, source, tenantId);
       } else {
         await greenapi.sendTemplate(
