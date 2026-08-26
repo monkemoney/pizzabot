@@ -1036,7 +1036,7 @@ function renderCategory(cat, canOrder) {
     <div class="cat-section" id="cat-${cat.id}">
       <div class="cat-header">
         <span class="cat-emoji">${escHtml(cat.emoji || '🍽️')}</span>
-        <span class="cat-name">${escHtml(cat.name_he)}</span>
+        <span class="cat-name">${escHtml(nameOf(cat))}</span>
       </div>
       ${items}
     </div>`;
@@ -1102,7 +1102,7 @@ function addToCart(product, qty, toppings) {
 /* ── Builder ── */
 function openBuilder(product) {
   builderState = { product, qty: 1, toppings: new Map() };
-  document.getElementById('builderTitle').textContent = product.name_he;
+  document.getElementById('builderTitle').textContent = nameOf(product);
   document.getElementById('qtyVal').textContent = '1';
   renderBuilderToppings();
   updateBuilderPrice();
@@ -1123,7 +1123,7 @@ function renderBuilderToppings() {
         <div class="topping-row-main">
           <span class="topping-name-wrap">
             <span class="topping-check">✓</span>
-            <span class="topping-name">${escHtml(a.name_he)}</span>
+            <span class="topping-name">${escHtml(nameOf(a))}</span>
           </span>
           <span class="topping-price">+${fmtPrice(sel ? toppingCost(a.price, portion) : a.price)}</span>
         </div>
@@ -1182,7 +1182,7 @@ function builderToppingsArr() {
   const out = [];
   for (const [id, cfg] of builderState.toppings) {
     const a = p.additions.find((x) => x.id === id);
-    if (a) out.push({ id: a.id, name: a.name_he, price: a.price, portion: cfg.portion || '', side: cfg.side || '' });
+    if (a) out.push({ id: a.id, name: nameOf(a), name_he: a.name_he, price: a.price, portion: cfg.portion || '', side: cfg.side || '' });
   }
   return out;
 }
