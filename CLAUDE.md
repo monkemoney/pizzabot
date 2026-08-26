@@ -110,7 +110,7 @@ logs=data if isinstance(data,list) else data.get('logs',data.get('data',[]))
 
 # Before every push (MANDATORY)
 node --check public/app.js && node --check public/admin.js
-npm test -- --forceExit     # 509 tests across 26 suites; --forceExit avoids hanging on setInterval timers
+npm test -- --forceExit     # 528 tests across 28 suites; --forceExit avoids hanging on setInterval timers
 
 # Deploy (auto on push)
 git push origin main
@@ -129,7 +129,8 @@ pizza-bot/
 │   │   ├── ai-handler.js         # Customer bot: dispute handler, stale-session guard, availability
 │   │   │                         #   injection, human-handoff intercept, Claude, ACTIONs
 │   │   ├── admin-handler.js      # Admin bot: Claude with live state, dispatches ADMIN: ACTION blocks
-│   │   ├── prompts.js            # Customer system prompt — waiter flow, live-state block, zones
+│   │   ├── prompts.js            # Customer system prompt (he) — waiter flow, live-state block, zones
+│   │   ├── prompt-en.js          # English sibling prompt; ACTION spec shared with prompts.js
 │   │   └── menu.js               # Legacy static menu helpers (mostly unused)
 │   ├── services/
 │   │   ├── claude.js             # Anthropic SDK wrapper, prompt caching, api_usage logging
@@ -165,7 +166,7 @@ pizza-bot/
 │   └── sw.js                     # Service Worker — push notifications only (no fetch caching)
 ├── supabase/schema.sql           # Full DB schema (documentation — NOT auto-applied, see Schema drift)
 ├── scripts/                      # backup/sync Render env, render-guard
-├── tests/                        # 26 suites / 509 tests — auth, sessions, admin bot, webhook routing
+├── tests/                        # 28 suites / 528 tests — auth, sessions, admin bot, webhook routing
 │                                 #   (incl. Meta), onboarding+draft, payments, audit, settings+overnight,
 │                                 #   meta-whatsapp parsing, slug, inbox/handoff, missed-call recovery
 ├── .design/jasell-dashboard/     # Design brief + review (Confident SaaS direction)
@@ -297,6 +298,19 @@ ACTION blocks: `SET_AVAILABLE` (checks ALL occurrences of a name — standalone 
 - `ADMIN:OVERRIDE:{state,hours}` (≤24h, default 3) / `{cancel:true}`; prompt rules route temporary/out-of-hours requests to OVERRIDE and keep `SET is_open` for permanent kill.
 - **Closed loop:** every open/delivery-touching action (SET is_open/delivery_enabled, both HOURS actions, OVERRIDE) is followed by a read-back of the effective state, appended as "📍 מצב בפועל: …"; flag-on-but-outside-hours adds a hint to use the override. Success is reported from the outcome, never the write.
 - Dashboard: settings page shows an effective-state banner (`GET /api/settings` returns `_effective {open, delivery, override}`; `_`-prefixed keys are never persisted by PATCH) with an override chip + "בטל חריגה".
+
+### Bot Language & Tax Quoting (2026-08-26)
+
+`prompts.js:193` said *"language rule: default Hebrew"*, and all 174 lines of the prompt were Hebrew. The bot only switched once a customer wrote English first — so an American tenant's bot greeted every customer in Hebrew.
+
+- **`src/bot/prompt-en.js` is a sibling prompt, not a translation layer — but only for the PROSE.** The ACTION-block specification is generated once by `actionSpec()` and used by both languages, because that is where a divergence is not a wording difference but a broken order: the handler parses those JSON shapes, and a field name that drifts in one language stops orders working for those customers only. Tests assert both prompts carry identical field names, ACTION types and `payment_method` values.
+- **`tests/prompt-he-frozen.test.js` pins the Hebrew prompt byte-for-byte** against a snapshot captured before the English work. It earned itself immediately: routing zone fees through `formatMoney()` turned `30₪` into `‏30.00 ‏₪` — Intl emits directional marks and forces decimals — which would have changed how the live Israeli bot quotes every price, and embedded invisible characters in what it says. Hence `promptMoney()` in `locale.js`: compact money for prompt text, distinct from `formatMoney()` for screens.
+- **Language follows the tenant, and the customer overrides it.** `buildSystemPrompt(profile, tenantId, lang)` — `ai-handler` passes the `lang` it already resolved and persisted, so the prompt is built in the language the reply will be written in.
+- **C5 — the tax rule is explicit about two different numbers.** In an exclusive region the bot must say a quoted total is pre-tax (quoting $12.99 and charging $14.22 is a dispute), *and* keep the ACTION's `total` PRE-TAX, because `pricing.js` compares the model's number against the server's pre-tax subtotal and adds the tax itself. Without that second half the customer is taxed twice.
+- **Three leaks got past the structural tests and were only caught by reading the rendered prompt**: the live-state block (the one section the prompt says to answer from *exclusively*), the zone ETA suffix, and the greeting questions — the bot's literal first message. `tests/prompt-en.test.js` now asserts a fully configured US tenant produces no Hebrew letter at all, across returning-customer, closed-business and no-delivery variants. That guard then found a fourth: an unconfigured tenant had **`'תל אביב'` hardcoded** as the delivery-city fallback, putting another business's city in their bot's mouth. Now stated as unconfigured — same rule as the WhatsApp number.
+- `buildMenuText()` takes a language, renders `name_en` where a real one exists, and no longer claims delivery is "(לתל אביב בלבד)" — a hardcoded city that stopped being true the moment `delivery_zones` existed.
+- ⚠️ **Not yet validated against the training network.** The prompt is structurally tested but has not been scored by `training/` — that costs Anthropic credits and is the tenant's call.
+- ⚠️ The live-state block still reports **Israel time** for every tenant. The label no longer claims otherwise, but the value is wrong for a US tenant until D3 (per-tenant timezone) lands.
 
 ### Attributes, Exports & Phone Numbers (2026-08-26)
 

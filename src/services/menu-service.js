@@ -63,8 +63,29 @@ function invalidateCache(tenantId = DEFAULT_TENANT_ID) {
   _getCache(tenantId).time = 0;
 }
 
-async function buildMenuText(settingsObj, tenantId = DEFAULT_TENANT_ID) {
+/**
+ * The menu as the bot reads it.
+ *
+ * @param {string} lang 'he' | 'en' — defaults to the tenant's region. Names fall
+ *                      back to Hebrew when a row has no real English one, which
+ *                      is honest: inventing a translation would have the bot
+ *                      offer an item the kitchen does not recognise.
+ */
+async function buildMenuText(settingsObj, tenantId = DEFAULT_TENANT_ID, lang = null) {
   const { categories, byCategory } = await getProducts(tenantId);
+  const { resolveLocale, promptMoney } = require('./locale');
+
+  const loc  = resolveLocale(settingsObj || {});
+  const L    = lang === 'en' || lang === 'he' ? lang : (loc.region === 'IL' ? 'he' : 'en');
+  const money = (n) => promptMoney(n, loc);
+
+  // Same rule as everywhere else: name_en equal to name_he means the column was
+  // backfilled, not translated.
+  const nameOf = (row) => {
+    const he = String(row?.name_he || '').trim();
+    const en = String(row?.name_en || '').trim();
+    return L === 'en' && en && en !== he ? en : (he || en);
+  };
 
   const deliveryPrice   = settingsObj?.delivery_price   ?? 30;
   const deliveryEnabled = settingsObj?.delivery_enabled !== false;
@@ -73,15 +94,23 @@ async function buildMenuText(settingsObj, tenantId = DEFAULT_TENANT_ID) {
   const sections = categories.filter((c) => !c.is_topping_addon).map((cat) => {
     const items = byCategory[cat.id]?.items || [];
     if (!items.length) return null;
-    const lines = items.map((p) => `• ${p.name_he} — ${p.price}₪`).join('\n');
-    return `${cat.emoji} ${cat.name_he}:\n${lines}`;
+    const lines = items.map((p) => `• ${nameOf(p)} — ${money(p.price)}`).join('\n');
+    return `${cat.emoji} ${nameOf(cat)}:\n${lines}`;
   }).filter(Boolean);
 
-  const deliveryLine = deliveryEnabled ? `משלוח: ${deliveryPrice}₪ (לתל אביב בלבד)` : '';
-  const pickupLine   = pickupEnabled   ? 'איסוף עצמי: חינם' : '';
+  // The delivery line used to read "(לתל אביב בלבד)" — a hardcoded city that
+  // stopped being true the moment delivery_zones existed. The zone table in the
+  // prompt is the authority on where and for how much, so this line no longer
+  // claims to know.
+  const t = L === 'en'
+    ? { menu: 'Menu:', delivery: 'Delivery', pickup: 'Pickup: free' }
+    : { menu: 'תפריט:', delivery: 'משלוח', pickup: 'איסוף עצמי: חינם' };
+
+  const deliveryLine = deliveryEnabled ? `${t.delivery}: ${money(deliveryPrice)}` : '';
+  const pickupLine   = pickupEnabled   ? t.pickup : '';
 
   return [
-    'תפריט:',
+    t.menu,
     '──────────────',
     sections.join('\n\n'),
     '',

@@ -162,6 +162,22 @@ function formatMoney(amount, loc) {
   }
 }
 
+/**
+ * Compact money for the SYSTEM PROMPT, not for a screen.
+ *
+ * formatMoney() goes through Intl, which for Hebrew emits directional marks and
+ * forces two decimals: "30₪" becomes "\u200f30.00 \u200f₪". In a UI that is correct;
+ * in the prompt it is text the model reads and echoes back to customers, so it
+ * would quietly change how the Israeli bot quotes every price — and embed
+ * invisible characters in what it says. This keeps the existing Hebrew form
+ * exactly and gives other currencies their own.
+ */
+function promptMoney(amount, loc) {
+  const n = Number(amount) || 0;
+  const s = Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+  return loc?.currency === 'ILS' || !loc ? `${s}₪` : `${loc.currencySymbol}${s}`;
+}
+
 /** Convenience for callers that hold a tenantId rather than loaded settings. */
 async function forTenant(tenantId) {
   const settings = require('./settings');
@@ -171,5 +187,5 @@ async function forTenant(tenantId) {
 
 module.exports = {
   REGIONS, CURRENCIES, DEFAULT_REGION,
-  regionOf, resolveLocale, taxOf, taxableBase, taxLineLabel, formatMoney, forTenant,
+  regionOf, resolveLocale, taxOf, taxableBase, taxLineLabel, formatMoney, promptMoney, forTenant,
 };

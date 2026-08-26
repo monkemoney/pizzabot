@@ -471,7 +471,9 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
 
   let systemPrompt;
   try {
-    systemPrompt = await buildSystemPrompt(customerProfile, tid);
+    // `lang` was resolved once at the top of this function and persisted; the
+    // prompt is built in the same language the reply will be written in.
+    systemPrompt = await buildSystemPrompt(customerProfile, tid, lang);
   } catch (err) {
     console.error('[ai-handler] Failed to build system prompt:', err.message);
     systemPrompt = 'You are a pizza ordering assistant. Help the customer order pizza.';

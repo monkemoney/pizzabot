@@ -17,16 +17,35 @@ function injectLessons(prompt, lessons) {
     `══════════════════════════════════════════\n${lessons}\n`;
 }
 
-async function buildSystemPrompt(customerProfile = null, tenantId = null) {
+/**
+ * @param {object} customerProfile  saved name/address, or null
+ * @param {string} tenantId
+ * @param {string} lang  'he' | 'en' — the customer's language. Defaults to the
+ *                       TENANT's, so an American tenant's bot opens in English
+ *                       rather than switching only once a customer writes it.
+ */
+async function buildSystemPrompt(customerProfile = null, tenantId = null, lang = null) {
   const tid = tenantId || settings.DEFAULT_TENANT_ID;
   const [allSettings, menuText, deliveryNowOpen, isOpenNow, lessonsOn] = await Promise.all([
     settings.loadAll(tid),
-    settings.loadAll(tid).then((s) => buildMenuText(s, tid)),
+    settings.loadAll(tid).then((s) => {
+      const { resolveLocale } = require('../services/locale');
+      const l = lang === 'en' || lang === 'he' ? lang
+              : (resolveLocale(s).region === 'IL' ? 'he' : 'en');
+      return buildMenuText(s, tid, l);
+    }),
     settings.isDeliveryOpen(tid),
     settings.isOpen(tid),
     lessonsService.isEnabled(tid),
   ]);
   const lessonsText = lessonsOn ? await lessonsService.getLessonsText(tid) : '';
+
+  const { resolveLocale, promptMoney } = require('../services/locale');
+  const loc = resolveLocale(allSettings);
+  // The tenant's own language is the default; an explicit lang (the customer
+  // wrote in the other one) wins.
+  const promptLang = lang === 'en' || lang === 'he' ? lang : (loc.region === 'IL' ? 'he' : 'en');
+  const fmtMoney = (n) => promptMoney(n, loc);
 
   const prepLeadTime = allSettings.prep_lead_time ?? 45;
   const nowIL  = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
@@ -46,7 +65,24 @@ async function buildSystemPrompt(customerProfile = null, tenantId = null) {
   const bizHoursToday = todayHoursStr(allSettings.business_hours);
   const dlvHoursToday = todayHoursStr(allSettings.delivery_hours);
 
-  const liveStatus = [
+  // This is the block the prompt tells the bot to answer from EXCLUSIVELY, so
+  // it has to be in the language the bot is answering in — a Hebrew state block
+  // under English instructions is the one section guaranteed to be quoted back.
+  const DAY_EN = { sun:'Sunday', mon:'Monday', tue:'Tuesday', wed:'Wednesday', thu:'Thursday', fri:'Friday', sat:'Saturday' };
+
+  const liveStatus = promptLang === 'en' ? [
+    `Current local time: ${nowStr} | ${DAY_EN[todayKey]}`,
+    `The business is currently: ${isOpenNow ? 'OPEN — taking orders now (even if the clock is outside the hours shown below, e.g. a special opening or hours that cross midnight)' : 'CLOSED'}`,
+    bizHoursToday ? `Today's hours: ${bizHoursToday === 'סגור היום' ? 'closed today' : bizHoursToday}` : 'Hours: not configured (always open)',
+    dlvHoursToday ? `Delivery hours today: ${dlvHoursToday === 'סגור היום' ? 'no delivery today' : dlvHoursToday}` : null,
+    `Delivery: ${deliveryNowOpen && allSettings.delivery_enabled !== false ? 'available' : 'unavailable'} | Pickup: ${allSettings.pickup_enabled !== false ? 'available' : 'unavailable'}`,
+    `Payment: ${[
+      allSettings.payment_cash    !== false ? 'cash' : null,
+      allSettings.payment_credit  !== false ? 'card' : null,
+      (allSettings.payment_bit    === true  || allSettings.payment_bit === 'true') ? 'Bit' : null,
+      (allSettings.payment_paybox === true) ? 'Paybox' : null,
+    ].filter(Boolean).join(' / ')}`,
+  ].filter(Boolean).join('\n') : [
     `השעה עכשיו (ישראל): ${nowStr} | יום ${DAY_HE[todayKey]}`,
     `העסק כרגע: ${isOpenNow ? 'פתוח — מקבלים הזמנות עכשיו (גם אם השעה מחוץ לשעות המוצגות למטה, למשל פתיחה מיוחדת או שעות שחוצות חצות)' : 'סגור'}`,
     bizHoursToday ? `שעות פעילות היום: ${bizHoursToday}` : 'שעות פעילות: לא מוגדרות (פתוח תמיד)',
@@ -84,22 +120,29 @@ async function buildSystemPrompt(customerProfile = null, tenantId = null) {
     allowedCities     = zones.map(z => z.city.trim()).filter(Boolean);
     deliveryZonesText = zones.map(z => {
       const fee = z.fee ?? allSettings.delivery_price ?? 30;
-      const eta = z.eta_minutes ? ` (~${z.eta_minutes} דקות)` : '';
-      return `  • ${z.city}${z.area ? ` (${z.area})` : ''} — ${fee}₪${eta}`;
+      const eta = z.eta_minutes ? ` (~${z.eta_minutes} ${promptLang === 'en' ? 'min' : 'דקות'})` : '';
+      return `  • ${z.city}${z.area ? ` (${z.area})` : ''} — ${fmtMoney(fee)}${eta}`;
     }).join('\n');
   } else {
-    // Legacy fallback: delivery_cities array or single city
+    // Legacy fallback: delivery_cities array or single city.
+    // NO hardcoded city — the old default was 'תל אביב', so a tenant who had not
+    // configured zones had another business's city put in their bot's mouth.
+    // Same rule as the WhatsApp number: an unconfigured value is stated as
+    // unconfigured, never invented.
     const legacyCities = Array.isArray(allSettings.delivery_cities)
       ? allSettings.delivery_cities
       : allSettings.delivery_cities
       ? [allSettings.delivery_cities]
-      : ['תל אביב'];
+      : [];
     allowedCities     = legacyCities;
     const defaultFee  = allSettings.delivery_price ?? 30;
-    deliveryZonesText = legacyCities.map(c => `  • ${c} — ${defaultFee}₪`).join('\n');
+    deliveryZonesText = legacyCities.map(c => `  • ${c} — ${fmtMoney(defaultFee)}`).join('\n');
   }
 
-  const allowedCitiesStr = allowedCities.join(', ') || 'תל אביב';
+  const noZones = allowedCities.length === 0;
+  const allowedCitiesStr = noZones
+    ? (promptLang === 'en' ? 'none configured' : 'לא הוגדרו')
+    : allowedCities.join(', ');
   const defaultFee       = zones ? (zones[0]?.fee ?? 30) : (allSettings.delivery_price ?? 30);
   console.log(`[prompts] delivery zones loaded: ${allowedCitiesStr || 'none'} (${zones ? zones.length : 0} zones)`);
 
@@ -109,12 +152,21 @@ async function buildSystemPrompt(customerProfile = null, tenantId = null) {
   // ±4 judge noise; synthetic personas tied at 96 and hid the problem). Open
   // questions without anchors put real customers into clarification loops.
   // Do not re-add without a fresh A/B on real data.
-  const deliveryQuestion = deliveryEnabled && pickupEnabled
-    ? `משלוח (מחיר לפי אזור) או איסוף עצמי (חינם)?`
-    : deliveryEnabled ? `משלוח בלבד — לאיזו כתובת?`
-    : `איסוף עצמי בלבד מ-${pickupAddress}.`;
+  const deliveryQuestion = promptLang === 'en'
+    ? (deliveryEnabled && pickupEnabled
+        ? `Delivery (fee depends on the area) or pickup (free)?`
+        : deliveryEnabled ? `Delivery only — what's the address?`
+        : `Pickup only, from ${pickupAddress}.`)
+    : (deliveryEnabled && pickupEnabled
+        ? `משלוח (מחיר לפי אזור) או איסוף עצמי (חינם)?`
+        : deliveryEnabled ? `משלוח בלבד — לאיזו כתובת?`
+        : `איסוף עצמי בלבד מ-${pickupAddress}.`);
 
-  const paymentOptions = [
+  const paymentOptions = promptLang === 'en' ? [
+    cashEnabled && 'Cash',
+    bitEnabled && bitPhone && 'Bit',
+    creditEnabled && 'Card',
+  ].filter(Boolean) : [
     cashEnabled && 'מזומן',
     bitEnabled && bitPhone && 'Bit',
     creditEnabled && 'אשראי',
@@ -155,6 +207,16 @@ ${parts.join('\n')}
     ? 'תמחור: תוספת חלקית (חצי/רבע פיצה) עולה בדיוק כמו תוספת על כל הפיצה.'
     : `תמחור תוספות לפי היקף: על כל הפיצה = 100% מהמחיר | חצי = ${halfPct}% | רבע = ${quarterPct}% (עגל לשקל שלם).`;
 
+  if (promptLang === 'en') {
+    const { buildEnglish } = require('./prompt-en');
+    return injectLessons(buildEnglish({
+      businessName, liveStatus, menuText, menuUrl, deliveryZonesText,
+      allowedCitiesStr, defaultFee, pickupAddress, deliveryQuestion, paymentQuestion,
+      bitEnabled, bitPhone, prepLeadTime, halfPct, quarterPct,
+      nowStr, loc, fmtMoney, profile: customerProfile,
+    }), lessonsText);
+  }
+
   const __base = `אתה ג׳אסל, מלצר-בוט של ${businessName}.${returningBlock}
 אתה מנהל שיחות ב-WhatsApp בדיוק כמו מלצר מקצועי במסעדה — חם, קצר, יעיל.
 
@@ -178,7 +240,7 @@ ${menuText}
 ══════════════════════════════════════════
 אזורי משלוח ומחירים
 ══════════════════════════════════════════
-${deliveryZonesText || `  • ${allowedCitiesStr} — ${defaultFee}₪`}
+${deliveryZonesText || 'אין אזורי משלוח מוגדרים — הצע איסוף עצמי בלבד.'}
 
 ערים מורשות למשלוח: ${allowedCitiesStr}
 עיר שאינה ברשימה → הצע איסוף עצמי מ-${pickupAddress} (או בדוק אם קרובה לאזור קיים).
