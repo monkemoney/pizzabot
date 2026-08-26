@@ -54,16 +54,32 @@ app.get('/menu.html', async (req, res) => {
     }
     const all  = await settings.loadAll(tid);
     const esc  = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    const name = esc(all.business_name || 'התפריט שלנו');
-    const desc = esc(all.menu_tagline || all.business_address || 'הזמנה אונליין דרך וואטסאפ');
+
+    // The menu's language follows the TENANT, and it is resolved HERE rather
+    // than after the /api/public-menu round-trip: setting dir on <html> from
+    // JavaScript means every visitor sees the page laid out the wrong way round
+    // for a frame. ?lang= still overrides, for sharing a translated link.
+    const loc  = require('./services/locale').resolveLocale(all);
+    const q    = String(req.query.lang || '').toLowerCase();
+    const lang = q === 'en' || q === 'he' ? q : (loc.region === 'IL' ? 'he' : 'en');
+    const dir  = lang === 'he' ? 'rtl' : 'ltr';
+
+    const name = esc(all.business_name || (lang === 'he' ? 'התפריט שלנו' : 'Our menu'));
+    const desc = esc(all.menu_tagline || all.business_address
+      || (lang === 'he' ? 'הזמנה אונליין דרך וואטסאפ' : 'Order online on WhatsApp'));
+    const title = lang === 'he' ? `התפריט של ${name}` : `${name} — Menu`;
     const img  = /^https?:\/\//.test(all.menu_logo_url || '')
       ? `\n  <meta property="og:image" content="${esc(all.menu_logo_url)}"/>` : '';
-    const head = `<title>התפריט של ${name}</title>
-  <meta property="og:title" content="התפריט של ${name}"/>
+    const head = `<title>${title}</title>
+  <meta property="og:title" content="${title}"/>
   <meta property="og:description" content="${desc}"/>
   <meta property="og:type" content="website"/>${img}
-  <meta name="description" content="${desc}"/>`;
-    const html = require('fs').readFileSync(file, 'utf8').replace('<title>התפריט שלנו</title>', head);
+  <meta name="description" content="${desc}"/>
+  <script>window.__MENU_LANG__ = ${JSON.stringify(lang)};</script>`;
+
+    const html = require('fs').readFileSync(file, 'utf8')
+      .replace('<html lang="he" dir="rtl">', `<html lang="${lang}" dir="${dir}">`)
+      .replace('<title>התפריט שלנו</title>', head);
     res.type('html').send(html);
   } catch (err) {
     console.error('[menu] head injection failed, serving raw file:', err.message);

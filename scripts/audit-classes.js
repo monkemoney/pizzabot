@@ -181,6 +181,11 @@ function i18nCoverage() {
     violations.push(`[i18n: conflicting duplicate key] ${c} — the first definition is silently dead. Use distinct source strings.`);
   }
 
+  // public/menu.html carries its own dictionary: it is CUSTOMER-facing and its
+  // language follows the tenant, not the operator's localStorage. Same rule
+  // applies though — M() with no entry renders Hebrew silently.
+  violations.push(...menuCoverage());
+
   const scan = (rel, patterns) => {
     const full = path.join(ROOT, rel);
     if (!fs.existsSync(full)) return;
@@ -274,6 +279,47 @@ function hardcodedCurrency() {
     }
   }
   return violations;
+}
+
+/** The menu page's own MENU_HE2EN map, and any M()/data-m string missing from it. */
+function menuCoverage() {
+  const rel  = 'public/menu.html';
+  const full = path.join(ROOT, rel);
+  if (!fs.existsSync(full)) return [];
+  const src = fs.readFileSync(full, 'utf8');
+
+  const start = src.indexOf('const MENU_HE2EN = {');
+  const end   = src.indexOf('\n};', start);
+  if (start < 0 || end < 0) return [`[i18n: untranslated] ${rel}: MENU_HE2EN map not found`];
+  const body = src.slice(start, end);
+
+  const keys = new Set();
+  const pair = /(?:^|,|\{|\n)\s*(?:\/\/[^\n]*\n\s*)*(['"])((?:[^\\]|\\.)*?)\1\s*:/g;
+  let m;
+  while ((m = pair.exec(body))) keys.add(m[2].replace(/\\(['"])/g, '$1'));
+
+  const missing = new Set();
+  const calls = [
+    /\bM\(\s*'((?:[^'\\]|\\.)*)'\s*\)/g,
+    /\bM\(\s*"((?:[^"\\]|\\.)*)"\s*\)/g,
+    /\bdata-m-aria="([^"]*)"/g,
+  ];
+  for (const re of calls) {
+    const rx = new RegExp(re.source, re.flags);
+    while ((m = rx.exec(src))) {
+      const k = (m[1] || '').replace(/\\(['"])/g, '$1').trim();
+      if (k && HEB.test(k) && !keys.has(k)) missing.add(k);
+    }
+  }
+  // data-m elements translate their own text
+  const rxEl = /<([a-zA-Z0-9]+)[^>]*\bdata-m\b[^>]*>([^<]*)<\/\1>/g;
+  while ((m = rxEl.exec(src))) {
+    const k = (m[2] || '').trim();
+    if (k && HEB.test(k) && !keys.has(k)) missing.add(k);
+  }
+
+  return [...missing].map((k) =>
+    `[i18n: untranslated] ${rel}: "${k}" — add it to MENU_HE2EN (a missing entry renders Hebrew to an English customer, silently).`);
 }
 
 const CUSTOM_CHECKS = [i18nCoverage, hardcodedCurrency];

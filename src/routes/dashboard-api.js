@@ -985,9 +985,24 @@ router.get('/public-menu', async (req, res) => {
     const halfPct    = Number(allSettings.topping_half_pct    ?? 100);
     const quarterPct = Number(allSettings.topping_quarter_pct ?? 100);
 
+    // The public menu is CUSTOMER-facing, so its language follows the TENANT —
+    // not the dashboard operator's localStorage, which is what i18n.js reads.
+    const loc = require('../services/locale').resolveLocale(allSettings);
+
     res.json({
       menu,
-      business_name:    allSettings.business_name    || 'פיצה דליבריס',
+      // Region, currency and tax model. A US menu prices pre-tax, so the cart
+      // estimate is systematically LOW there and has to say so.
+      locale: {
+        language:  loc.region === 'IL' ? 'he' : 'en',
+        region:    loc.region,
+        currency:  loc.currency,
+        locale:    loc.locale,
+        tax_mode:  loc.taxMode,
+        tax_rate:  loc.taxRate,
+        tax_label: loc.taxLabel,
+      },
+      business_name:    allSettings.business_name    || '',
       // No hardcoded fallback number — a tenant without a configured bot number
       // must not route customers to someone else's WhatsApp. The client hides
       // the order CTAs when this is null.
