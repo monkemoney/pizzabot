@@ -110,7 +110,7 @@ logs=data if isinstance(data,list) else data.get('logs',data.get('data',[]))
 
 # Before every push (MANDATORY)
 node --check public/app.js && node --check public/admin.js
-npm test -- --forceExit     # 168 tests across 13 suites; --forceExit avoids hanging on setInterval timers
+npm test -- --forceExit     # 411 tests across 24 suites; --forceExit avoids hanging on setInterval timers
 
 # Deploy (auto on push)
 git push origin main
@@ -142,6 +142,7 @@ pizza-bot/
 │   │   │                         #   overnight-window aware, open_override with built-in expiry)
 │   │   ├── menu-service.js       # Live products from DB, 3s TTL cache
 │   │   ├── status-notifier.js    # Customer + courier WhatsApp notifications on status change
+│   │   ├── locale.js             # Per-tenant region/currency/tax model (IL inclusive | US exclusive)
 │   │   ├── slug.js               # Business-name slugs for public menu URLs (Hebrew transliteration)
 │   │   ├── sse.js                # SSE broker — Map<tenantId, Set<res>>, broadcast(), subscribe();
 │   │   │                         #   25s keepalive is a REAL 'ping' event (client heartbeat), not a comment
@@ -163,7 +164,7 @@ pizza-bot/
 │   └── sw.js                     # Service Worker — push notifications only (no fetch caching)
 ├── supabase/schema.sql           # Full DB schema (documentation — NOT auto-applied, see Schema drift)
 ├── scripts/                      # backup/sync Render env, render-guard
-├── tests/                        # 13 suites / 168 tests — auth, sessions, admin bot, webhook routing
+├── tests/                        # 24 suites / 411 tests — auth, sessions, admin bot, webhook routing
 │                                 #   (incl. Meta), onboarding+draft, payments, audit, settings+overnight,
 │                                 #   meta-whatsapp parsing, slug, inbox/handoff, missed-call recovery
 ├── .design/jasell-dashboard/     # Design brief + review (Confident SaaS direction)
@@ -295,6 +296,18 @@ ACTION blocks: `SET_AVAILABLE` (checks ALL occurrences of a name — standalone 
 - `ADMIN:OVERRIDE:{state,hours}` (≤24h, default 3) / `{cancel:true}`; prompt rules route temporary/out-of-hours requests to OVERRIDE and keep `SET is_open` for permanent kill.
 - **Closed loop:** every open/delivery-touching action (SET is_open/delivery_enabled, both HOURS actions, OVERRIDE) is followed by a read-back of the effective state, appended as "📍 מצב בפועל: …"; flag-on-but-outside-hours adds a hint to use the override. Success is reported from the outcome, never the write.
 - Dashboard: settings page shows an effective-state banner (`GET /api/settings` returns `_effective {open, delivery, override}`; `_`-prefixed keys are never persisted by PATCH) with an override chip + "בטל חריגה".
+
+### Region, Currency & Tax (2026-08-26)
+
+Israel and the US do not disagree about the tax *rate* — they disagree about what a menu price **means**. Israel prices tax-inclusive (₪50 on the menu is ₪50 charged; the receipt back-computes the VAT inside it). The US prices tax-exclusive ($12.99 on the menu is $12.99 **plus** tax at checkout). `vat_rate` was a bare number and the only formula in the codebase was the Israeli one, so changing 18 to 9.5 would not have localised anything: `pricing.js` would still hand the processor a **pre-tax** amount while the receipt printed a tax nobody collected — a tax document with a fabricated line on it (failure class 8, with the payment processor as the diverging source).
+
+- **`src/services/locale.js` is the single resolver.** `resolveLocale(allSettings)` → `{region, currency, taxMode, taxRate, taxLabel, taxOnDelivery, locale, addsTaxAtCheckout, …}`. `region` (`IL`|`US`) supplies **defaults only**; every individual key overrides it, because a tenant's real rate is a fact about their address (City of LA 9.5%, Santa Monica 10.25%), not their country. No second cache — it derives from `settings.loadAll()`'s existing 3s snapshot.
+- **Backward compatibility is load-bearing:** no `region` = `IL`, and the legacy `vat_rate` is still read when `tax_rate` was never written. An existing Israeli tenant prices **identically** — pinned by test, because the alternative is silently repricing live businesses on deploy.
+- **`pricing.js` adds the tax to the authoritative total in exclusive regions.** This is the only change here that alters what a card is charged. The model is judged on the **pre-tax subtotal** (it quotes from a pre-tax menu), and the server adds tax on whichever base survived that check — comparing its quote to a tax-inclusive total would flag every US order as a model error and drown the insight queue.
+- **`orders.tax_rate` + `orders.tax_amount` are frozen at order time**, exactly like `delivery_fee` and for the same reason: districts vote on levies, and a receipt reprinted next year must show the rate actually charged. ⚠️ **The migration (`supabase/migrations/2026-08-26-order-tax.sql`) must be applied BEFORE deploying** — `saveOrder` passes the object straight to `insert()`, so a missing column fails order creation.
+- **Dashboard:** הגדרות → "אזור ומטבע" (region + currency) and "מס" (model, rate, receipt label, tax-on-delivery). The tax card renders a **live worked example** — the same percentage produces different money in the two models, and a number alone does not show that. `tax_on_delivery` only appears in exclusive mode, where it is a real question.
+- **PATCH /settings validates region/currency/tax_mode/tax_rate at the door** and seeds the region's tax model on a region change, so a stale `vat_rate` from the previous country cannot outrank the new default through the legacy fallback.
+- **Client money goes through `money()`** (`Intl.NumberFormat`, tenant currency, dashboard locale — $ leads in English, ₪ trails in Hebrew) and tax through `taxOf()` / `taxOfOrder()`. `LOCALE` is `en-US`, not `en-GB`: 12/08 means December 8th to the audience this was localised for.
 
 ### Money Display (2026-07-27)
 
@@ -462,6 +475,7 @@ sessions            per-phone (customer: phone, admin: 'admin:phone') — UNIQUE
                     is_bot_active, unread_count, last_customer_message, last_message_at
 pending_payments    Cardcom pendings; tenant_id real column (indexed)
 orders              order_number (seq 1000+), items JSONB, status, payment fields, dispute fields,
+                    delivery_fee + tax_rate + tax_amount frozen at order time,
                     status_history JSONB [{status,at}] appended on every transition
                     CHECK orders_status_check: new|scheduled|preparing|ready|out_for_delivery|delivered|done|cancelled
 customers           VIEW over orders — includes tenant_id in SELECT and GROUP BY (column-set changes
@@ -548,7 +562,7 @@ A 2026-07-26/27 session was asked to fix the order-acceptance flow. Naming *why*
 12. **Local-calendar time at a product boundary.** The server clock is UTC; every business question is Asia/Jerusalem. Proven by the 2026-07-27 stats bug, and the 2026-07-28 audit of all 32 raw `new Date(` sites found 3 more: the orders-tab date filter (UTC midnight boundaries filed the 00:00–03:00 rush under the wrong day), the vendor "this month" cost KPI, and the vendor usage chart's month bucketing (`created_at.slice(0,7)` = UTC month). All fixed via `services/il-time.js`. Epoch math and explicit-timeZone formatting are fine; anything that *buckets or compares by local calendar* goes through il-time.
 13. **Append-only data with no retention owner.** Every store that only grows needs a DECLARED decision, even if it's "keep forever": sessions → 90d prune ✓; orders → keep (accounting); `api_usage` → keep (billing history; revisit at scale); pending_payments → expired marked, never deleted (by design — order_data is the only record) ✓; push_subscriptions → dead pruned on send ✓; conversation_history → sliced to 40 ✓; in-memory `_alertCooldowns` per-incident keys grew forever (fixed: expired entries dropped on each alert). The failure isn't growth — it's growth nobody decided on.
 
-**The classes are now a file that runs: `scripts/audit-classes.js`** — counts instances of the mechanically-checkable classes (4, 10, 11, 12) per file against committed baselines, and fails on any NEW instance; `tests/audit-classes.test.js` wires it into `npm test`, so it runs on every pre-push test run rather than when someone remembers. Adding a justified instance = raise the baseline in the same commit, justification in the commit message. When deleting code drops a count, lower the baseline (warning, non-fatal).
+**The classes are now a file that runs: `scripts/audit-classes.js`** — counts instances of the mechanically-checkable classes (4, 10, 11, 12) per file against committed baselines, and fails on any NEW instance. Two custom checks sit alongside them (2026-08-26): **i18n coverage** — a `TR()` call or `data-tr` element whose Hebrew has no `HE2EN` entry fails the build, because a missing entry returns its input *silently* and that is exactly how ten strings shipped untranslated; it also fails on a duplicate key whose two definitions disagree (the first is dead). And **hardcoded ₪** outside `money()`/`formatMoney()`, since currency is now per-tenant. Both were verified to actually fail by planting a violation — a guardrail that cannot fail is failure class 9. `tests/audit-classes.test.js` wires it into `npm test`, so it runs on every pre-push test run rather than when someone remembers. Adding a justified instance = raise the baseline in the same commit, justification in the commit message. When deleting code drops a count, lower the baseline (warning, non-fatal).
 
 **Two habits that made the difference, worth keeping:**
 

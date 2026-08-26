@@ -19,6 +19,7 @@
 const menuService = require('./menu-service');
 const settings = require('./settings');
 const { feeForAddress } = require('./delivery-fee');
+const { resolveLocale, taxOf, taxableBase } = require('./locale');
 
 const TOLERANCE = 1; // ₪ — rounding differences are not worth overriding
 
@@ -81,9 +82,15 @@ function portionFactor(portion, allSettings) {
 /**
  * Recompute an order's total from the menu.
  *
+ * In an `exclusive`-tax region (US) the tax is part of what the customer is
+ * charged and therefore part of this number. In an `inclusive` region (IL) the
+ * menu price already contains it and the total is unchanged from before this
+ * function knew about tax at all — which is what keeps every existing Israeli
+ * tenant pricing identically.
+ *
  * @param {Array}  items      [{name, price, qty, toppings:[{name, price, portion}]}]
  * @param {object} opts       {delivery_method, address, tenantId}
- * @returns {Promise<{total:number, deliveryFee:number|null, unmatched:string[], itemsTotal:number}>}
+ * @returns {Promise<{total, subtotal, tax, taxRate, taxMode, deliveryFee, unmatched, itemsTotal}>}
  */
 async function computeTotal(items = [], { delivery_method, address, tenantId } = {}) {
   const [menu, allSettings] = await Promise.all([
@@ -130,14 +137,35 @@ async function computeTotal(items = [], { delivery_method, address, tenantId } =
   }
 
   const deliveryFee = delivery_method === 'delivery' ? feeForAddress(address, allSettings) : 0;
-  const total = Math.round((itemsTotal + (deliveryFee || 0)) * 100) / 100;
+  const subtotal = Math.round((itemsTotal + (deliveryFee || 0)) * 100) / 100;
 
-  return { total, deliveryFee, unmatched, itemsTotal };
+  // The tax is computed either way, because the receipt itemises it in both
+  // regions. Only `exclusive` adds it to what is charged.
+  const loc = resolveLocale(allSettings);
+  const tax = taxOf(taxableBase(itemsTotal, deliveryFee, loc), loc);
+  const total = loc.addsTaxAtCheckout
+    ? Math.round((subtotal + tax) * 100) / 100
+    : subtotal;
+
+  return {
+    total, subtotal, tax, loc,
+    taxRate: loc.taxRate, taxMode: loc.taxMode,
+    deliveryFee, unmatched, itemsTotal,
+  };
 }
 
 /**
  * Decide the authoritative total for an order payload.
- * Returns {total, deliveryFee, corrected, serverTotal, claimedTotal, unmatched}.
+ *
+ * The model is only ever asked to price the *basket*, never the tax: it quotes
+ * from a menu, and in an exclusive-tax region the menu is pre-tax. So its number
+ * is checked against the server's pre-tax subtotal, and the tax is then added by
+ * the server on whichever base survived that check. Comparing its quote against
+ * a tax-inclusive server total would instead flag every single US order as a
+ * model error and drown the insight feed.
+ *
+ * Returns {total, subtotal, tax, taxRate, taxMode, deliveryFee, corrected,
+ *          serverTotal, claimedTotal, unmatched, diff}.
  * Never throws — pricing must not be able to break order taking.
  */
 async function authoritativeTotal(payload, tenantId) {
@@ -148,10 +176,26 @@ async function authoritativeTotal(payload, tenantId) {
       address: payload.address,
       tenantId,
     });
-    const diff = Math.abs(r.total - claimed);
+
+    // Compare like with like: both sides pre-tax.
+    const diff = Math.abs(r.subtotal - claimed);
     const corrected = r.unmatched.length === 0 && diff > TOLERANCE;
+    const subtotal = corrected ? r.subtotal : claimed;
+
+    // Recompute the tax from the base actually accepted, so the itemised tax
+    // always reconciles with the total beside it.
+    const base = r.loc.taxOnDelivery
+      ? subtotal
+      : Math.max(0, subtotal - (r.deliveryFee || 0));
+    const tax = taxOf(base, r.loc);
+    const total = r.loc.addsTaxAtCheckout
+      ? Math.round((subtotal + tax) * 100) / 100
+      : subtotal;
+
     return {
-      total: corrected ? r.total : claimed,
+      total, subtotal, tax,
+      taxRate: r.loc.taxRate,
+      taxMode: r.loc.taxMode,
       deliveryFee: r.deliveryFee,
       corrected,
       serverTotal: r.total,
@@ -161,7 +205,11 @@ async function authoritativeTotal(payload, tenantId) {
     };
   } catch (err) {
     console.error('[pricing] compute failed, keeping model total:', err.message);
-    return { total: claimed, deliveryFee: null, corrected: false, serverTotal: null, claimedTotal: claimed, unmatched: ['<error>'], diff: 0 };
+    return {
+      total: claimed, subtotal: claimed, tax: 0, taxRate: null, taxMode: null,
+      deliveryFee: null, corrected: false, serverTotal: null,
+      claimedTotal: claimed, unmatched: ['<error>'], diff: 0,
+    };
   }
 }
 

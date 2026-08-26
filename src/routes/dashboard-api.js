@@ -1049,12 +1049,26 @@ router.post('/push-unsubscribe', requireAuth, async (req, res) => {
 // on every receipt regardless of what the tenant actually charges.
 router.get('/business-config', requireAuth, async (req, res) => {
   const all = await settings.loadAll(tid(req)).catch(() => ({}));
-  const vat = parseFloat(all.vat_rate);
+  const loc = require('../services/locale').resolveLocale(all);
   res.json({
-    vat_rate:       Number.isFinite(vat) ? vat : 18,
+    // Region + tax model. The client cannot render money correctly from a rate
+    // alone: 18% contained in the price and 9.5% added at checkout are different
+    // arithmetic, not different numbers.
+    region:         loc.region,
+    currency:       loc.currency,
+    currency_symbol: loc.currencySymbol,
+    locale_code:    loc.locale,
+    tax_mode:       loc.taxMode,
+    tax_rate:       loc.taxRate,
+    tax_label:      loc.taxLabel,
+    tax_on_delivery: loc.taxOnDelivery,
+    vat_rate:       loc.taxRate,   // legacy name, kept so an older cached client still renders
+    // The receipt printed a hardcoded "פיצה דליבריס" for every tenant. It is
+    // not a secret — customers read it off the receipt — so it belongs here
+    // rather than behind admin-only /settings, which managers cannot read.
+    business_name:  all.business_name || null,
     delivery_price: all.delivery_price ?? null,
     delivery_zones: Array.isArray(all.delivery_zones) ? all.delivery_zones : [],
-    currency:       '₪',
   });
 });
 
@@ -1066,7 +1080,14 @@ router.get('/settings', requireAdmin, async (req, res) => {
     settings.isOpen(tid(req)).catch(() => null),
     settings.isDeliveryOpen(tid(req)).catch(() => null),
   ]);
-  res.json({ ...all, _effective: { open, delivery, override: settings.activeOverride(all) } });
+  // _locale = the resolved region/tax/currency the tenant actually operates
+  // under, including values inherited from the region rather than stored. The
+  // settings card must render what takes effect, not only what was typed.
+  res.json({
+    ...all,
+    _effective: { open, delivery, override: settings.activeOverride(all) },
+    _locale: require('../services/locale').resolveLocale(all),
+  });
 });
 
 router.patch('/settings', requireAdmin, async (req, res) => {
@@ -1083,6 +1104,44 @@ router.patch('/settings', requireAdmin, async (req, res) => {
         error: 'אי אפשר להפעיל שיחות שלא נענו לפני שהוגדר webhook token (מוגדר על ידי מנהל המערכת בזמן חיבור המספר)',
       });
     }
+  }
+
+  // Region/tax are load-bearing on money. A bad value here does not fail loudly
+  // at write time — it silently reprices, so it is validated at the door.
+  const { REGIONS, CURRENCIES } = require('../services/locale');
+  if ('region' in updates && !REGIONS[String(updates.region).toUpperCase()]) {
+    return res.status(400).json({ error: `region לא מוכר: ${updates.region}` });
+  }
+  if ('currency' in updates && !CURRENCIES[updates.currency]) {
+    return res.status(400).json({ error: `מטבע לא נתמך: ${updates.currency}` });
+  }
+  if ('tax_mode' in updates && !['inclusive', 'exclusive'].includes(updates.tax_mode)) {
+    return res.status(400).json({ error: `tax_mode חייב להיות inclusive או exclusive` });
+  }
+  if ('tax_rate' in updates) {
+    const r = parseFloat(updates.tax_rate);
+    if (!Number.isFinite(r) || r < 0 || r > 100) {
+      return res.status(400).json({ error: 'שיעור מס חייב להיות בין 0 ל-100' });
+    }
+    updates.tax_rate = r;
+    updates.vat_rate = r;   // keep the legacy key in step; resolveLocale reads it as a fallback
+  }
+
+  // Switching region seeds that region's tax model explicitly rather than
+  // leaving it implicit. Two reasons: the settings table then shows what is
+  // actually in force, and a stale `vat_rate` from the previous country cannot
+  // outrank the new region's default through the legacy fallback.
+  if ('region' in updates) {
+    const code = String(updates.region).toUpperCase();
+    updates.region = code;
+    const d = REGIONS[code];
+    for (const [k, v] of Object.entries({
+      currency: d.currency, tax_mode: d.tax_mode, tax_rate: d.tax_rate,
+      tax_label: d.tax_label, tax_on_delivery: d.tax_on_delivery,
+    })) {
+      if (!(k in updates)) updates[k] = v;
+    }
+    if (!('vat_rate' in updates)) updates.vat_rate = updates.tax_rate;
   }
 
   try {

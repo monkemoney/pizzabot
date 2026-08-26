@@ -146,3 +146,107 @@ describe('portionFactor', () => {
     expect(portionFactor('על הכל', { topping_half_pct: 50 })).toBe(1);
   });
 });
+
+/**
+ * Region-dependent tax. This is the one part of pricing that changes what the
+ * card is charged, so both halves are pinned: an Israeli tenant must price
+ * EXACTLY as it did before this code knew about tax at all, and a Los Angeles
+ * tenant must have the tax inside the number handed to the payment processor —
+ * the defect being closed here is a receipt that itemises a tax nobody collected.
+ */
+describe('tax by region', () => {
+  const pizza = { items: [{ name: 'פיצה משפחתית', qty: 1 }], delivery_method: 'pickup' };
+
+  test('Israel (default, inclusive): the total is unchanged by tax', async () => {
+    const r = await computeTotal(pizza.items, { delivery_method: 'pickup', tenantId: TID });
+    expect(r.total).toBe(58);            // exactly the pre-2026-08-26 number
+    expect(r.subtotal).toBe(58);
+    expect(r.taxMode).toBe('inclusive');
+    expect(r.tax).toBeCloseTo(8.85, 2);  // itemised on the receipt, already inside 58
+  });
+
+  test('an unconfigured tenant is Israeli — no silent reprice on upgrade', async () => {
+    mockSettings = { delivery_price: 30, delivery_zones: [], vat_rate: 18 };
+    const r = await computeTotal(pizza.items, { delivery_method: 'pickup', tenantId: TID });
+    expect(r.total).toBe(58);
+  });
+
+  test('Los Angeles (exclusive): the tax is ADDED to what is charged', async () => {
+    mockSettings = { region: 'US', tax_rate: 9.5, delivery_zones: [] };
+    const r = await computeTotal(pizza.items, { delivery_method: 'pickup', tenantId: TID });
+    expect(r.subtotal).toBe(58);
+    expect(r.tax).toBeCloseTo(5.51, 2);
+    expect(r.total).toBeCloseTo(63.51, 2);
+    expect(r.total).toBeGreaterThan(r.subtotal);
+  });
+
+  test('exclusive: the delivery fee is taxed only when the tenant says so', async () => {
+    const items = [{ name: 'פיצה משפחתית', qty: 1 }];
+    const opts  = { delivery_method: 'delivery', address: 'תל אביב 1', tenantId: TID };
+
+    mockSettings = { region: 'US', tax_rate: 10, tax_on_delivery: false,
+                     delivery_zones: [{ city: 'תל אביב', fee: 20 }] };
+    const off = await computeTotal(items, opts);
+    expect(off.tax).toBeCloseTo(5.8, 2);       // 58 only
+    expect(off.total).toBeCloseTo(83.8, 2);    // 58 + 20 + 5.80
+
+    mockSettings = { region: 'US', tax_rate: 10, tax_on_delivery: true,
+                     delivery_zones: [{ city: 'תל אביב', fee: 20 }] };
+    const on = await computeTotal(items, opts);
+    expect(on.tax).toBeCloseTo(7.8, 2);        // 58 + 20
+    expect(on.total).toBeCloseTo(85.8, 2);
+  });
+
+  test('the model is judged on the PRE-TAX basket, not the taxed total', async () => {
+    // The bot quotes from a pre-tax menu in an exclusive region. Comparing its
+    // quote against a tax-inclusive server total would flag every US order as a
+    // model error and drown the insight queue.
+    mockSettings = { region: 'US', tax_rate: 9.5, delivery_zones: [] };
+    const r = await authoritativeTotal({ ...pizza, total: 58 }, TID);
+    expect(r.corrected).toBe(false);
+    expect(r.subtotal).toBe(58);
+    expect(r.total).toBeCloseTo(63.51, 2);
+  });
+
+  test('a real model error is still corrected, and then taxed', async () => {
+    mockSettings = { region: 'US', tax_rate: 10, delivery_zones: [] };
+    const r = await authoritativeTotal({ ...pizza, total: 40 }, TID);
+    expect(r.corrected).toBe(true);
+    expect(r.subtotal).toBe(58);
+    expect(r.total).toBeCloseTo(63.8, 2);
+  });
+
+  test('an unmatched item keeps the model basket AND still charges tax on it', async () => {
+    // Never block a real order over a name-match miss — but a US customer is
+    // still owed a correctly taxed receipt.
+    mockSettings = { region: 'US', tax_rate: 10, delivery_zones: [] };
+    const r = await authoritativeTotal(
+      { items: [{ name: 'משהו חדש בתפריט', qty: 1, price: 70 }], delivery_method: 'pickup', total: 70 },
+      TID,
+    );
+    expect(r.corrected).toBe(false);
+    expect(r.subtotal).toBe(70);
+    expect(r.total).toBeCloseTo(77, 2);
+  });
+
+  test('the itemised tax always reconciles with the total beside it', async () => {
+    for (const settings of [
+      { region: 'US', tax_rate: 9.5,  delivery_zones: [] },
+      { region: 'US', tax_rate: 10.25, delivery_zones: [] },
+      { region: 'IL', tax_rate: 18,   delivery_zones: [] },
+    ]) {
+      mockSettings = settings;
+      const r = await authoritativeTotal({ ...pizza, total: 58 }, TID);
+      const net = Math.round((r.total - r.tax) * 100) / 100;
+      expect(net).toBeGreaterThan(0);
+      expect(Math.round((net + r.tax) * 100) / 100).toBeCloseTo(r.total, 2);
+    }
+  });
+
+  test('the frozen rate is reported so the order row can record it', async () => {
+    mockSettings = { region: 'US', tax_rate: 9.5, delivery_zones: [] };
+    const r = await authoritativeTotal({ ...pizza, total: 58 }, TID);
+    expect(r.taxRate).toBe(9.5);
+    expect(r.taxMode).toBe('exclusive');
+  });
+});

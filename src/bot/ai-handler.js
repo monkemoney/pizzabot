@@ -107,11 +107,14 @@ async function priceOrder(payload, tid, where, phone) {
   const priced = await authoritativeTotal(payload, tid);
   if (priced.corrected) {
     console.warn(`[pricing] ${where} total corrected ${priced.claimedTotal} → ${priced.total} (tenant ${tid}, ${phone})`);
+    const { formatMoney, forTenant } = require('../services/locale');
+    const loc = await forTenant(tid).catch(() => null);
+    const m = (v) => formatMoney(v, loc);
     require('../services/insights').addInsightOnce({
       source: 'system',
       title: 'פער בין המחיר שהמודל חישב למחיר מהתפריט',
-      evidence: `${where}: המודל חישב ₪${priced.claimedTotal}, השרת ₪${priced.total} (פער ₪${priced.diff.toFixed(2)}). נגבה מחיר השרת.`,
-      metrics: { claimed: priced.claimedTotal, server: priced.total, diff: priced.diff },
+      evidence: `${where}: המודל חישב ${m(priced.claimedTotal)}, השרת ${m(priced.subtotal)} (פער ${m(priced.diff)}). נגבה מחיר השרת.`,
+      metrics: { claimed: priced.claimedTotal, server: priced.subtotal, diff: priced.diff },
       proposal: 'לבדוק את כללי התמחור בפרומפט; אם הפער חוזר — לחדד את הוראות חישוב הסכום.',
       type: 'info',
       tenantId: tid,
@@ -603,6 +606,10 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
         delivery_method: payload.delivery_method,
         address:         payload.address         || null,
         delivery_fee:    payload.delivery_method === 'delivery' ? priced.deliveryFee : 0,
+        // Frozen for the same reason as delivery_fee: a receipt reprinted after
+        // the rate changes must show the rate this customer was charged.
+        tax_rate:        priced.taxRate,
+        tax_amount:      priced.tax,
         notes:           payload.notes           || null,
         payment_method:  isBit ? 'bit' : 'cash',
         payment_status:  isBit ? 'pending' : 'paid',
@@ -709,9 +716,11 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
           ...payload,
           tenant_id: tid,
           total: priced.total,
-          // Recorded at order time so a later change to the zone table cannot
-          // rewrite what this customer was actually charged.
+          // Recorded at order time so a later change to the zone table — or to
+          // the tax rate — cannot rewrite what this customer was actually charged.
           delivery_fee: payload.delivery_method === 'delivery' ? priced.deliveryFee : 0,
+          tax_rate:     priced.taxRate,
+          tax_amount:   priced.tax,
         },
       });
 

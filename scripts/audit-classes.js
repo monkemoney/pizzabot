@@ -136,6 +136,148 @@ const CHECKS = [
   },
 ];
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Custom checks — classes that a per-file COUNT cannot express.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const HEB = /[\u0590-\u05FF]/;
+
+/** Every Hebrew key defined in i18n.js's HE2EN map, plus conflicting duplicates. */
+function he2enKeys() {
+  const src = fs.readFileSync(path.join(ROOT, 'public/i18n.js'), 'utf8');
+  const start = src.indexOf('const HE2EN = {');
+  const end   = src.indexOf('\n};', start);
+  if (start < 0 || end < 0) return { keys: new Set(), conflicts: [] };
+  const body = src.slice(start, end);
+
+  const keys = new Set();
+  const seen = new Map();          // key → first translation seen
+  const conflicts = [];
+  const pair = /(?:^|,|\{|\n)\s*(?:\/\/[^\n]*\n\s*)*(['"])((?:[^\\]|\\.)*?)\1\s*:\s*(?:\n\s*)?(['"])((?:[^\\]|\\.)*?)\3/g;
+  let m;
+  while ((m = pair.exec(body))) {
+    const k = m[2].replace(/\\(['"])/g, '$1');
+    const v = m[4];
+    if (seen.has(k) && seen.get(k) !== v) {
+      conflicts.push(`'${k}' → '${seen.get(k)}' then '${v}'`);
+    }
+    seen.set(k, v);
+    keys.add(k);
+  }
+  return { keys, conflicts };
+}
+
+/**
+ * class-4, i18n edition: TR('...') with no dictionary entry returns its input
+ * SILENTLY — no error, no log, no test. That is exactly how ten strings from
+ * the VAT and open_override work shipped untranslated and nobody noticed until
+ * someone clicked EN. A missing entry is now a build failure.
+ */
+function i18nCoverage() {
+  const { keys, conflicts } = he2enKeys();
+  const violations = [];
+
+  for (const c of conflicts) {
+    violations.push(`[i18n: conflicting duplicate key] ${c} — the first definition is silently dead. Use distinct source strings.`);
+  }
+
+  const scan = (rel, patterns) => {
+    const full = path.join(ROOT, rel);
+    if (!fs.existsSync(full)) return;
+    const src = fs.readFileSync(full, 'utf8');
+    const missing = new Set();
+    for (const re of patterns) {
+      let m;
+      const rx = new RegExp(re.source, re.flags);
+      while ((m = rx.exec(src))) {
+        const k = (m[1] || '').replace(/\\(['"])/g, '$1').trim();
+        if (k && HEB.test(k) && !keys.has(k)) missing.add(k);
+      }
+    }
+    for (const k of missing) {
+      violations.push(`[i18n: untranslated] ${rel}: "${k}" — add it to HE2EN in public/i18n.js (a missing entry renders Hebrew in EN mode, silently).`);
+    }
+  };
+
+  const jsCalls = [
+    /\bTR\(\s*'((?:[^'\\]|\\.)*)'\s*\)/g,
+    /\bTR\(\s*"((?:[^"\\]|\\.)*)"\s*\)/g,
+    /\btr\(\s*'((?:[^'\\]|\\.)*)'\s*\)/g,
+  ];
+  // data-tr translates the element's own text, so the text IS the key.
+  const htmlMarked = [
+    /<([a-zA-Z0-9]+)[^>]*\bdata-tr\b[^>]*>([^<]*)<\/\1>/g,
+  ];
+
+  for (const f of ['public/app.js', 'public/kitchen.js', 'public/admin.js']) scan(f, jsCalls);
+  for (const f of ['public/dashboard.html', 'public/kitchen.html', 'public/index.html']) {
+    scan(f, jsCalls);
+    // second capture group holds the text for data-tr elements
+    const full = path.join(ROOT, f);
+    if (!fs.existsSync(full)) continue;
+    const src = fs.readFileSync(full, 'utf8');
+    for (const re of htmlMarked) {
+      let m;
+      const rx = new RegExp(re.source, re.flags);
+      while ((m = rx.exec(src))) {
+        const k = (m[2] || '').trim();
+        if (k && HEB.test(k) && !keys.has(k)) {
+          violations.push(`[i18n: untranslated] ${f}: data-tr "${k}" — add it to HE2EN in public/i18n.js.`);
+        }
+      }
+    }
+  }
+
+  return violations;
+}
+
+/**
+ * A currency symbol written into markup is a claim about the tenant's country.
+ * The ₪ was hardcoded in 175 places while `currency` is a per-tenant setting;
+ * money must go through money() (client) or formatMoney() (server).
+ */
+function hardcodedCurrency() {
+  const ALLOW = new Set([
+    'public/i18n.js',            // the dictionary names currencies
+    'src/services/locale.js',    // where the symbols are defined
+  ]);
+  const BASELINE = {
+    // Comments explaining the old defect, the ILS <option> label, and the
+    // fallback inside money() itself.
+    'public/app.js': 7,
+    // Hebrew customer-facing WhatsApp strings, vendor alerts and the bot's own
+    // menu rendering still quote ₪ directly. Those follow the TENANT's language
+    // rather than the dashboard's, and are migrated with the bot's localisation
+    // (plan item C5) — not by money(), which formats for the dashboard reader.
+    'src/index.js': 3, 'src/bot/admin-handler.js': 8, 'src/bot/ai-handler.js': 5,
+    'src/bot/menu.js': 22, 'src/bot/messages.js': 35, 'src/bot/prompts.js': 7,
+    'src/routes/dashboard-api.js': 3, 'src/services/delivery-fee.js': 1,
+    'src/services/greenapi.js': 2, 'src/services/menu-service.js': 2,
+    'src/services/meta-whatsapp.js': 1, 'src/services/order-state.js': 4,
+    'src/services/pricing.js': 2, 'src/services/push-notifier.js': 1,
+    'src/services/recovery-attribution.js': 1, 'src/services/status-notifier.js': 2,
+    'src/services/vendor-alerts.js': 5,
+    // vendor portal — not yet localised at all (plan item A8)
+    'public/admin.js': 7,
+    'public/kitchen.js': 1,
+  };
+  const violations = [];
+  for (const root of ['src', 'public']) {
+    for (const file of jsFiles(path.join(ROOT, root))) {
+      const rel = path.relative(ROOT, file);
+      if (ALLOW.has(rel)) continue;
+      const n = (fs.readFileSync(file, 'utf8').match(/₪/g) || []).length;
+      const expected = BASELINE[rel] || 0;
+      if (n > expected) {
+        violations.push(`[currency: hardcoded ₪] ${rel}: ${n} (baseline ${expected}) — use money() in the client or formatMoney() on the server; currency is a per-tenant setting.`);
+      }
+    }
+  }
+  return violations;
+}
+
+const CUSTOM_CHECKS = [i18nCoverage, hardcodedCurrency];
+
 function jsFiles(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
@@ -177,6 +319,8 @@ function runAudit() {
     }
   }
 
+  for (const check of CUSTOM_CHECKS) violations.push(...check());
+
   return { violations, warnings };
 }
 
@@ -189,7 +333,7 @@ if (require.main === module) {
     console.error('\nFix the new instance, or raise the baseline in scripts/audit-classes.js with justification in the same commit.');
     process.exit(1);
   }
-  console.log(`✅ failure-class audit clean (${CHECKS.length} classes checked${warnings.length ? `, ${warnings.length} stale-baseline warnings` : ''})`);
+  console.log(`✅ failure-class audit clean (${CHECKS.length + CUSTOM_CHECKS.length} classes checked${warnings.length ? `, ${warnings.length} stale-baseline warnings` : ''})`);
 }
 
 module.exports = { runAudit };

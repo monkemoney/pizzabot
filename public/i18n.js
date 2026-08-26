@@ -75,7 +75,6 @@ const HE2EN = {
   'התראה למנהלים אם לקוח ממתין': 'Alert admins if a customer waits',
   'החזרה אוטומטית לבוט אחרי': 'Return to the bot after',
   'דקות ללא מענה נציג': 'minutes with no agent reply',
-  'מתוזמנת': 'Pre-order',
   'אישור מתחייב להכנה בשעה זו; ההזמנה תיכנס למטבח אוטומטית לפני המועד':
     'Confirming commits you to that time; the order enters the kitchen automatically before it',
   'זמן הכנה': 'Prep time',
@@ -265,6 +264,44 @@ const HE2EN = {
   'התראות push כובו': 'Push notifications disabled', 'נדרשת הרשאה להתראות בדפדפן': 'Browser notification permission required',
   'שגיאה בהגדרת push': 'Failed to set up push', 'התראות push הופעלו!': 'Push notifications enabled!',
   'נוסף כמנהל': 'added as admin', 'הוסר': 'removed', 'שגיאת שרת': 'Server error',
+  // ── Region, currency & tax (2026-08-26) ──────────────────────────────────
+  'אזור ומטבע': 'Region & currency',
+  'המדינה שבה העסק פועל — קובעת מטבע, מודל מס ופורמט תאריך':
+    'The country the business operates in — sets currency, tax model and date format',
+  'אזור פעילות': 'Region', 'ישראל': 'Israel', 'ארצות הברית': 'United States', 'מטבע': 'Currency',
+  'שינוי האזור מעדכן את מודל המס, המטבע והתווית לברירות המחדל של אותה מדינה. אפשר לשנות כל ערך בנפרד אחר כך.':
+    'Changing the region resets the tax model, currency and label to that country\'s defaults. Every value stays editable afterwards.',
+  'מס': 'Tax',
+  'איך המס מחושב ומוצג — כלול במחיר או מתווסף בקופה':
+    'How tax is calculated and shown — contained in the price, or added at checkout',
+  'מודל המס': 'Tax model',
+  'כלול במחיר (ישראל)': 'Included in the price (Israel)',
+  'מתווסף בקופה (ארה"ב)': 'Added at checkout (US)',
+  'שיעור המס': 'Tax rate', 'תווית בקבלה': 'Receipt label',
+  'המילה שתופיע בקבלה. "VAT" לא קיים בארה"ב ו-"Sales Tax" לא קיים בישראל — זו לא שאלה של תרגום.':
+    'The word printed on the receipt. "VAT" does not exist in the US and "Sales Tax" does not exist in Israel — this is not a translation choice.',
+  'לחייב מס גם על דמי המשלוח': 'Charge tax on the delivery fee too',
+  'בקליפורניה חיוב משלוח של המוכר חייב במס בחלק מהמקרים — התייעץ עם רואה החשבון של העסק':
+    'In California a seller\'s delivery charge is taxable in some cases — check with the business\'s accountant',
+  'כך זה ייראה ללקוח': 'What the customer sees',
+  'מחיר בתפריט': 'Menu price', 'כלול': 'included', 'הלקוח משלם': 'Customer pays',
+  'המס מתווסף לסכום שנגבה בפועל. התפריט והבוט מציגים מחיר לפני מס.':
+    'Tax is added to the amount actually charged. The menu and the bot quote pre-tax prices.',
+  'המס כבר כלול במחיר שבתפריט. הקבלה רק מפרקת כמה מתוך הסכום היה מס.':
+    'Tax is already inside the menu price. The receipt only itemises how much of the total was tax.',
+  'מדינה': 'Country',
+  // Receipt
+  'קבלה': 'Receipt', 'טל׳': 'Tel', 'מנה': 'Item', 'לפני מס': 'Subtotal',
+  'סה"כ לתשלום': 'Total due', 'תודה שבחרת': 'Thank you for choosing',
+  'הודפס': 'Printed', 'זיכוי של': 'refund of', 'דמי משלוח': 'Delivery fee',
+  // Effective open/close state (open_override)
+  'מע"מ': 'VAT', 'שיעור מע"מ': 'VAT rate',
+  'העסק פתוח כרגע ללקוחות': 'The business is open to customers right now',
+  'העסק סגור כרגע ללקוחות': 'The business is closed to customers right now',
+  '(מחוץ לשעות הפעילות)': '(outside opening hours)', 'פתוח': 'Open',
+  'פתיחה חריגה עד': 'Temporarily open until', 'סגירה חריגה עד': 'Temporarily closed until',
+  'בטל חריגה': 'Cancel override',
+  'החריגה בוטלה — חוזרים ללוח השעות הרגיל': 'Override cancelled — back to the regular schedule',
   // Login page
   'שם משתמש': 'Username', 'סיסמא': 'Password', 'כניסה': 'Sign in', 'מתחבר...': 'Signing in...',
   'שגיאת כניסה': 'Sign-in failed',

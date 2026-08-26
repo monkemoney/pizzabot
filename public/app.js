@@ -107,7 +107,15 @@ function showTab(name) {
   if (name === 'stats')     setPeriod(currentPeriod);
   if (name === 'kitchen')   { initKitchen(); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'instant' })); }
   if (name === 'inbox')     loadInbox();
+  _currentTab = name;
 }
+
+// The tab currently on screen. /business-config arrives after the first paint,
+// and it now carries the CURRENCY — not just the VAT rate it used to. A wrong
+// rate was a subtle number; the wrong currency symbol on an American tenant's
+// screen is not, so the
+// active tab re-renders once the real config lands.
+let _currentTab = null;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -138,7 +146,11 @@ function topLabel(t) {
   const n = (t && (t.name || t.name_he)) || '';
   return n && t.portion ? `${n} (${t.portion})` : n;
 }
-const LOCALE = (typeof LANG !== 'undefined' && LANG === 'en') ? 'en-GB' : 'he-IL';
+// Date/number locale follows the DASHBOARD language (whose eyes are reading),
+// while currency follows the TENANT (whose money it is) — see money() below.
+// en-US, not en-GB: 12/08 means December 8th to the audience this was localised
+// for, and a delivery ETA read off the wrong month is a real support call.
+let LOCALE = (typeof LANG !== 'undefined' && LANG === 'en') ? 'en-US' : 'he-IL';
 
 function formatDate(iso) {
   if (!iso) return '';
@@ -174,15 +186,92 @@ function statusBadge(status, order) {
 // VAT and the delivery fee used to be literals — 18% and ₪30 — in four places,
 // and `delivery_fee` was not even a column, so the ₪30 fallback was the only
 // branch that ever ran. A tenant charging 25 printed 30 on every receipt.
-let _bizConfig = { vat_rate: 18, delivery_price: null, delivery_zones: [] };
+//
+// Since 2026-08-26 the tax is a MODEL, not a rate: Israel prices tax-inclusive
+// (the receipt back-computes what was already inside the price), Los Angeles
+// prices tax-exclusive (the tax is added at checkout and the server charges it).
+// Every value below comes from /business-config — nothing is region-specific
+// in this file.
+let _bizConfig = {
+  region: 'IL', currency: 'ILS', currency_symbol: '₪', locale_code: 'he-IL',
+  tax_mode: 'inclusive', tax_rate: 18, tax_label: 'מע"מ', tax_on_delivery: true,
+  delivery_price: null, delivery_zones: [],
+};
 
 async function loadBusinessConfig() {
   try { _bizConfig = await api('GET', '/business-config'); } catch { /* keep defaults */ }
+  // Static markup cannot know the tenant's currency; the price labels in the
+  // product/topping modals carry a placeholder that is filled once, here.
+  document.querySelectorAll('.cur-symbol').forEach((el) => {
+    el.textContent = _bizConfig.currency_symbol ? `(${_bizConfig.currency_symbol})` : '';
+  });
 }
 
-const vatRate    = () => (Number.isFinite(+_bizConfig.vat_rate) ? +_bizConfig.vat_rate : 18);
-const vatLabel   = () => `${TR('מע"מ')} ${vatRate()}%`;
-const vatOf      = (grossTotal) => grossTotal * vatRate() / (100 + vatRate());
+const taxMode     = () => (_bizConfig.tax_mode === 'exclusive' ? 'exclusive' : 'inclusive');
+const taxRate     = () => (Number.isFinite(+_bizConfig.tax_rate) ? +_bizConfig.tax_rate : 0);
+const taxAddedAtCheckout = () => taxMode() === 'exclusive';
+
+/** "מע"מ 18%" / "Sales Tax 9.5%" — the tenant's own word, never a translation. */
+const taxLabel = () => `${_bizConfig.tax_label || ''} ${taxRate()}%`.trim();
+
+/**
+ * inclusive → the tax already contained in `base` (what the receipt itemises)
+ * exclusive → the tax added on top of `base`
+ * Both positive; only the caller knows whether it is already in the total.
+ */
+function taxOf(base) {
+  const amount = parseFloat(base) || 0;
+  const r = taxRate();
+  if (!r) return 0;
+  return taxAddedAtCheckout() ? amount * r / 100 : amount * r / (100 + r);
+}
+
+// The pre-tax figure is `total - tax` in BOTH models — inclusive because the tax
+// sits inside the total, exclusive because it was added to reach it. The two
+// models differ in how the tax is derived, not in how the net is read off.
+const netOf = (total, tax) => (parseFloat(total) || 0) - (parseFloat(tax) || 0);
+
+/** The tax recorded on the order; recomputed only when the row predates freezing. */
+function taxOfOrder(o) {
+  const frozen = parseFloat(o?.tax_amount);
+  if (Number.isFinite(frozen)) return frozen;
+  const total = parseFloat(o?.total_price) || 0;
+  const base  = taxAddedAtCheckout() && !_bizConfig.tax_on_delivery
+    ? Math.max(0, total - (deliveryFeeOf(o) || 0))
+    : total;
+  // A pre-freeze exclusive-region row has the tax inside total_price already,
+  // so back-computing is the only honest reading of it.
+  const r = taxRate();
+  return r ? base * r / (100 + r) : 0;
+}
+
+/**
+ * Amount in the tenant's currency, formatted for the dashboard's language.
+ * Intl places the symbol per locale — $ leads in English, ₪ trails in Hebrew —
+ * which is exactly what a hardcoded '₪' suffix got wrong in the other direction.
+ */
+/** Escape for interpolation into generated HTML (the receipt window). */
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/** The tenant's own name, for anything a customer reads. */
+const bizName = () => _bizConfig.business_name || '';
+
+function money(n, decimals = 2) {
+  const v = parseFloat(n) || 0;
+  try {
+    return new Intl.NumberFormat(LOCALE, {
+      style: 'currency',
+      currency: _bizConfig.currency || 'ILS',
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }).format(v);
+  } catch {
+    return `${_bizConfig.currency_symbol || '₪'}${v.toFixed(decimals)}`;
+  }
+}
 
 /** The fee recorded on the order; falls back to the tenant's zone table. */
 function deliveryFeeOf(o) {
@@ -390,7 +479,7 @@ function renderOrderCard(o) {
         <span style="font-weight:800;color:var(--primary)">#${o.order_number||'—'}</span>
         <span style="font-size:.7rem;color:var(--text-muted)">${formatDate(o.created_at)}</span>
       </div>
-      <span style="font-weight:800;font-size:1rem">₪${(parseFloat(o.total_price)||0).toFixed(0)}</span>
+      <span style="font-weight:800;font-size:1rem">${money(o.total_price, 0)}</span>
     </div>
     <div style="font-weight:700;font-size:.92rem;margin-bottom:4px">${o.customer_name||'—'}</div>
     ${o.address ? `<div style="font-size:.75rem;color:var(--text-muted);margin-bottom:8px;display:flex;align-items:center;gap:4px">${SVG.pin} ${o.address}</div>` : '<div style="margin-bottom:8px"></div>'}
@@ -445,14 +534,14 @@ function renderOrderRow(o) {
         ${qty>1?`<span style="color:var(--text-muted);font-size:.78rem"> ×${qty}</span>`:''}
         ${tops?`<div style="font-size:.72rem;color:var(--text-muted)">+ ${tops}</div>`:''}
       </div>
-      <span style="font-weight:700;color:var(--text);white-space:nowrap;margin-right:12px">₪${lineTotal}</span>
+      <span style="font-weight:700;color:var(--text);white-space:nowrap;margin-right:12px">${money(lineTotal, 0)}</span>
     </div>`;
   }).join('') || `<div style="color:var(--text-muted);font-size:.82rem">${TR('אין פריטים')}</div>`;
 
   // ── Financial summary ──
   const total    = parseFloat(o.total_price)||0;
   const delivery = deliveryFeeOf(o);
-  const vat      = vatOf(total);
+  const tax      = taxOfOrder(o);
 
   // ── Status selector ──
   const statusOpts = Object.entries(STATUS_LABELS).map(([val,label])=>
@@ -512,10 +601,10 @@ function renderOrderRow(o) {
         <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">${TR('פריטים')}</div>
         <div style="margin-bottom:10px">${itemsHtml}</div>
         <div style="font-size:.8rem;display:flex;flex-direction:column;gap:4px;padding:10px;background:var(--bg);border-radius:10px;margin-bottom:14px">
-          ${delivery ? `<div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>${TR('משלוח')}</span><span>₪${delivery.toFixed(0)}</span></div>` : ''}
-          <div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>${vatLabel()}</span><span>₪${vat.toFixed(2)}</span></div>
+          ${delivery ? `<div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>${TR('משלוח')}</span><span>${money(delivery, 0)}</span></div>` : ''}
+          <div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>${taxLabel()}</span><span>${money(tax)}</span></div>
           <div style="display:flex;justify-content:space-between;font-weight:800;font-size:.92rem;border-top:1.5px solid var(--border);padding-top:6px;margin-top:4px">
-            <span>${TR('סה"כ')}</span><span>₪${total.toFixed(2)}</span>
+            <span>${TR('סה"כ')}</span><span>${money(total)}</span>
           </div>
           <div style="display:flex;justify-content:space-between;color:var(--text-muted);font-size:.75rem">
             <span>${o.payment_method==='cash'?TR('מזומן'):o.payment_method==='bit'?'Bit':TR('אשראי')}</span>
@@ -554,7 +643,7 @@ function renderOrderRow(o) {
   const cellPayment  = `<span class="badge ${o.payment_status==='paid'?'badge-paid':o.payment_method==='bit'?'badge-bit-pending':'badge-pending-pay'}" style="display:inline-flex;align-items:center;gap:3px">
         ${o.payment_status==='paid'?`${SVG.check} ${TR('שולם')}`:o.payment_method==='bit'?`${SVG.phone} Bit`:`${SVG.clock} ${TR('ממתין')}`}
       </span>`;
-  const cellPrice    = `<div style="font-weight:800;font-size:.95rem">₪${(parseFloat(o.total_price)||0).toFixed(0)}</div>`;
+  const cellPrice    = `<div style="font-weight:800;font-size:.95rem">${money(o.total_price, 0)}</div>`;
   const cellStatus   = `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">
         ${statusBadge(o.status, o)}
         ${o.refund_status==='manual'?`<span style="background:#fff0f6;border:1.5px solid #ffd0e6;border-radius:999px;padding:2px 8px;font-size:.66rem;font-weight:700;color:#e0004d;white-space:nowrap;display:inline-flex;align-items:center;gap:3px">${SVG.creditCard} ${TR('זיכוי ידני')}</span>`:''}
@@ -733,7 +822,7 @@ function _incomingCard(o) {
     ${notes}
     <div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 8px">
       <span style="font-size:.76rem;font-weight:700;color:var(--text-muted)">${TR('זמן הכנה')}</span>
-      <span style="font-weight:800;font-size:1rem">₪${(parseFloat(o.total_price)||0).toFixed(0)}</span>
+      <span style="font-weight:800;font-size:1rem">${money(o.total_price, 0)}</span>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${chips}</div>
     ${isScheduled ? `<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:8px">${TR('אישור מתחייב להכנה בשעה זו; ההזמנה תיכנס למטבח אוטומטית לפני המועד')}</div>` : ''}
@@ -1051,10 +1140,10 @@ async function loadStats(period = 'today', date) {
       kpi(`${TR('הזמנות')} — ${periodLabel}`,  s.order_count) +
       // Revenue is money received; anything still owed is its own figure rather
       // than being folded in and overstating the day.
-      kpi(TR('הכנסות (שולם)'),            `₪${(s.revenue||0).toFixed(0)}`) +
-      kpi(TR('ממתין לתשלום'),             `₪${(s.revenue_pending||0).toFixed(0)}`,
+      kpi(TR('הכנסות (שולם)'),            money(s.revenue||0, 0)) +
+      kpi(TR('ממתין לתשלום'),             money(s.revenue_pending||0, 0),
           (s.revenue_pending||0) > 0 ? '#c07000' : 'var(--text)') +
-      kpi(TR('ממוצע להזמנה'),             s.order_count ? `₪${((s.revenue||0)/s.order_count).toFixed(0)}` : '—') +
+      kpi(TR('ממוצע להזמנה'),             s.order_count ? money((s.revenue||0)/s.order_count, 0) : '—') +
       kpi(TR('זמן מסירה ממוצע'),          s.avg_delivery_minutes != null ? s.avg_delivery_minutes+'′' : '—') +
       kpi(TR('ביטולים'),                  s.cancelled_count || 0, (s.cancelled_count||0) > 0 ? C_RED : 'var(--text)');
 
@@ -1091,7 +1180,7 @@ async function loadStats(period = 'today', date) {
       data: {
         labels:   days.map(d => d.slice(5)),
         datasets: [{
-          label: TR('הכנסות') + ' ₪',
+          label: `${TR('הכנסות')} ${_bizConfig.currency_symbol || ''}`.trim(),
           data:  days.map(d => byDay[d].revenue || 0),
           borderColor: C_GREEN,
           backgroundColor: 'rgba(34,197,94,.12)',
@@ -1105,11 +1194,11 @@ async function loadStats(period = 'today', date) {
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false }, tooltip: { rtl: true, callbacks: {
-          label: ctx => ` ₪${ctx.parsed.y.toFixed(0)}`
+          label: ctx => ' ' + money(ctx.parsed.y, 0)
         }}},
         scales: {
           x: { ticks: { color: mutedColor, font: { family: C_FONT, size: 11 } }, grid: { display: false } },
-          y: { ticks: { color: mutedColor, font: { family: C_FONT, size: 11 }, callback: v => '₪'+v }, grid: { color: gridColor }, beginAtZero: true },
+          y: { ticks: { color: mutedColor, font: { family: C_FONT, size: 11 }, callback: v => money(v, 0) }, grid: { color: gridColor }, beginAtZero: true },
         },
       },
     });
@@ -1201,7 +1290,7 @@ async function loadStats(period = 'today', date) {
         labels: tops.map(p => p.name),
         datasets: [
           { label: TR('כמות'), data: tops.map(p => p.count), backgroundColor: 'rgba(94,23,235,.8)', borderRadius: 6, yAxisID: 'y' },
-          { label: TR('הכנסה') + ' ₪', data: tops.map(p => p.revenue || 0), backgroundColor: 'rgba(34,197,94,.7)', borderRadius: 6, yAxisID: 'y2' },
+          { label: `${TR('הכנסה')} ${_bizConfig.currency_symbol || ''}`.trim(), data: tops.map(p => p.revenue || 0), backgroundColor: 'rgba(34,197,94,.7)', borderRadius: 6, yAxisID: 'y2' },
         ],
       },
       options: {
@@ -1254,7 +1343,7 @@ function openDisputeModal(orderId) {
           <input type="checkbox" data-item="${i}" data-topping="${ti}"
             onchange="updateDisputePreview()"
             style="accent-color:#f59e0b;width:14px;height:14px;flex-shrink:0">
-          <span>↳ ${tName}${tPrice ? ` (+₪${tPrice.toFixed(0)})` : ''}</span>
+          <span>↳ ${tName}${tPrice ? ` (+${money(tPrice, 0)})` : ''}</span>
         </label>`;
     }).join('');
 
@@ -1265,7 +1354,7 @@ function openDisputeModal(orderId) {
             onchange="updateDisputePreview()"
             style="accent-color:#f59e0b;width:16px;height:16px;flex-shrink:0">
           <span>${name}${qty > 1 ? ` ×${qty}` : ''}</span>
-          ${price ? `<span style="margin-right:auto;color:var(--text-muted);font-weight:400;font-size:.78rem">₪${(price*qty).toFixed(0)}</span>` : ''}
+          ${price ? `<span style="margin-right:auto;color:var(--text-muted);font-weight:400;font-size:.78rem">${money(price*qty, 0)}</span>` : ''}
         </label>
         ${toppingRows}
       </div>`;
@@ -1325,7 +1414,7 @@ function updateDisputePreview() {
   const greeting  = o.customer_name ? `שלום ${o.customer_name}! 🙏` : `שלום! 🙏`;
   const isSingle  = disputes.length === 1;
   const refund    = disputes.reduce((s, d) => s + d.price * (d.qty || 1), 0);
-  const refundStr = refund > 0 ? ` (זיכוי של ₪${refund.toFixed(0)})` : '';
+  const refundStr = refund > 0 ? ` (${TR('זיכוי של')} ${money(refund, 0)})` : '';
 
   const listStr = disputes.map(d =>
     d.type === 'item'
@@ -1389,7 +1478,7 @@ function buildCancelMessage() {
 async function confirmBitPayment(orderId) {
   const o = currentOrders.find(x => x.id === orderId);
   if (!o) return;
-  if (!confirm(`${TR('לאשר קבלת תשלום Bit עבור הזמנה')} #${o.order_number} (₪${parseFloat(o.total_price||0).toFixed(0)})?`)) return;
+  if (!confirm(`${TR('לאשר קבלת תשלום Bit עבור הזמנה')} #${o.order_number} (${money(o.total_price, 0)})?`)) return;
   try {
     await api('POST', `/orders/${orderId}/confirm-payment`);
     showToast(TR('תשלום אושר!'));
@@ -1408,7 +1497,7 @@ function openCancelRefundModal(orderId) {
   const isCreditPaid = o.payment_method === 'credit' && o.payment_status === 'paid';
 
   document.getElementById('cancelRefundTitle').textContent   = `${TR('ביטול הזמנה')} #${o.order_number}`;
-  document.getElementById('cancelRefundAmount').textContent  = `₪${parseFloat(o.total_price||0).toFixed(2)}`;
+  document.getElementById('cancelRefundAmount').textContent  = money(o.total_price);
   document.getElementById('cancelRefundPayment').textContent = isCreditPaid ? TR('אשראי — יינתן זיכוי') : o.payment_method === 'cash' ? TR('מזומן') : o.payment_method === 'bit' ? `Bit${o.payment_status==='paid'?' — '+TR('שולם'):' — '+TR('ממתין')}` : TR('לא שולם');
   document.getElementById('cancelRefundPayment').style.color = isCreditPaid ? '#16a34a' : '#c07000';
   document.getElementById('cancelRefundReason').value        = '';
@@ -1503,8 +1592,8 @@ function printOrder(orderId) {
   const subtotal = items.reduce((s, it) => s + (parseFloat(it.price)||0) * (it.quantity||it.qty||1), 0);
   const delivery = deliveryFeeOf(o);
   const total    = parseFloat(o.total_price) || (subtotal + delivery);
-  const vat      = vatOf(total);
-  const net      = total - vat;
+  const tax      = taxOfOrder(o);
+  const net      = netOf(total, tax);
 
   const itemRows = items.map(it => {
     const qty      = it.quantity || it.qty || 1;
@@ -1517,21 +1606,21 @@ function printOrder(orderId) {
           ${tops ? `<br><span style="font-size:.78rem;color:#6b7280">+ ${tops}</span>` : ''}
         </td>
         <td style="padding:8px 0;border-bottom:1px dashed #e5e7eb;text-align:center;color:#6b7280">${qty}</td>
-        <td style="padding:8px 0;border-bottom:1px dashed #e5e7eb;text-align:left;font-weight:600">₪${lineTotal.toFixed(2)}</td>
+        <td style="padding:8px 0;border-bottom:1px dashed #e5e7eb;text-align:left;font-weight:600">${money(lineTotal)}</td>
       </tr>`;
   }).join('');
 
   const addressLine = o.address
     ? `<div style="margin-top:4px;color:#6b7280;font-size:.82rem;display:flex;align-items:center;gap:4px">${SVG.pin} ${o.address}</div>` : '';
 
-  const now = new Date().toLocaleString('he-IL');
-  const orderDate = o.created_at ? new Date(o.created_at).toLocaleString('he-IL') : now;
+  const now = new Date().toLocaleString(LOCALE);
+  const orderDate = o.created_at ? new Date(o.created_at).toLocaleString(LOCALE) : now;
 
   const html = `<!DOCTYPE html>
 <html dir="rtl" lang="he">
 <head>
   <meta charset="UTF-8">
-  <title>קבלה #${o.order_number}</title>
+  <title>${TR('קבלה')} #${o.order_number}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;600;700;800&display=swap');
     * { box-sizing:border-box; margin:0; padding:0; }
@@ -1578,52 +1667,52 @@ function printOrder(orderId) {
 <div class="receipt">
 
   <div class="logo-area">
-    <div class="biz-name">פיצה דליבריס</div>
+    ${bizName() ? `<div class="biz-name">${escapeHtml(bizName())}</div>` : ''}
     <div class="biz-sub">jasell.com</div>
   </div>
 
   <div class="order-num">#${o.order_number}</div>
   <div class="meta">${orderDate}</div>
 
-  <div class="section-title">פרטי לקוח</div>
+  <div class="section-title">${TR('פרטי לקוח')}</div>
   <div class="customer-box">
     <div class="customer-name">${o.customer_name || '—'}</div>
-    ${o.customer_phone ? `<div style="font-size:.8rem;color:#6b7280;margin-top:2px">טל׳: ${o.customer_phone}</div>` : ''}
+    ${o.customer_phone ? `<div style="font-size:.8rem;color:#6b7280;margin-top:2px">${TR('טל׳')}: ${o.customer_phone}</div>` : ''}
     <div style="margin-top:4px;font-size:.8rem">
-      ${o.delivery_method === 'delivery' ? 'משלוח' : 'איסוף עצמי'}
+      ${o.delivery_method === 'delivery' ? TR('משלוח') : TR('איסוף עצמי')}
     </div>
     ${addressLine}
-    ${o.courier_notes ? `<div style="margin-top:4px;font-size:.75rem;color:#6b7280">הערות: ${o.courier_notes}</div>` : ''}
+    ${o.courier_notes ? `<div style="margin-top:4px;font-size:.75rem;color:#6b7280">${TR('הערות')}: ${o.courier_notes}</div>` : ''}
   </div>
 
-  <div class="section-title">פריטים</div>
+  <div class="section-title">${TR('פריטים')}</div>
   <table class="items-table">
     <thead><tr>
-      <th>מנה</th>
-      <th style="text-align:center;width:30px">כמות</th>
-      <th style="text-align:left;width:60px">מחיר</th>
+      <th>${TR('מנה')}</th>
+      <th style="text-align:center;width:30px">${TR('כמות')}</th>
+      <th style="text-align:left;width:60px">${TR('מחיר')}</th>
     </tr></thead>
     <tbody>${itemRows}</tbody>
   </table>
 
   <div class="totals">
-    ${delivery ? `<div class="total-row"><span>משלוח</span><span>₪${delivery.toFixed(2)}</span></div>` : ''}
-    <div class="total-row"><span>לפני מע"מ</span><span>₪${net.toFixed(2)}</span></div>
-    <div class="total-row"><span>${vatLabel()}</span><span>₪${vat.toFixed(2)}</span></div>
-    <div class="total-row big"><span>סה"כ לתשלום</span><span>₪${total.toFixed(2)}</span></div>
+    ${delivery ? `<div class="total-row"><span>${TR('משלוח')}</span><span>${money(delivery)}</span></div>` : ''}
+    <div class="total-row"><span>${TR('לפני מס')}</span><span>${money(net)}</span></div>
+    <div class="total-row"><span>${taxLabel()}</span><span>${money(tax)}</span></div>
+    <div class="total-row big"><span>${TR('סה"כ לתשלום')}</span><span>${money(total)}</span></div>
   </div>
 
   <div class="payment-row">
-    <span>${o.payment_method === 'cash' ? 'מזומן' : 'אשראי'}</span>
-    <span>${o.payment_status === 'paid' ? 'שולם' : 'ממתין לתשלום'}</span>
+    <span>${o.payment_method === 'cash' ? TR('מזומן') : TR('אשראי')}</span>
+    <span>${o.payment_status === 'paid' ? TR('שולם') : TR('ממתין לתשלום')}</span>
   </div>
 
   <div class="footer">
-    תודה שבחרת <strong>פיצה דליבריס</strong>!<br>
-    הדפסה: ${now}
+    ${bizName() ? `${TR('תודה שבחרת')} <strong>${escapeHtml(bizName())}</strong>!<br>` : ''}
+    ${TR('הודפס')}: ${now}
   </div>
 </div>
-<button onclick="window.close()" style="display:block;margin:16px auto 0;padding:10px 28px;background:#5e17eb;color:#fff;border:none;border-radius:50px;font-family:inherit;font-size:.85rem;font-weight:700;cursor:pointer">סגור</button>
+<button onclick="window.close()" style="display:block;margin:16px auto 0;padding:10px 28px;background:#5e17eb;color:#fff;border:none;border-radius:50px;font-family:inherit;font-size:.85rem;font-weight:700;cursor:pointer">${TR('סגור')}</button>
 <script>
   window.onload = () => { window.print(); };
   window.onafterprint = () => { window.close(); };
@@ -1673,7 +1762,7 @@ function renderEditItems() {
           <div style="font-weight:700;font-size:.88rem">${item.name||item.name_he||TR('פריט')}</div>
           ${toppings ? `<div style="font-size:.75rem;color:var(--text-muted)">+ ${toppings}</div>` : ''}
         </div>
-        <div style="font-weight:700;color:var(--text);min-width:50px;text-align:center">₪${((item.price||0)*qty).toFixed(0)}</div>
+        <div style="font-weight:700;color:var(--text);min-width:50px;text-align:center">${money((item.price||0)*qty, 0)}</div>
         <div style="display:flex;align-items:center;gap:4px">
           <button onclick="changeQty(${i},-1)" style="width:26px;height:26px;border-radius:50%;border:2px solid var(--border);background:#fff;cursor:pointer;font-weight:700;font-size:1rem;display:flex;align-items:center;justify-content:center">−</button>
           <span style="font-weight:800;min-width:20px;text-align:center">${qty}</span>
@@ -1698,13 +1787,18 @@ function removeEditItem(i) {
 function updateEditSummary(order) {
   const deliveryFee = deliveryFeeOf(order) || 0;
   const subtotal = _editItems.reduce((s, item) => s + (parseFloat(item.price)||0) * (item.quantity||1), 0);
-  const total = subtotal + deliveryFee;
-  const vat   = vatOf(total);
+  // In an exclusive-tax region the edited basket is pre-tax, so the tax is added
+  // to reach the total the customer pays; inclusive regions leave it inside.
+  const base  = taxAddedAtCheckout() && !_bizConfig.tax_on_delivery ? subtotal : subtotal + deliveryFee;
+  const tax   = taxOf(base);
+  const total = taxAddedAtCheckout() ? subtotal + deliveryFee + tax : subtotal + deliveryFee;
 
-  document.getElementById('editSubtotal').textContent    = `₪${subtotal.toFixed(2)}`;
-  document.getElementById('editDeliveryFee').textContent  = `₪${deliveryFee.toFixed(0)}`;
-  document.getElementById('editTotal').textContent        = `₪${total.toFixed(2)}`;
-  document.getElementById('editVat').textContent          = `₪${vat.toFixed(2)}`;
+  document.getElementById('editSubtotal').textContent    = money(subtotal);
+  document.getElementById('editDeliveryFee').textContent  = money(deliveryFee, 0);
+  document.getElementById('editTotal').textContent        = money(total);
+  document.getElementById('editVat').textContent          = money(tax);
+  const vatLabelEl = document.getElementById('editVatLabel');
+  if (vatLabelEl) vatLabelEl.textContent = taxLabel();
 }
 
 function openAddProductToOrder() {
@@ -1848,7 +1942,7 @@ function renderProductRow(p, cat) {
         ${p.name_en ? `<div style="font-size:.75rem;color:var(--text-muted)" dir="ltr">${p.name_en}</div>` : ''}
         ${p.description ? `<div style="font-size:.73rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;margin-top:2px">${p.description}</div>` : ''}
       </div>
-      <div style="font-weight:800;font-size:.95rem;color:var(--text);min-width:60px">₪${parseFloat(p.price).toFixed(0)}</div>
+      <div style="font-weight:800;font-size:.95rem;color:var(--text);min-width:60px">${money(p.price, 0)}</div>
       ${toggleSwitch(p.is_available, `toggleProduct('${p.id}',${!p.is_available})`)}
       <div style="display:flex;gap:6px;margin-inline-start:4px">
         <button onclick="openProductModal(${pData},'${p.category_id||''}')" class="btn btn-ghost btn-sm">${TR('עריכה')}</button>
@@ -1886,13 +1980,13 @@ function renderGlobalToppings() {
       style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--radius-sm);border:1px solid ${a.is_available ? '#bbf7d0' : '#fecdd3'};background:${a.is_available ? '#f0fdf4' : '#fff1f2'};cursor:pointer;font-family:inherit;font-size:.76rem;font-weight:600;color:${a.is_available ? '#15803d' : '#be123c'};transition:all .15s">
       <span style="width:6px;height:6px;border-radius:50%;background:${a.is_available ? '#22c55e' : '#e11d48'};flex-shrink:0"></span>
       ${a.name_he}
-      <span style="font-weight:400;opacity:.75">+₪${parseFloat(a.price).toFixed(0)}</span>
+      <span style="font-weight:400;opacity:.75">+${money(a.price, 0)}</span>
     </button>`).join('');
 
   const editor = editorOpen ? `
     <div style="margin-top:10px;border-radius:var(--radius-md);border:1px solid var(--border);overflow:hidden;background:var(--white)">
       <div style="display:grid;grid-template-columns:1fr 110px 90px;padding:8px 14px;background:var(--color-bg);border-bottom:1px solid var(--border);font-size:.68rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;gap:12px">
-        <span>${TR('תוספת')}</span><span>${TR('מחיר (₪)')}</span><span></span>
+        <span>${TR('תוספת')}</span><span>${TR('מחיר')} (${_bizConfig.currency_symbol || ''})</span><span></span>
       </div>
       ${tops.map((a) => `
         <div style="display:grid;grid-template-columns:1fr 110px 90px;padding:9px 14px;border-top:1px solid var(--border);align-items:center;gap:12px;font-size:.83rem">
@@ -2269,7 +2363,7 @@ function renderCustomerStats(customers) {
       <div class="stat-label">${TR('סה"כ הזמנות')}</div>
     </div>
     <div class="stat-card green">
-      <div class="stat-value">₪${Math.round(totalRev).toLocaleString()}</div>
+      <div class="stat-value">${money(totalRev, 0)}</div>
       <div class="stat-label">${TR('סה"כ הכנסות')}</div>
     </div>`;
 }
@@ -2317,7 +2411,7 @@ function renderCustomersTable(customers) {
             </td>
             <td style="color:var(--text-muted);font-size:.82rem" dir="ltr">${c.customer_phone||c.phone||'—'}</td>
             <td style="text-align:center;font-weight:800;color:var(--text)">${c.order_count}</td>
-            <td style="font-weight:800;color:var(--text)">₪${parseFloat(c.total_spent||0).toFixed(0)}</td>
+            <td style="font-weight:800;color:var(--text)">${money(c.total_spent, 0)}</td>
           </tr>`;
         }).join('')}
       </tbody>
@@ -2547,15 +2641,22 @@ function renderSettingsForm(s) {
     pin:   ico('<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>'),
     truck: ico('<rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 7v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>'),
     phone: ico('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>'),
+    globe: ico('<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'),
     brush: ico('<path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/>'),
   };
 
-  const NAV_LABELS = ['פרטי העסק','מיתוג תפריט','מע"מ','תשלום','סוגי הזמנה','אישור הזמנות','תוספות','מתוזמנות','שינויי הזמנות','שיחה עם נציג','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים','שיחות שלא נענו'];
+  const NAV_LABELS = ['פרטי העסק','מיתוג תפריט','מדינה','מס','תשלום','סוגי הזמנה','אישור הזמנות','תוספות','מתוזמנות','שינויי הזמנות','שיחה עם נציג','שעות פעילות','שעות משלוח','אזורי משלוח','שליחים','שיחות שלא נענו'];
 
   // Effective state banner — what customers experience RIGHT NOW (flag ∧ hours
   // ∧ override), not the raw is_open toggle below, which alone can mislead.
   const eff = s._effective || {};
-  const ovUntil = eff.override ? new Date(eff.override.until).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : '';
+  // The resolved region/tax/currency in force — including values inherited from
+  // the region rather than stored, so the card shows what actually applies.
+  const loc = s._locale || {
+    region: 'IL', currency: 'ILS', taxMode: 'inclusive',
+    taxRate: 18, taxLabel: 'מע"מ', taxOnDelivery: true,
+  };
+  const ovUntil = eff.override ? new Date(eff.override.until).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' }) : '';
   const effBanner = `
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;padding:14px 18px;border:1px solid ${eff.open ? '#bbf7d0' : '#fecaca'};background:${eff.open ? '#f0fdf4' : '#fef2f2'};border-radius:var(--radius-lg)">
       <span style="width:10px;height:10px;border-radius:50%;background:${eff.open ? '#16a34a' : '#dc2626'};flex-shrink:0"></span>
@@ -2603,14 +2704,55 @@ function renderSettingsForm(s) {
       ${saveBtn('saveMenuBranding')}
     `)}
 
-    ${sCard(ICONS.pay, 'מע"מ וחיוב', 'שיעור המע"מ המוצג בקבלות ובסיכומי הזמנה', `
+    ${sCard(ICONS.globe, 'אזור ומטבע', 'המדינה שבה העסק פועל — קובעת מטבע, מודל מס ופורמט תאריך', `
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+        <label style="font-size:.84rem;font-weight:600;min-width:150px">${TR('אזור פעילות')}</label>
+        <select id="regionSelect" onchange="onRegionChange()" style="min-width:220px">
+          <option value="IL" ${loc.region === 'IL' ? 'selected' : ''}>${TR('ישראל')}</option>
+          <option value="US" ${loc.region === 'US' ? 'selected' : ''}>${TR('ארצות הברית')}</option>
+        </select>
+      </div>
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-        <label style="font-size:.84rem;font-weight:600;min-width:150px">${TR('שיעור מע"מ')}</label>
-        <input type="number" id="vatRate" value="${s.vat_rate ?? 18}" min="0" max="100" step="0.5"
-          style="width:90px;font-weight:700;text-align:center">
+        <label style="font-size:.84rem;font-weight:600;min-width:150px">${TR('מטבע')}</label>
+        <select id="currencySelect" onchange="renderTaxPreview()" style="min-width:220px">
+          <option value="ILS" ${loc.currency === 'ILS' ? 'selected' : ''}>₪ ILS</option>
+          <option value="USD" ${loc.currency === 'USD' ? 'selected' : ''}>$ USD</option>
+        </select>
+      </div>
+      <div style="font-size:.78rem;color:var(--text-muted);margin-top:12px;line-height:1.6">
+        ${TR('שינוי האזור מעדכן את מודל המס, המטבע והתווית לברירות המחדל של אותה מדינה. אפשר לשנות כל ערך בנפרד אחר כך.')}
+      </div>
+      ${saveBtn('saveRegion')}
+    `)}
+
+    ${sCard(ICONS.pay, 'מס', 'איך המס מחושב ומוצג — כלול במחיר או מתווסף בקופה', `
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <label style="font-size:.84rem;font-weight:600;min-width:150px">${TR('מודל המס')}</label>
+        <select id="taxMode" onchange="renderTaxPreview()" style="min-width:260px">
+          <option value="inclusive" ${loc.taxMode === 'inclusive' ? 'selected' : ''}>${TR('כלול במחיר (ישראל)')}</option>
+          <option value="exclusive" ${loc.taxMode === 'exclusive' ? 'selected' : ''}>${TR('מתווסף בקופה (ארה"ב)')}</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <label style="font-size:.84rem;font-weight:600;min-width:150px">${TR('שיעור המס')}</label>
+        <input type="number" id="taxRate" value="${loc.taxRate}" min="0" max="100" step="0.25"
+          oninput="renderTaxPreview()" style="width:90px;font-weight:700;text-align:center">
         <span style="font-size:.84rem;color:var(--text-muted)">%</span>
       </div>
-      ${saveBtn('saveVatRate')}
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px">
+        <label style="font-size:.84rem;font-weight:600;min-width:150px">${TR('תווית בקבלה')}</label>
+        <input type="text" id="taxLabel" value="${(loc.taxLabel || '').replace(/"/g, '&quot;')}"
+          oninput="renderTaxPreview()" style="min-width:220px" placeholder="Sales Tax">
+      </div>
+      <div style="font-size:.78rem;color:var(--text-muted);margin:0 0 14px">
+        ${TR('המילה שתופיע בקבלה. "VAT" לא קיים בארה"ב ו-"Sales Tax" לא קיים בישראל — זו לא שאלה של תרגום.')}
+      </div>
+      <div id="taxDeliveryRow" style="${loc.taxMode === 'exclusive' ? '' : 'display:none'}">
+        ${sToggle('tax_on_delivery', 'לחייב מס גם על דמי המשלוח', loc.taxOnDelivery !== false, '',
+                  'בקליפורניה חיוב משלוח של המוכר חייב במס בחלק מהמקרים — התייעץ עם רואה החשבון של העסק')}
+      </div>
+      <div id="taxPreview"></div>
+      ${saveBtn('saveTaxSettings')}
     `)}
 
     ${sCard(ICONS.pay, 'אמצעי תשלום', 'אילו אמצעי תשלום הבוט מציע ללקוחות', `
@@ -2790,6 +2932,12 @@ function renderSettingsForm(s) {
   }
   wireHoursToggle('hours-active',          'hours-input');
   wireHoursToggle('delivery-hours-active', 'delivery-hours-input');
+
+  // Tax preview: the card's whole job is showing that the same percentage
+  // produces different money in the two models, so it recomputes on any input.
+  document.querySelector('.setting-toggle[data-key="tax_on_delivery"]')
+    ?.addEventListener('change', renderTaxPreview);
+  renderTaxPreview();
 }
 
 // ── Section save functions ──
@@ -2842,9 +2990,110 @@ async function saveAcceptance() {
   renderSettingsForm(_currentSettings = { ..._currentSettings, order_acceptance: mode, default_prep_minutes: prep, accept_reminder_minutes: remind });
 }
 
-async function saveVatRate() {
-  const v = parseFloat(document.getElementById('vatRate')?.value);
-  await saveSection({ vat_rate: Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : 18 });
+// ─── Region & tax ─────────────────────────────────────────────────────────────
+// Israel and Los Angeles do not disagree about the RATE, they disagree about
+// what a price means: 18% already inside the menu price, vs 9.5% added at the
+// till. Storing only a number made those two indistinguishable, so the server
+// charged a pre-tax amount while the receipt printed a tax nobody collected.
+// Everything below is a setting; nothing here is region-specific in code.
+
+/** Region defaults, mirrored from services/locale.js for instant UI feedback. */
+const REGION_DEFAULTS = {
+  IL: { currency: 'ILS', tax_mode: 'inclusive', tax_rate: 18,  tax_label: 'מע"מ',     tax_on_delivery: true  },
+  US: { currency: 'USD', tax_mode: 'exclusive', tax_rate: 9.5, tax_label: 'Sales Tax', tax_on_delivery: false },
+};
+
+/** Picking a region fills the tax fields with that country's model, editable after. */
+function onRegionChange() {
+  const region = document.getElementById('regionSelect')?.value;
+  const d = REGION_DEFAULTS[region];
+  if (!d) return;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('currencySelect', d.currency);
+  set('taxMode', d.tax_mode);
+  set('taxRate', d.tax_rate);
+  set('taxLabel', d.tax_label);
+  const toggle = document.querySelector('.setting-toggle[data-key="tax_on_delivery"]');
+  if (toggle) toggle.checked = d.tax_on_delivery;
+  renderTaxPreview();
+}
+
+/**
+ * A worked example under the current settings.
+ *
+ * The whole point of this card is that the two models produce different money
+ * from the same inputs, and a percentage on its own does not show that. So the
+ * card does the arithmetic in front of the operator rather than asking them to
+ * trust that "9.5%" means what they assume.
+ */
+function renderTaxPreview() {
+  const el = document.getElementById('taxPreview');
+  if (!el) return;
+
+  const mode     = document.getElementById('taxMode')?.value || 'inclusive';
+  const rate     = parseFloat(document.getElementById('taxRate')?.value) || 0;
+  const label    = (document.getElementById('taxLabel')?.value || '').trim();
+  const currency = document.getElementById('currencySelect')?.value || 'ILS';
+  const onDelivery = document.querySelector('.setting-toggle[data-key="tax_on_delivery"]')?.checked !== false;
+
+  const deliveryRow = document.getElementById('taxDeliveryRow');
+  if (deliveryRow) deliveryRow.style.display = mode === 'exclusive' ? '' : 'none';
+
+  const fmt = (n) => {
+    try {
+      return new Intl.NumberFormat(LOCALE, {
+        style: 'currency', currency, minimumFractionDigits: 2, maximumFractionDigits: 2,
+      }).format(n);
+    } catch { return n.toFixed(2); }
+  };
+
+  const menuPrice = currency === 'USD' ? 12.99 : 50;
+  const delivery  = currency === 'USD' ? 4.99  : 25;
+  const exclusive = mode === 'exclusive';
+  const base      = exclusive && !onDelivery ? menuPrice : menuPrice + delivery;
+  const tax       = rate ? (exclusive ? base * rate / 100 : base * rate / (100 + rate)) : 0;
+  const charged   = exclusive ? menuPrice + delivery + tax : menuPrice + delivery;
+
+  const row = (k, v, strong) => `
+    <div style="display:flex;justify-content:space-between;gap:16px;${strong ? 'font-weight:800;border-top:1.5px solid var(--border);padding-top:7px;margin-top:5px' : 'color:var(--text-muted)'}">
+      <span>${k}</span><span>${v}</span>
+    </div>`;
+
+  el.innerHTML = `
+    <div style="margin:16px 0 4px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--color-bg);font-size:.82rem">
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:10px">
+        ${TR('כך זה ייראה ללקוח')}
+      </div>
+      ${row(TR('מחיר בתפריט'), fmt(menuPrice))}
+      ${row(TR('משלוח'), fmt(delivery))}
+      ${row(`${label} ${rate}%${exclusive ? '' : ' — ' + TR('כלול')}`, exclusive ? `+ ${fmt(tax)}` : fmt(tax))}
+      ${row(TR('הלקוח משלם'), fmt(charged), true)}
+      <div style="margin-top:11px;font-size:.76rem;color:var(--text-muted);line-height:1.6">
+        ${exclusive
+          ? TR('המס מתווסף לסכום שנגבה בפועל. התפריט והבוט מציגים מחיר לפני מס.')
+          : TR('המס כבר כלול במחיר שבתפריט. הקבלה רק מפרקת כמה מתוך הסכום היה מס.')}
+      </div>
+    </div>`;
+}
+
+async function saveRegion() {
+  const region   = document.getElementById('regionSelect')?.value;
+  const currency = document.getElementById('currencySelect')?.value;
+  // The region is sent alone so the server seeds that country's tax model; the
+  // tax card then saves any deviation from it.
+  await saveSection({ region, currency });
+  await loadBusinessConfig();
+  await loadSettings();
+}
+
+async function saveTaxSettings() {
+  const rate = parseFloat(document.getElementById('taxRate')?.value);
+  await saveSection({
+    tax_mode:  document.getElementById('taxMode')?.value,
+    tax_rate:  Number.isFinite(rate) ? Math.max(0, Math.min(100, rate)) : 0,
+    tax_label: (document.getElementById('taxLabel')?.value || '').trim(),
+    tax_on_delivery: document.querySelector('.setting-toggle[data-key="tax_on_delivery"]')?.checked !== false,
+  });
   await loadBusinessConfig();
 }
 
@@ -2934,8 +3183,8 @@ function renderZonesTable() {
         <tr>
           <th>${TR('עיר')}</th>
           <th>${TR('אזור')}</th>
-          <th>${TR('דמי משלוח (₪)')}</th>
-          <th>${TR('מינימום (₪)')}</th>
+          <th>${TR('דמי משלוח')} (${_bizConfig.currency_symbol || ''})</th>
+          <th>${TR('מינימום')} (${_bizConfig.currency_symbol || ''})</th>
           <th>${TR('זמן משוער (דק׳)')}</th>
           <th></th>
         </tr>
@@ -3466,8 +3715,12 @@ initTheme();
 const _urlTab = new URLSearchParams(location.search).get('tab');
 showTab(TABS.includes(_urlTab) ? _urlTab : 'orders');
 
-// Money formatting depends on the tenant's VAT rate and delivery zones
-loadBusinessConfig().then(() => { if (currentOrders.length) filterOrders(); });
+// Money formatting depends on the tenant's region, currency, tax model and
+// delivery zones — none of which are known until this resolves.
+loadBusinessConfig().then(() => {
+  if (currentOrders.length) filterOrders();
+  if (_currentTab && _currentTab !== 'orders') showTab(_currentTab);
+});
 
 // Live updates via SSE; 30s polling stays as fallback
 _ordersConnectSSE();

@@ -909,7 +909,7 @@ input[type=time] { direction: ltr; }
       <div style="background:var(--color-danger-bg);border:1px solid var(--color-danger-border);border-radius:var(--radius-lg);padding:14px 18px;display:flex;align-items:center;justify-content:space-between">
         <div>
           <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:2px">סכום</div>
-          <div style="font-size:1.5rem;font-weight:800;color:var(--color-danger)" id="cancelRefundAmount">₪0</div>
+          <div style="font-size:1.5rem;font-weight:800;color:var(--color-danger)" id="cancelRefundAmount">—</div>
         </div>
         <div style="text-align:left">
           <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:2px">תשלום</div>
@@ -1053,20 +1053,22 @@ input[type=time] { direction: ltr; }
         <div style="font-weight:700;font-size:.88rem;color:var(--text-muted);margin-bottom:12px;display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> <span data-tr>סיכום כספי</span></div>
         <div style="display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:6px">
           <span style="color:var(--text-muted)" data-tr>סכום ביניים</span>
-          <span id="editSubtotal" style="font-weight:700">₪0</span>
+          <span id="editSubtotal" style="font-weight:700">—</span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:6px">
           <span style="color:var(--text-muted)" data-tr>משלוח</span>
-          <span id="editDeliveryFee" style="font-weight:700">₪0</span>
+          <span id="editDeliveryFee" style="font-weight:700">—</span>
         </div>
         <div style="border-top:1px solid var(--border);margin:8px 0"></div>
         <div style="display:flex;justify-content:space-between;font-size:.95rem">
           <span style="font-weight:800" data-tr>סה"כ</span>
-          <span id="editTotal" style="font-weight:800">₪0</span>
+          <span id="editTotal" style="font-weight:800">—</span>
         </div>
+        <!-- Label is filled from the tenant's tax settings: the rate was hardcoded
+             at 18% here, which printed an Israeli VAT line on every tenant. -->
         <div style="display:flex;justify-content:space-between;font-size:.75rem;color:var(--text-muted);margin-top:4px">
-          <span data-tr>כולל מע"מ 18%</span>
-          <span id="editVat">₪0</span>
+          <span id="editVatLabel"></span>
+          <span id="editVat">—</span>
         </div>
       </div>
     </div>
@@ -1139,7 +1141,7 @@ input[type=time] { direction: ltr; }
           </div>
         </div>
         <div class="form-group">
-          <label data-tr>מחיר (₪)</label>
+          <label><span data-tr>מחיר</span> <span class="cur-symbol"></span></label>
           <input type="number" id="productPrice" step="0.1" min="0" required>
         </div>
         <!-- Image upload -->
@@ -1194,7 +1196,7 @@ input[type=time] { direction: ltr; }
           </div>
         </div>
         <div class="form-group">
-          <label data-tr>מחיר (₪)</label>
+          <label><span data-tr>מחיר</span> <span class="cur-symbol"></span></label>
           <input type="number" id="additionPrice" step="0.1" min="0" required>
         </div>
         <div class="form-group">
