@@ -291,6 +291,10 @@ CREATE TABLE IF NOT EXISTS onboarding_sessions (
   token                TEXT NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(24), 'hex'),
   status               TEXT NOT NULL DEFAULT 'pending_client',
 
+  -- Region: chosen by the vendor at link creation. Drives the wizard's language
+  -- and examples, and seeds settings.region (and with it the tax model) on approve.
+  region               TEXT DEFAULT 'IL',
+
   -- Filled by the client
   business_name        TEXT,
   business_address     TEXT,

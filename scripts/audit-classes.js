@@ -181,10 +181,8 @@ function i18nCoverage() {
     violations.push(`[i18n: conflicting duplicate key] ${c} — the first definition is silently dead. Use distinct source strings.`);
   }
 
-  // public/menu.html carries its own dictionary: it is CUSTOMER-facing and its
-  // language follows the tenant, not the operator's localStorage. Same rule
-  // applies though — M() with no entry renders Hebrew silently.
-  violations.push(...menuCoverage());
+  // Pages with their own dictionaries (public menu, onboarding wizard).
+  violations.push(...pageDictCoverage());
 
   const scan = (rel, patterns) => {
     const full = path.join(ROOT, rel);
@@ -281,16 +279,20 @@ function hardcodedCurrency() {
   return violations;
 }
 
-/** The menu page's own MENU_HE2EN map, and any M()/data-m string missing from it. */
-function menuCoverage() {
-  const rel  = 'public/menu.html';
+/**
+ * A page that carries its OWN dictionary (the public menu, the onboarding
+ * wizard) — customer-facing strings whose language follows the tenant, not the
+ * operator's localStorage. Same rule as the dashboard: a lookup with no entry
+ * returns its input silently, which is how strings ship untranslated.
+ */
+function pageCoverage({ rel, mapName, fnName, attrs = [] }) {
   const full = path.join(ROOT, rel);
   if (!fs.existsSync(full)) return [];
   const src = fs.readFileSync(full, 'utf8');
 
-  const start = src.indexOf('const MENU_HE2EN = {');
+  const start = src.indexOf(`const ${mapName} = {`);
   const end   = src.indexOf('\n};', start);
-  if (start < 0 || end < 0) return [`[i18n: untranslated] ${rel}: MENU_HE2EN map not found`];
+  if (start < 0 || end < 0) return [`[i18n: untranslated] ${rel}: ${mapName} map not found`];
   const body = src.slice(start, end);
 
   const keys = new Set();
@@ -300,9 +302,9 @@ function menuCoverage() {
 
   const missing = new Set();
   const calls = [
-    /\bM\(\s*'((?:[^'\\]|\\.)*)'\s*\)/g,
-    /\bM\(\s*"((?:[^"\\]|\\.)*)"\s*\)/g,
-    /\bdata-m-aria="([^"]*)"/g,
+    new RegExp(`\\b${fnName}\\(\\s*'((?:[^'\\\\]|\\\\.)*)'\\s*\\)`, 'g'),
+    new RegExp(`\\b${fnName}\\(\\s*"((?:[^"\\\\]|\\\\.)*)"\\s*\\)`, 'g'),
+    ...attrs.map((a) => new RegExp(`\\b${a}="([^"]*)"`, 'g')),
   ];
   for (const re of calls) {
     const rx = new RegExp(re.source, re.flags);
@@ -319,7 +321,15 @@ function menuCoverage() {
   }
 
   return [...missing].map((k) =>
-    `[i18n: untranslated] ${rel}: "${k}" — add it to MENU_HE2EN (a missing entry renders Hebrew to an English customer, silently).`);
+    `[i18n: untranslated] ${rel}: "${k}" — add it to ${mapName} (a missing entry renders Hebrew to an English reader, silently).`);
+}
+
+const PAGE_DICTS = [
+  { rel: 'public/menu.html',       mapName: 'MENU_HE2EN', fnName: 'M', attrs: ['data-m-aria'] },
+  { rel: 'public/onboarding.html', mapName: 'OB_HE2EN',   fnName: 'O' },
+];
+function pageDictCoverage() {
+  return PAGE_DICTS.flatMap(pageCoverage);
 }
 
 const CUSTOM_CHECKS = [i18nCoverage, hardcodedCurrency];

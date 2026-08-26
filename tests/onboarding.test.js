@@ -557,6 +557,40 @@ describe('POST /api/vendor/onboarding/:id/approve — provisioning', () => {
     expect(tables.onboarding_sessions[s.id].status).toBe('approved');
   });
 
+  /**
+   * The region chosen when the link was created decides the tenant's currency,
+   * tax model and receipt label — one choice, made at the only moment the vendor
+   * is thinking about which country the client is in.
+   */
+  test('the region seeds the tenant\'s whole tax model', async () => {
+    const s = readySession({ region: 'US' });
+    await approve(s.id).expect(200);
+
+    const seeded = Object.fromEntries(
+      Object.values(tables.settings).filter(r => r.tenant_id === TENANT).map(r => [r.key, r.value]));
+    expect(seeded.region).toBe('US');
+    expect(seeded.currency).toBe('USD');
+    expect(seeded.tax_mode).toBe('exclusive');
+    expect(seeded.tax_label).toBe('Sales Tax');
+    expect(seeded.tax_rate).toBe(9.5);
+  });
+
+  test('an unset or unknown region provisions a working Israeli tenant', async () => {
+    // A normalisation slip here meant an unset region resolved to the string
+    // 'UNDEFINED' and threw mid-provision, leaving the business half-created.
+    for (const region of [undefined, '', 'ZZ']) {
+      seedSourceMenu();
+      tables.tenant_users = {};
+      const s = readySession(region === undefined ? {} : { region });
+      await approve(s.id).expect(200);
+      const seeded = Object.fromEntries(
+        Object.values(tables.settings).filter(r => r.tenant_id === TENANT).map(r => [r.key, r.value]));
+      expect(seeded.region).toBe('IL');
+      expect(seeded.tax_mode).toBe('inclusive');
+      expect(seeded.currency).toBe('ILS');
+    }
+  });
+
   test('a second approve cannot duplicate the menu or mint a second login', async () => {
     const s = readySession();
     await approve(s.id).expect(200);

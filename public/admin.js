@@ -512,6 +512,7 @@ function openNewOnboardingModal() {
   document.getElementById('obName').value  = '';
   document.getElementById('obPhone').value = '';
   document.getElementById('obPlan').value  = 'trial';
+  document.getElementById('obRegion').value = 'IL';
   document.getElementById('obLinkBox').style.display = 'none';
   document.getElementById('obSubmitBtn').style.display = '';
   document.getElementById('newOnboardingModal').style.display = 'flex';
@@ -530,6 +531,7 @@ async function submitNewOnboarding(e) {
       name:          document.getElementById('obName').value.trim(),
       contact_phone: document.getElementById('obPhone').value.trim(),
       plan:          document.getElementById('obPlan').value,
+      region:        document.getElementById('obRegion').value,
     });
     document.getElementById('obLinkInput').value = data.link;
     document.getElementById('obLinkBox').style.display = '';

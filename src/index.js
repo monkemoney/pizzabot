@@ -115,8 +115,33 @@ app.get('/admin', (_req, res) =>
 );
 
 // ─── Client onboarding (public, token-based) ─────────────────────────────────
-app.get('/onboarding/:token', (_req, res) =>
-  res.sendFile(path.join(__dirname, '..', 'public', 'onboarding.html'))
+// lang/dir are stamped here rather than after the API round-trip, for the same
+// reason as the public menu: setting dir from JavaScript lays the page out
+// backwards for a frame, and this is a client's first impression of the product.
+app.get('/onboarding/:token', async (req, res) => {
+  const file = path.join(__dirname, '..', 'public', 'onboarding.html');
+  try {
+    const { createClient } = require('@supabase/supabase-js');
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data } = await sb.from('onboarding_sessions')
+      .select('region').eq('token', req.params.token).maybeSingle();
+
+    const q    = String(req.query.lang || '').toLowerCase();
+    const lang = q === 'en' || q === 'he' ? q
+               : (String(data?.region || 'IL').toUpperCase() === 'US' ? 'en' : 'he');
+    const dir  = lang === 'he' ? 'rtl' : 'ltr';
+
+    const html = require('fs').readFileSync(file, 'utf8')
+      .replace('<html dir="rtl" lang="he">', `<html dir="${dir}" lang="${lang}">`)
+      .replace('<title>Jasell — הגדרת העסק</title>',
+        `<title>${lang === 'he' ? 'Jasell — הגדרת העסק' : 'Jasell — Set up your business'}</title>` +
+        `<script>window.__OB_LANG__ = ${JSON.stringify(lang)};</script>`);
+    res.type('html').send(html);
+  } catch (err) {
+    console.error('[onboarding] lang injection failed, serving raw file:', err.message);
+    res.sendFile(file);
+  }
+}
 );
 
 // ─── Kitchen window ───────────────────────────────────────────────────────────

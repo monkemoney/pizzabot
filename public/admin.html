@@ -476,6 +476,19 @@ label { display: block; font-size: .82rem; font-weight: 700; color: var(--text-m
         <label style="font-size:.84rem;font-weight:600">טלפון איש קשר</label>
         <input type="tel" id="obPhone" placeholder="0501234567" dir="ltr" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-family:inherit;font-size:.88rem">
       </div>
+      <!-- The region decides the wizard's language AND the tenant's currency,
+           tax model and receipt label on approve. This is the only moment the
+           vendor is actually thinking about which country the client is in. -->
+      <div class="form-group" style="margin-bottom:14px">
+        <label style="font-size:.84rem;font-weight:600">אזור</label>
+        <select id="obRegion" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-family:inherit;font-size:.88rem">
+          <option value="IL">🇮🇱 ישראל — עברית, ₪, מע"מ כלול במחיר</option>
+          <option value="US">🇺🇸 ארה"ב — אנגלית, $, מס מתווסף בקופה</option>
+        </select>
+        <div style="font-size:.75rem;color:var(--text-muted);margin-top:5px">
+          קובע את שפת אשף ההקמה, ואת המטבע ומודל המס של העסק לאחר האישור.
+        </div>
+      </div>
       <div class="form-group" style="margin-bottom:20px">
         <label style="font-size:.84rem;font-weight:600">תוכנית</label>
         <select id="obPlan" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-family:inherit;font-size:.88rem">

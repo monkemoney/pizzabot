@@ -110,7 +110,7 @@ logs=data if isinstance(data,list) else data.get('logs',data.get('data',[]))
 
 # Before every push (MANDATORY)
 node --check public/app.js && node --check public/admin.js
-npm test -- --forceExit     # 433 tests across 24 suites; --forceExit avoids hanging on setInterval timers
+npm test -- --forceExit     # 435 tests across 24 suites; --forceExit avoids hanging on setInterval timers
 
 # Deploy (auto on push)
 git push origin main
@@ -164,7 +164,7 @@ pizza-bot/
 │   └── sw.js                     # Service Worker — push notifications only (no fetch caching)
 ├── supabase/schema.sql           # Full DB schema (documentation — NOT auto-applied, see Schema drift)
 ├── scripts/                      # backup/sync Render env, render-guard
-├── tests/                        # 24 suites / 433 tests — auth, sessions, admin bot, webhook routing
+├── tests/                        # 24 suites / 435 tests — auth, sessions, admin bot, webhook routing
 │                                 #   (incl. Meta), onboarding+draft, payments, audit, settings+overnight,
 │                                 #   meta-whatsapp parsing, slug, inbox/handoff, missed-call recovery
 ├── .design/jasell-dashboard/     # Design brief + review (Confident SaaS direction)
@@ -296,6 +296,15 @@ ACTION blocks: `SET_AVAILABLE` (checks ALL occurrences of a name — standalone 
 - `ADMIN:OVERRIDE:{state,hours}` (≤24h, default 3) / `{cancel:true}`; prompt rules route temporary/out-of-hours requests to OVERRIDE and keep `SET is_open` for permanent kill.
 - **Closed loop:** every open/delivery-touching action (SET is_open/delivery_enabled, both HOURS actions, OVERRIDE) is followed by a read-back of the effective state, appended as "📍 מצב בפועל: …"; flag-on-but-outside-hours adds a hint to use the override. Success is reported from the outcome, never the write.
 - Dashboard: settings page shows an effective-state banner (`GET /api/settings` returns `_effective {open, delivery, override}`; `_`-prefixed keys are never persisted by PATCH) with an override chip + "בטל חריגה".
+
+### Onboarding Wizard Localisation (2026-08-26)
+
+The wizard runs **before the tenant exists**, so its language cannot come from tenant settings. `onboarding_sessions.region` (`IL`|`US`) is chosen by the vendor when the link is created — the only moment anyone is actually thinking about which country the client is in — and that one choice drives three things: the wizard's language and examples, `<html lang/dir>` (stamped server-side in `index.js`, same reason as the public menu), and the tenant's `region`/`currency`/`tax_mode`/`tax_rate`/`tax_label` seeded by `approve`.
+
+- **Static prose is translated by walking TEXT NODES**, not by tagging every element with a `data-` attribute. This page is ~90% static prose, and hand-marking each string is exactly the manual step that left ten strings behind on the dashboard. Unknown text is left untouched.
+- **Examples are region-appropriate, not translated**: a Los Angeles client is shown `123 Main St, Los Angeles, CA 90012` and a dollar-priced sample menu, not a transliterated Tel Aviv street.
+- `scripts/audit-classes.js` covers `OB_HE2EN` alongside `MENU_HE2EN` via one `pageCoverage()` check — both were verified to fail by planting a violation.
+- ⚠️ The region migration is in `supabase/migrations/2026-08-26-order-tax.sql` and must be applied before deploying.
 
 ### Public Menu Localisation (2026-08-26)
 
@@ -514,7 +523,8 @@ clients             platform clients; tenant_id auto-UUID links api_usage cost t
 onboarding_sessions state machine: pending_client → pending_vendor → approved; business fields,
                     menu_notes, channel creds (meta_* + green_*), cardcom fields, checklist JSONB
                     (client_info/whatsapp/cardcom/menu/test — first three auto-ticked), audit
-                    (updated_at, updated_by 'client'|'vendor'), approved_username/password, expires_at
+                    (updated_at, updated_by 'client'|'vendor'), approved_username/password, expires_at,
+                    region ('IL'|'US' — wizard language + seeds the tenant's tax model on approve)
 api_usage           Claude token log per call (tenant_id, in/out/cache tokens)
 call_events         missed-call recovery funnel: one row per processed CDR — caller, answered,
                     outcome (answered|recovery_sent|send_failed|skipped_*|unusable_caller),

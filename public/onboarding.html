@@ -348,6 +348,134 @@ textarea#menuNotes:focus { outline: none; border-color: var(--color-brand); }
 <script>
 'use strict';
 
+/* ── Language ──────────────────────────────────────────────────────────────────
+   The wizard runs BEFORE the tenant exists, so its language comes from the
+   onboarding session's `region` — chosen by the vendor when the link was
+   created, and the same choice that seeds the tenant's currency and tax model
+   on approve. The server stamps window.__OB_LANG__ and <html lang/dir> before
+   this runs, so the page never paints in the wrong direction.
+
+   Static text is translated by walking TEXT NODES rather than by tagging every
+   element: this page is ~90% static prose, and marking each string by hand is
+   exactly the manual step that left ten of them behind on the dashboard. */
+const OLANG = window.__OB_LANG__ === 'en' ? 'en' : 'he';
+
+const OB_HE2EN = {
+  'הגדרת העסק שלך': 'Set up your business',
+  'מלא את הפרטים כדי שנוכל להכין את המערכת עבורך': 'Fill in your details so we can get your system ready',
+  'טוען...': 'Loading...',
+  'לינק לא תקין': 'Invalid link',
+  'הלינק שקיבלת אינו תקין. פנה ל-Jasell לקבלת לינק חדש.': 'This link is not valid. Contact Jasell for a new one.',
+  'הלינק פג תוקף': 'Link expired',
+  'הלינק תקף ל-30 יום. פנה ל-Jasell לקבלת לינק חדש.': 'Links are valid for 30 days. Contact Jasell for a new one.',
+  'העסק שלך באוויר!': "You're live!",
+  'הבוט פעיל ומוכן לקבל הזמנות. פרטי הכניסה נשלחו אליך ב-WhatsApp.':
+    'Your bot is running and ready to take orders. Your login details were sent to you on WhatsApp.',
+  'הקישורים שלך': 'Your links',
+  'דשבורד ניהול': 'Management dashboard',
+  'התפריט הציבורי שלך': 'Your public menu',
+  'פתח ←': 'Open →',
+  '3 צעדים ראשונים': 'First three steps',
+  'היכנסו לדשבורד ועברו על התפריט — ודאו שהמנות והמחירים נכונים':
+    'Open the dashboard and review your menu — check that the items and prices are right',
+  'שלחו הודעת ניסיון למספר הוואטסאפ של הבוט והזמינו משהו — כך תראו בדיוק מה הלקוחות חווים':
+    "Send a test message to your bot's WhatsApp number and order something — you'll see exactly what your customers see",
+  'שתפו את קישור התפריט בסטורי / בביו של העסק — משם הלקוחות מזמינים':
+    'Share your menu link in your story or bio — that is where customers order from',
+  'הפרטים התקבלו!': 'Details received!',
+  'צוות Jasell יסיים את ההגדרה וייצור איתך קשר בקרוב.': 'The Jasell team will finish setting things up and be in touch shortly.',
+  'פרטי העסק': 'Business details',
+  'שם העסק *': 'Business name *',
+  'מספר WhatsApp של הבוט *': "Bot's WhatsApp number *",
+  'המספר שממנו הלקוחות יקבלו הודעות — ללא + או רווחים': 'The number customers receive messages from — no + or spaces',
+  'כתובת הסניף': 'Business address',
+  'כתובת לאיסוף עצמי': 'Pickup address',
+  'סוגי הזמנה': 'Order types',
+  'משלוח': 'Delivery',
+  'הלקוח מקבל את ההזמנה לבית': 'The customer gets the order at home',
+  'איסוף עצמי': 'Pickup',
+  'הלקוח אוסף מהסניף': 'The customer collects from you',
+  'שיטות תשלום': 'Payment methods',
+  'מזומן': 'Cash',
+  'אשראי (Cardcom)': 'Card (Cardcom)',
+  'הירשם ל-Cardcom ↗': 'Sign up for Cardcom ↗',
+  '— לאחר ההרשמה נציג Cardcom ישלח ל-Jasell את מספר הטרמינל והסוד':
+    '— after signing up, a Cardcom rep sends Jasell your terminal number and API name',
+  'שעות פעילות': 'Opening hours',
+  'החל את שעות יום ראשון על כל הימים': 'Apply Sunday’s hours to every day',
+  'אזורי משלוח': 'Delivery areas',
+  'הגדר לכל עיר / אזור את מחיר המשלוח, מינימום הזמנה וזמן משוער להגעה.':
+    'Set the delivery fee, order minimum and estimated arrival time for each city or area.',
+  '+ הוסף אזור משלוח': '+ Add delivery area',
+  'התפריט שלך': 'Your menu',
+  'ספרו לנו מה אתם מוכרים — מנות, מחירים, תוספות. אפשר להעתיק תפריט קיים או לכתוב בקצרה. צוות Jasell יקים את התפריט במערכת עבורכם.':
+    'Tell us what you sell — items, prices, toppings. Paste an existing menu or just write a short version. The Jasell team will build it into the system for you.',
+  'מנהלי WhatsApp': 'WhatsApp admins',
+  'מספרים שיוכלו לנהל את הבוט דרך WhatsApp — לשנות זמינות מוצרים, לעדכן סטטוס הזמנות וכד׳':
+    'Numbers that can manage the bot over WhatsApp — mark items out of stock, update order status and so on',
+  '+ הוסף מנהל': '+ Add admin',
+  'חזרה': 'Back', 'המשך': 'Continue', 'שלח פרטים': 'Submit details',
+  'עד': 'to', 'סגור': 'Closed',
+  'עיר / מיקום *': 'City / area *',
+  'שם האזור (אופציונלי)': 'Area name (optional)',
+  'הסר אזור': 'Remove area', 'הסר': 'Remove', 'שם': 'Name',
+  'ראשון': 'Sunday', 'שני': 'Monday', 'שלישי': 'Tuesday', 'רביעי': 'Wednesday',
+  'חמישי': 'Thursday', 'שישי': 'Friday', 'שבת': 'Saturday',
+  'ברוכים הבאים ל-Jasell': 'Welcome to Jasell',
+  'אספקה ותשלום': 'Fulfilment & payment',
+  'שעות ואזורי משלוח': 'Hours & delivery areas',
+  'תפריט ומנהלים': 'Menu & admins',
+  'שם עסק ומספר WhatsApp הם שדות חובה': 'Business name and WhatsApp number are required',
+  'שולח...': 'Sending...', 'שגיאה': 'Error',
+  // Region-dependent examples — a client in Los Angeles should not be shown a
+  // Tel Aviv street or a shekel price as the model to follow.
+  'פיצה דליבריס': "Tony's Pizza",
+  'רחוב הרצל 1, תל אביב': '123 Main St, Los Angeles, CA 90012',
+  'כמו כתובת הסניף (אם שונה)': 'Same as the business address (if different)',
+  'תל אביב': 'Santa Monica',
+  'מרכז העיר': 'Downtown',
+  'מחיר משלוח (₪)': 'Delivery fee ($)',
+  'מינימום הזמנה (₪)': 'Order minimum ($)',
+  'זמן משוער (דק׳)': 'Est. time (min)',
+  'לדוגמה:\nפיצה משפחתית — 60₪ (תוספות: זיתים, בצל, פטריות — 5₪ כל אחת)\nפיצה אישית — 35₪\nשתייה: קולה / ספרייט — 12₪':
+    'For example:\nLarge pizza — $18 (toppings: olives, onion, mushrooms — $1.50 each)\nPersonal pizza — $11\nDrinks: Coke / Sprite — $3',
+};
+
+/** A client-facing string in the language of this onboarding link. */
+function O(he) {
+  if (OLANG !== 'en') return he;
+  return OB_HE2EN[he] ?? he;
+}
+
+/**
+ * Translate the static prose in `root`.
+ *
+ * Walks text nodes and attributes rather than requiring a data- attribute on
+ * every element: this page is almost entirely static prose, and hand-tagging
+ * each string is precisely the manual step that left ten strings behind on the
+ * dashboard. Unknown text is left exactly as it is.
+ */
+function translateStatic(root) {
+  if (OLANG !== 'en') return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const n of nodes) {
+    const raw = n.nodeValue;
+    const t = raw.trim();
+    if (!t || !/[֐-׿]/.test(t)) continue;
+    const hit = OB_HE2EN[t];
+    if (hit) n.nodeValue = raw.replace(t, hit);
+  }
+  for (const attr of ['placeholder', 'title', 'aria-label']) {
+    root.querySelectorAll(`[${attr}]`).forEach((el) => {
+      const v = el.getAttribute(attr);
+      const t = (v || '').trim();
+      if (t && OB_HE2EN[t]) el.setAttribute(attr, OB_HE2EN[t]);
+    });
+  }
+}
+
 const DAYS = [
   { key:'sun', label:'ראשון' },
   { key:'mon', label:'שני'   },
@@ -378,11 +506,13 @@ async function init() {
     if (res.status === 410) return show('stateExpired');
     const data = await res.json();
     if (data.status === 'approved') {
-      if (data.business_name) document.getElementById('liveTitle').textContent = `${data.business_name} באוויר!`;
+      if (data.business_name) document.getElementById('liveTitle').textContent =
+        OLANG === 'en' ? `${data.business_name} is live!` : `${data.business_name} באוויר!`;
       if (data.menu_url)      document.getElementById('liveMenuLink').href = data.menu_url;
       if (data.dashboard_url) document.getElementById('liveDashLink').href = data.dashboard_url;
-      if (data.username)      document.getElementById('liveDashUser').textContent = `שם משתמש: ${data.username}`;
-      document.getElementById('headerTitle').textContent = 'ברוכים הבאים ל-Jasell';
+      if (data.username)      document.getElementById('liveDashUser').textContent =
+        `${OLANG === 'en' ? 'Username' : 'שם משתמש'}: ${data.username}`;
+      document.getElementById('headerTitle').textContent = O('ברוכים הבאים ל-Jasell');
       return show('stateApproved');
     }
     sessionId = data.id;
@@ -423,17 +553,17 @@ function buildHoursGrid(saved) {
     const toVal   = h.close || '22:00';
     return `
     <div class="hours-row" id="row-${d.key}">
-      <span class="day-name">${d.label}</span>
+      <span class="day-name">${O(d.label)}</span>
       <label class="sw">
         <input type="checkbox" id="open-${d.key}" ${isOpen?'checked':''} onchange="toggleDay('${d.key}')">
         <span class="sw-track"></span>
       </label>
       <div class="hours-times" id="times-${d.key}" style="${isOpen?'':'display:none'}">
         <input type="time" id="from-${d.key}" value="${fromVal}" dir="ltr">
-        <span>עד</span>
+        <span>${O('עד')}</span>
         <input type="time" id="to-${d.key}" value="${toVal}" dir="ltr">
       </div>
-      <span class="hours-closed" id="closed-${d.key}" style="${isOpen?'display:none':''}">סגור</span>
+      <span class="hours-closed" id="closed-${d.key}" style="${isOpen?'display:none':''}">${O('סגור')}</span>
     </div>`;
   }).join('');
 }
@@ -473,7 +603,9 @@ function gotoStep(n) {
     el.classList.toggle('active', Number(el.dataset.step) === n));
   document.getElementById('progressSteps').innerHTML = STEPS.map(s =>
     `<div class="progress-seg ${s.n <= n ? 'active' : ''}"></div>`).join('');
-  document.getElementById('progressLabel').textContent = `שלב ${n} מתוך ${STEPS.length} — ${STEPS[n-1].label}`;
+  document.getElementById('progressLabel').textContent = OLANG === 'en'
+    ? `Step ${n} of ${STEPS.length} — ${O(STEPS[n-1].label)}`
+    : `שלב ${n} מתוך ${STEPS.length} — ${O(STEPS[n-1].label)}`;
   document.getElementById('backBtn').style.display   = n === 1 ? 'none' : '';
   document.getElementById('nextBtn').style.display   = n === STEPS.length ? 'none' : '';
   document.getElementById('submitBtn').style.display = n === STEPS.length ? '' : 'none';
@@ -484,7 +616,7 @@ function nextStep() {
   if (_step === 1) {
     const name = document.getElementById('businessName').value.trim();
     const wa   = document.getElementById('botWhatsapp').value.trim();
-    if (!name || !wa) { alert('שם עסק ומספר WhatsApp הם שדות חובה'); return; }
+    if (!name || !wa) { alert(O('שם עסק ומספר WhatsApp הם שדות חובה')); return; }
   }
   saveDraft(); // fire-and-forget — progress survives a closed tab
   gotoStep(_step + 1);
@@ -544,29 +676,29 @@ function addZoneCard(z) {
   div.innerHTML = `
     <div class="zone-card-top">
       <div class="zone-field">
-        <label>עיר / מיקום *</label>
-        <input type="text" placeholder="תל אביב" value="${z.city||''}" data-zf="city">
+        <label>${O('עיר / מיקום *')}</label>
+        <input type="text" placeholder="${O('תל אביב')}" value="${z.city||''}" data-zf="city">
       </div>
       <div class="zone-field">
-        <label>שם האזור (אופציונלי)</label>
-        <input type="text" placeholder="מרכז העיר" value="${z.area||''}" data-zf="area">
+        <label>${O('שם האזור (אופציונלי)')}</label>
+        <input type="text" placeholder="${O('מרכז העיר')}" value="${z.area||''}" data-zf="area">
       </div>
     </div>
     <div class="zone-card-bottom">
       <div class="zone-field">
-        <label>מחיר משלוח (₪)</label>
+        <label>${O('מחיר משלוח (₪)')}</label>
         <input type="number" placeholder="30" value="${z.fee??30}" min="0" dir="ltr" data-zf="fee">
       </div>
       <div class="zone-field">
-        <label>מינימום הזמנה (₪)</label>
+        <label>${O('מינימום הזמנה (₪)')}</label>
         <input type="number" placeholder="0" value="${z.min_order??0}" min="0" dir="ltr" data-zf="min_order">
       </div>
       <div class="zone-field">
-        <label>זמן משוער (דק׳)</label>
+        <label>${O('זמן משוער (דק׳)')}</label>
         <input type="number" placeholder="45" value="${z.eta_minutes??45}" min="1" dir="ltr" data-zf="eta_minutes">
       </div>
     </div>
-    <button type="button" class="zone-remove" onclick="this.closest('.zone-card').remove()">הסר אזור</button>`;
+    <button type="button" class="zone-remove" onclick="this.closest('.zone-card').remove()">${O('הסר אזור')}</button>`;
   c.appendChild(div);
 }
 
@@ -599,9 +731,9 @@ function addAdminRow(name, phone) {
   const div = document.createElement('div');
   div.className = 'list-item';
   div.innerHTML = `
-    <input type="text" placeholder="שם" value="${name}" style="flex:1">
+    <input type="text" placeholder="${O('שם')}" value="${name}" style="flex:1">
     <input type="tel" placeholder="972501234567" value="${phone}" style="flex:1" dir="ltr">
-    <button type="button" class="remove-btn" onclick="this.parentElement.remove()">הסר</button>`;
+    <button type="button" class="remove-btn" onclick="this.parentElement.remove()">${O('הסר')}</button>`;
   c.appendChild(div);
 }
 
@@ -620,7 +752,7 @@ async function submitForm(e) {
   if (!name || !wa) { alert('שם עסק ומספר WhatsApp הם שדות חובה'); return; }
 
   const btn = document.getElementById('submitBtn');
-  btn.disabled = true; btn.textContent = 'שולח...';
+  btn.disabled = true; btn.textContent = O('שולח...');
 
   try {
     const res = await fetch(`/api/onboarding/${token}`, {
@@ -628,14 +760,16 @@ async function submitForm(e) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(collectForm()),
     });
-    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'שגיאה'); }
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || O('שגיאה')); }
     show('stateSuccess');
   } catch (err) {
     alert(err.message);
-    btn.disabled = false; btn.textContent = 'שלח פרטים';
+    btn.disabled = false; btn.textContent = O('שלח פרטים');
   }
 }
 
+// Static prose first, so nothing Hebrew is on screen while init() fetches.
+translateStatic(document.body);
 init();
 </script>
 </body>

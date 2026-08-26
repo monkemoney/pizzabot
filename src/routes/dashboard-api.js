@@ -1830,6 +1830,14 @@ router.post('/vendor/onboarding', requireVendor, async (req, res) => {
   const { name, contact_phone, plan, notes } = req.body;
   if (!name) return res.status(400).json({ error: 'שם חסר' });
 
+  // The wizard runs before the tenant exists, so its language has to come from
+  // the session. Choosing it here also decides the tenant's tax model, currency
+  // and date format on approve — one choice, made at the only moment the vendor
+  // is actually thinking about which country this client is in.
+  const { REGIONS } = require('../services/locale');
+  const askedRegion = String(req.body.region || 'IL').toUpperCase();
+  const region = REGIONS[askedRegion] ? askedRegion : 'IL';
+
   const { data: client, error: cErr } = await supabase
     .from('clients')
     .insert({ name, contact_phone: contact_phone?.replace(/\D/g, ''), plan: plan || 'trial', notes, status: 'trial' })
@@ -1838,7 +1846,7 @@ router.post('/vendor/onboarding', requireVendor, async (req, res) => {
 
   const { data: session, error: sErr } = await supabase
     .from('onboarding_sessions')
-    .insert({ client_id: client.id, business_name: name })
+    .insert({ client_id: client.id, business_name: name, region })
     .select().single();
   if (sErr) return res.status(500).json({ error: sErr.message });
 
@@ -1987,7 +1995,22 @@ router.post('/vendor/onboarding/:id/approve', requireVendor, async (req, res) =>
   const PUBLIC_URL = process.env.PUBLIC_URL || 'https://www.jasell.com';
 
   // ── 1. Seed settings for this tenant ──────────────────────────────────────
+  // The region chosen when the link was created decides currency, tax model and
+  // receipt label. Seeding the derived values explicitly (rather than leaving
+  // them to resolveLocale's defaults) keeps the settings table showing what is
+  // actually in force, and matches what PATCH /settings does on a region change.
+  const { REGIONS } = require('../services/locale');
+  const askedRegion = String(ob.region || 'IL').toUpperCase();
+  const obRegion = REGIONS[askedRegion] ? askedRegion : 'IL';
+  const rd = REGIONS[obRegion];
+
   const settingsToSeed = [
+    ['region',             obRegion],
+    ['currency',           rd.currency],
+    ['tax_mode',           rd.tax_mode],
+    ['tax_rate',           rd.tax_rate],
+    ['tax_label',          rd.tax_label],
+    ['tax_on_delivery',    rd.tax_on_delivery],
     ['business_name',      ob.business_name   || ob.clients?.name || ''],
     ['bot_whatsapp',       ob.bot_whatsapp     ? ob.bot_whatsapp.replace(/\D/g, '') : ''],
     ['is_open',            true],
