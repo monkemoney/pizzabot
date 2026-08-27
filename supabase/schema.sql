@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS categories (
   sort_order       INTEGER DEFAULT 0,
   has_toppings     BOOLEAN DEFAULT FALSE,
   is_topping_addon BOOLEAN DEFAULT FALSE,   -- the toppings pseudo-category
+  taxable          BOOLEAN DEFAULT TRUE,    -- FALSE exempts from sales tax (CA 80/80 rule)
   is_active        BOOLEAN DEFAULT TRUE,
   created_at       TIMESTAMPTZ DEFAULT NOW()
 );

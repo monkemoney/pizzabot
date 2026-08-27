@@ -38,7 +38,7 @@ async function getProducts(tenantId = DEFAULT_TENANT_ID) {
 
   const { data: products, error: pErr } = await supabase
     .from('products')
-    .select('*, categories(id, name_he, name_en, emoji, has_toppings)')
+    .select('*, categories(id, name_he, name_en, emoji, has_toppings, taxable)')
     .eq('tenant_id', tenantId)
     .eq('is_available', true)
     .order('sort_order');

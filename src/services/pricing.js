@@ -18,8 +18,8 @@
 
 const menuService = require('./menu-service');
 const settings = require('./settings');
-const { feeForAddress } = require('./delivery-fee');
-const { resolveLocale, taxOf, taxableBase } = require('./locale');
+const { feeForAddress, zoneForAddress } = require('./delivery-fee');
+const { resolveLocale, localeForZone, taxOf, taxableBase } = require('./locale');
 
 const TOLERANCE = 1; // ₪ — rounding differences are not worth overriding
 
@@ -142,6 +142,18 @@ async function computeTotal(items = [], { delivery_method, address, tenantId } =
 
   const toppingIndex = await toppingPrices(tenantId, products);
 
+  // Per-category taxability (C10). `taxable` defaults to TRUE in the schema and
+  // is absent from any row that predates it, so a tenant who has never opened
+  // the setting is taxed exactly as before — only an explicit `false` exempts.
+  const catIndex = new Map(
+    (menu.categories || []).map((c) => [String(c.id), c.taxable !== false]));
+  const isExempt = (row) => {
+    if (!row) return false;
+    if (row.categories && row.categories.taxable === false) return true;
+    const known = catIndex.get(String(row.category_id));
+    return known === false;
+  };
+
   // The matched row's names are copied onto the item that gets STORED.
   // orders.items is a JSONB snapshot that historically held only `name` — the
   // language the bot happened to be speaking — so a finished order could never
@@ -150,15 +162,20 @@ async function computeTotal(items = [], { delivery_method, address, tenantId } =
   const enriched = [];
 
   let itemsTotal = 0;
+  let exemptTotal = 0;   // the part of itemsTotal in a category marked non-taxable
   for (const it of items) {
     const qty = Number(it.qty || it.quantity || 1) || 1;
     const row = productRow(it.name || it.name_he);
+    // An unmatched item is taxed: the tenant's default is the safe reading, and
+    // claiming an exemption we cannot substantiate is the expensive mistake.
+    const exempt = !!row && isExempt(row);
+    let lineTotal = 0;
     if (!row) {
       unmatched.push(String(it.name || it.name_he || '?'));
       // Trust the model's line price for this item rather than dropping it.
-      itemsTotal += (Number(it.price) || 0) * qty;
+      lineTotal += (Number(it.price) || 0) * qty;
     } else {
-      itemsTotal += Number(row.price) * qty;
+      lineTotal += Number(row.price) * qty;
     }
 
     const tops = [];
@@ -171,9 +188,14 @@ async function computeTotal(items = [], { delivery_method, address, tenantId } =
         tprice = Number(top.price) || 0;
         if (tname) unmatched.push(`תוספת ${top.name || top.name_he}`);
       }
-      itemsTotal += tprice * portionFactor(top.portion, allSettings) * qty;
+      lineTotal += tprice * portionFactor(top.portion, allSettings) * qty;
       tops.push(withNames(top, trow));
     }
+
+    // A topping is part of the dish it is on, so it follows the dish's
+    // taxability rather than the topping category's.
+    itemsTotal += lineTotal;
+    if (exempt) exemptTotal += lineTotal;
 
     // An unmatched item is stored exactly as it arrived — never invent a name.
     enriched.push({
@@ -182,13 +204,19 @@ async function computeTotal(items = [], { delivery_method, address, tenantId } =
     });
   }
 
-  const deliveryFee = delivery_method === 'delivery' ? feeForAddress(address, allSettings) : 0;
+  const isDelivery  = delivery_method === 'delivery';
+  const deliveryFee = isDelivery ? feeForAddress(address, allSettings) : 0;
   const subtotal = Math.round((itemsTotal + (deliveryFee || 0)) * 100) / 100;
 
   // The tax is computed either way, because the receipt itemises it in both
   // regions. Only `exclusive` adds it to what is charged.
-  const loc = resolveLocale(allSettings);
-  const tax = taxOf(taxableBase(itemsTotal, deliveryFee, loc), loc);
+  //
+  // A delivery is taxed where it lands, so the zone's own rate wins for it. A
+  // pickup order is collected at the counter and is taxed at the business's own
+  // address, which is what the tenant default already is.
+  const zone = isDelivery ? zoneForAddress(address, allSettings) : null;
+  const loc = localeForZone(resolveLocale(allSettings), zone);
+  const tax = taxOf(taxableBase(itemsTotal, deliveryFee, loc, exemptTotal), loc);
   const total = loc.addsTaxAtCheckout
     ? Math.round((subtotal + tax) * 100) / 100
     : subtotal;
@@ -196,7 +224,7 @@ async function computeTotal(items = [], { delivery_method, address, tenantId } =
   return {
     total, subtotal, tax, loc,
     taxRate: loc.taxRate, taxMode: loc.taxMode,
-    deliveryFee, unmatched, itemsTotal,
+    deliveryFee, unmatched, itemsTotal, exemptTotal,
     items: enriched,
   };
 }
@@ -230,10 +258,12 @@ async function authoritativeTotal(payload, tenantId) {
     const subtotal = corrected ? r.subtotal : claimed;
 
     // Recompute the tax from the base actually accepted, so the itemised tax
-    // always reconciles with the total beside it.
-    const base = r.loc.taxOnDelivery
-      ? subtotal
-      : Math.max(0, subtotal - (r.deliveryFee || 0));
+    // always reconciles with the total beside it. The exempt share is the
+    // server's — it comes from the menu rows, which the model never sees.
+    const base = Math.max(0,
+      subtotal
+      - (r.exemptTotal || 0)
+      - (r.loc.taxOnDelivery ? 0 : (r.deliveryFee || 0)));
     const tax = taxOf(base, r.loc);
     const total = r.loc.addsTaxAtCheckout
       ? Math.round((subtotal + tax) * 100) / 100

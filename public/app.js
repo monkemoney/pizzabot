@@ -212,18 +212,38 @@ const taxRate     = () => (Number.isFinite(+_bizConfig.tax_rate) ? +_bizConfig.t
 const taxAddedAtCheckout = () => taxMode() === 'exclusive';
 
 /** "מע"מ 18%" / "Sales Tax 9.5%" — the tenant's own word, never a translation. */
-const taxLabel = () => `${_bizConfig.tax_label || ''} ${taxRate()}%`.trim();
+const taxLabel = (rate = null) =>
+  `${_bizConfig.tax_label || ''} ${Number.isFinite(+rate) && rate !== null ? +rate : taxRate()}%`.trim();
 
 /**
  * inclusive → the tax already contained in `base` (what the receipt itemises)
  * exclusive → the tax added on top of `base`
  * Both positive; only the caller knows whether it is already in the total.
  */
-function taxOf(base) {
+function taxOf(base, rate = null) {
   const amount = parseFloat(base) || 0;
-  const r = taxRate();
+  const r = Number.isFinite(+rate) && rate !== null ? +rate : taxRate();
   if (!r) return 0;
   return taxAddedAtCheckout() ? amount * r / 100 : amount * r / (100 + r);
+}
+
+/**
+ * The rate that applies to one order's address.
+ *
+ * US sales tax is set per jurisdiction, so a zone may carry its own rate and a
+ * delivery is taxed where it lands. The order's frozen `tax_rate` wins over
+ * everything — a receipt has to show the rate actually charged, not the one
+ * configured today.
+ */
+function taxRateOf(o) {
+  const frozen = parseFloat(o?.tax_rate);
+  if (Number.isFinite(frozen)) return frozen;
+  if (o?.delivery_method === 'delivery') {
+    const z = zoneOf(o?.address);
+    const zr = parseFloat(z?.tax_rate);
+    if (Number.isFinite(zr)) return zr;
+  }
+  return taxRate();
 }
 
 // The pre-tax figure is `total - tax` in BOTH models — inclusive because the tax
@@ -241,7 +261,7 @@ function taxOfOrder(o) {
     : total;
   // A pre-freeze exclusive-region row has the tax inside total_price already,
   // so back-computing is the only honest reading of it.
-  const r = taxRate();
+  const r = taxRateOf(o);
   return r ? base * r / (100 + r) : 0;
 }
 
@@ -273,21 +293,30 @@ function money(n, decimals = 2) {
   }
 }
 
+/**
+ * The configured zone whose city appears in an address, or null.
+ * Longest city name first, so "תל אביב יפו" beats "תל אביב" — and, for the same
+ * reason, "West Hollywood" beats "Hollywood". Mirrors services/delivery-fee.js.
+ */
+function zoneOf(address) {
+  const addr = String(address || '').toLowerCase();
+  if (!addr) return null;
+  return [...(_bizConfig.delivery_zones || [])]
+    .filter(z => z && z.city)
+    .sort((a, b) => String(b.city).length - String(a.city).length)
+    .find(z => addr.includes(String(z.city).trim().toLowerCase())) || null;
+}
+
 /** The fee recorded on the order; falls back to the tenant's zone table. */
 function deliveryFeeOf(o) {
   if (!o || o.delivery_method !== 'delivery') return 0;
   const recorded = parseFloat(o.delivery_fee);
   if (Number.isFinite(recorded)) return recorded;
 
-  const addr = (o.address || '').toLowerCase();
-  const zones = [..._bizConfig.delivery_zones]
-    .filter(z => z && z.city)
-    .sort((a, b) => String(b.city).length - String(a.city).length);
-  for (const z of zones) {
-    if (addr.includes(String(z.city).trim().toLowerCase())) {
-      const f = parseFloat(z.fee ?? _bizConfig.delivery_price);
-      if (Number.isFinite(f)) return f;
-    }
+  const z = zoneOf(o.address);
+  if (z) {
+    const f = parseFloat(z.fee ?? _bizConfig.delivery_price);
+    if (Number.isFinite(f)) return f;
   }
   const flat = parseFloat(_bizConfig.delivery_price);
   return Number.isFinite(flat) ? flat : null;   // null = unknown, show nothing
@@ -1813,21 +1842,33 @@ function removeEditItem(i) {
   renderEditItems();
 }
 
-function updateEditSummary(order) {
+/**
+ * What an edited order comes to. One function, so the number displayed and the
+ * number saved cannot disagree — they used to: the summary showed a total with
+ * tax on it while saveOrderEdit wrote `subtotal + fee`, stripping the tax off
+ * every US order anyone opened the modal on.
+ */
+function editTotals(order) {
   const deliveryFee = deliveryFeeOf(order) || 0;
   const subtotal = _editItems.reduce((s, item) => s + (parseFloat(item.price)||0) * (item.quantity||1), 0);
   // In an exclusive-tax region the edited basket is pre-tax, so the tax is added
   // to reach the total the customer pays; inclusive regions leave it inside.
+  const rate  = taxRateOf({ ...order, tax_rate: null });   // the rate in force now, not the frozen one
   const base  = taxAddedAtCheckout() && !_bizConfig.tax_on_delivery ? subtotal : subtotal + deliveryFee;
-  const tax   = taxOf(base);
+  const tax   = taxOf(base, rate);
   const total = taxAddedAtCheckout() ? subtotal + deliveryFee + tax : subtotal + deliveryFee;
+  return { deliveryFee, subtotal, rate, tax, total };
+}
+
+function updateEditSummary(order) {
+  const { deliveryFee, subtotal, rate, tax, total } = editTotals(order);
 
   document.getElementById('editSubtotal').textContent    = money(subtotal);
   document.getElementById('editDeliveryFee').textContent  = money(deliveryFee, 0);
   document.getElementById('editTotal').textContent        = money(total);
   document.getElementById('editVat').textContent          = money(tax);
   const vatLabelEl = document.getElementById('editVatLabel');
-  if (vatLabelEl) vatLabelEl.textContent = taxLabel();
+  if (vatLabelEl) vatLabelEl.textContent = taxLabel(rate);
 }
 
 function openAddProductToOrder() {
@@ -1848,8 +1889,8 @@ async function saveOrderEdit() {
 
   // The fee the order was actually placed with — recomputing it from a literal
   // rewrote the charged total every time anyone opened the edit modal.
-  const deliveryFee = deliveryFeeOf({ ..._editOrder, address: addr || _editOrder.address }) || 0;
-  const subtotal    = _editItems.reduce((s,i) => s+(parseFloat(i.price)||0)*(i.quantity||1), 0);
+  const edited = { ..._editOrder, address: addr || _editOrder.address };
+  const { deliveryFee, rate, tax, total } = editTotals(edited);
 
   try {
     await api('PUT', `/orders/${_editOrder.id}`, {
@@ -1858,7 +1899,12 @@ async function saveOrderEdit() {
       destination_type: document.getElementById('editDestType').value,
       courier_notes:    document.getElementById('editCourierNotes').value.trim(),
       delivery_fee:     deliveryFee,
-      total_price:      (subtotal + deliveryFee).toFixed(2),
+      // Re-frozen alongside the total: an edited order's receipt has to
+      // reconcile, and the rate can differ from the tenant default when the
+      // edit moved the delivery into another zone.
+      tax_rate:         rate,
+      tax_amount:       +tax.toFixed(2),
+      total_price:      total.toFixed(2),
     });
     closeModal('orderEditModal');
     await loadOrders();
@@ -1978,6 +2024,7 @@ function renderProductsTable() {
             <span style="font-weight:700;font-size:.95rem;color:var(--text)">${nameOf(cat)}</span>
             <span style="font-size:.75rem;color:var(--text-muted);margin-right:8px">${products.length} ${TR('פריטים')}</span>
             ${cat.has_toppings ? `<span style="font-size:.72rem;background:#f0f0f0;color:#666;padding:2px 10px;border-radius:50px;font-weight:600">${TR('תוספות')}</span>` : ''}
+            ${taxAddedAtCheckout() && cat.taxable === false ? `<span style="font-size:.72rem;background:#dcfce7;color:#166534;padding:2px 10px;border-radius:50px;font-weight:600;margin-inline-start:6px">${TR('פטור ממס')}</span>` : ''}
           </div>
         </div>
         <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
@@ -2197,6 +2244,10 @@ function openCategoryModal(b64OrNull) {
   document.getElementById('categoryNameHe').value       = c?.name_he      || '';
   document.getElementById('categoryNameEn').value       = c?.name_en      || '';
   document.getElementById('categoryHasToppings').checked= !!c?.has_toppings;
+  // Only an explicit false exempts, so a category that predates the column is
+  // shown as taxable — which is exactly how it is being charged.
+  document.getElementById('categoryTaxable').checked     = c?.taxable !== false;
+  document.getElementById('categoryTaxableRow').classList.toggle('hidden', !taxAddedAtCheckout());
   document.getElementById('categoryModal').classList.remove('hidden');
 }
 
@@ -2208,6 +2259,7 @@ document.getElementById('categoryForm').addEventListener('submit', async (e) => 
     name_en:      document.getElementById('categoryNameEn').value.trim(),
     emoji:        document.getElementById('categoryEmoji').value.trim() || '🍽️',
     has_toppings: document.getElementById('categoryHasToppings').checked,
+    taxable:      document.getElementById('categoryTaxable').checked,
   };
   try {
     if (id) await api('PATCH', `/categories/${id}`, body);
@@ -3246,6 +3298,12 @@ function renderZonesTable() {
     t.innerHTML = `<div style="color:var(--text-muted);font-size:.85rem;padding:8px 0">${TR('אין אזורי משלוח — הוסף אזור ראשון')}</div>`;
     return;
   }
+  // The per-zone tax rate is a US question and only a US question: sales tax is
+  // set per jurisdiction there (Los Angeles 9.5%, Santa Monica 10.25%), while
+  // Israeli VAT is national. Showing the column to an Israeli tenant would be a
+  // field with no right answer.
+  const perZoneTax = taxAddedAtCheckout();
+
   t.innerHTML = `
     <div style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-md)">
     <table>
@@ -3256,6 +3314,7 @@ function renderZonesTable() {
           <th>${TR('דמי משלוח')} (${_bizConfig.currency_symbol || ''})</th>
           <th>${TR('מינימום')} (${_bizConfig.currency_symbol || ''})</th>
           <th>${TR('זמן משוער (דק׳)')}</th>
+          ${perZoneTax ? `<th>${TR('מס באזור')} (%)</th>` : ''}
           <th></th>
         </tr>
       </thead>
@@ -3272,19 +3331,34 @@ function renderZonesTable() {
             style="width:80px" class="zone-inp" min="0"></td>
           <td style="padding:8px 10px"><input type="number" value="${z.eta_minutes||45}" data-zi="${i}" data-zf="eta_minutes"
             style="width:80px" class="zone-inp" min="1"></td>
+          ${perZoneTax ? `
+          <td style="padding:8px 10px"><input type="number" value="${z.tax_rate ?? ''}" data-zi="${i}" data-zf="tax_rate"
+            style="width:80px" class="zone-inp" min="0" max="100" step="0.01"
+            placeholder="${taxRate()}" title="${TR('ריק = שיעור המס של העסק')}"></td>` : ''}
           <td style="padding:8px 10px">
             <button onclick="removeZone(${i})" class="btn-danger" style="font-size:.75rem;padding:4px 10px">${TR('הסר')}</button>
           </td>
         </tr>`).join('')}
       </tbody>
     </table>
-    </div>`;
+    </div>
+    ${perZoneTax ? `<div style="color:var(--text-muted);font-size:.8rem;margin-top:8px">
+      ${TR('משלוח ממוסה לפי יעד. השאר ריק כדי להשתמש בשיעור המס של העסק; איסוף עצמי ממוסה תמיד לפי כתובת העסק.')}
+    </div>` : ''}`;
 
   document.querySelectorAll('.zone-inp').forEach((inp) => {
     inp.addEventListener('input', () => {
       const i = parseInt(inp.dataset.zi);
       const f = inp.dataset.zf;
       if (!_deliveryZones[i]) return;
+      if (f === 'tax_rate') {
+        // Empty means "the tenant's rate", which is not the same instruction as
+        // 0 — a stored zero is a real order to charge no tax in that zone.
+        const v = inp.value.trim();
+        if (v === '') delete _deliveryZones[i].tax_rate;
+        else _deliveryZones[i].tax_rate = parseFloat(v) || 0;
+        return;
+      }
       _deliveryZones[i][f] = ['fee','min_order','eta_minutes'].includes(f)
         ? parseFloat(inp.value) || 0
         : inp.value;

@@ -204,8 +204,11 @@ router.put('/orders/:id', requireAdmin, async (req, res) => {
   const existing = await getOrderById(req.params.id);
   if (!assertTenant(existing, req)) return res.status(404).json({ error: 'Not found' });
 
+  // tax_rate/tax_amount are re-frozen with the total: an edit can move the
+  // delivery into another zone, and a receipt whose tax does not add up to its
+  // own total is a tax document with a wrong number on it.
   const allowed = ['items','address','notes','destination_type','courier_notes',
-                   'delivery_method','total_price','delivery_fee'];
+                   'delivery_method','total_price','delivery_fee','tax_rate','tax_amount'];
   const updates = {};
   for (const key of allowed) {
     if (req.body[key] !== undefined) updates[key] = req.body[key];
@@ -546,10 +549,12 @@ router.get('/categories', requireAuth, async (req, res) => {
 });
 
 router.post('/categories', requireAdmin, async (req, res) => {
-  const { name_he, name_en, emoji, has_toppings, sort_order } = req.body;
+  const { name_he, name_en, emoji, has_toppings, sort_order, taxable } = req.body;
   const { data, error } = await supabase.from('categories')
     .insert({ name_he, name_en: enName(name_en, name_he), emoji: emoji || '🍽️',
-              has_toppings: !!has_toppings, sort_order: sort_order || 99, tenant_id: tid(req) })
+              has_toppings: !!has_toppings, sort_order: sort_order || 99,
+              // Only an explicit false exempts — an omitted field is taxed.
+              taxable: taxable !== false, tenant_id: tid(req) })
     .select().single();
   if (error) return res.status(400).json({ error: error.message });
   invalidateCache(tid(req));
@@ -1175,6 +1180,13 @@ router.patch('/settings', requireAdmin, async (req, res) => {
     }
     updates.tax_rate = r;
     updates.vat_rate = r;   // keep the legacy key in step; resolveLocale reads it as a fallback
+  }
+
+  // A zone's own rate is money too, and it arrives inside a JSONB blob nothing
+  // else inspects — so it is checked at the door, like tax_rate itself.
+  if ('delivery_zones' in updates) {
+    const badZone = require('../services/locale').normaliseZoneTaxRates(updates.delivery_zones);
+    if (badZone) return res.status(400).json({ error: `שיעור מס לא תקין באזור "${badZone}"` });
   }
 
   // Switching region seeds that region's tax model explicitly rather than

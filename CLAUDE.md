@@ -383,6 +383,18 @@ Israel and the US do not disagree about the tax *rate* — they disagree about w
 - **`orders.tax_rate` + `orders.tax_amount` are frozen at order time**, exactly like `delivery_fee` and for the same reason: districts vote on levies, and a receipt reprinted next year must show the rate actually charged. ⚠️ **The migration (`supabase/migrations/2026-08-26-order-tax.sql`) must be applied BEFORE deploying** — `saveOrder` passes the object straight to `insert()`, so a missing column fails order creation.
 - **Dashboard:** הגדרות → "אזור ומטבע" (region + currency) and "מס" (model, rate, receipt label, tax-on-delivery). The tax card renders a **live worked example** — the same percentage produces different money in the two models, and a number alone does not show that. `tax_on_delivery` only appears in exclusive mode, where it is a real question.
 - **PATCH /settings validates region/currency/tax_mode/tax_rate at the door** and seeds the region's tax model on a region change, so a stale `vat_rate` from the previous country cannot outrank the new default through the legacy fallback.
+### Per-Address Tax & Exempt Categories (2026-08-27)
+
+One tenant can owe more than one rate, for two unrelated reasons — and a single tenant-wide `tax_rate` could express neither.
+
+- **The rate follows the delivery address (C9).** US sales tax is set per jurisdiction: a Los Angeles restaurant (9.5%) delivering into Santa Monica owes 10.25% there. `delivery_zones` gains an optional sixth field, `tax_rate`, alongside `city · area · fee · min_order · eta_minutes` — no new lookup and no second authority, because `zoneForAddress()` (split out of `feeForAddress`) already resolves an address to exactly one row, longest city name first, so "West Hollywood" beats "Hollywood" for the same reason "תל אביב יפו" beats "תל אביב". `localeForZone(loc, zone)` overrides **the rate only**: the inclusive/exclusive MODEL is a fact about the country the business trades in, not the street it delivers to, and letting one zone row flip it would silently reprice a whole basket. A **pickup** order is collected at the counter and is taxed at the business's own address — the tenant default already is that.
+- **Some items are not taxable (C10).** California's 80/80 rule taxes hot prepared food but often exempts cold food sold to go; that is a property of the ITEM, so `categories.taxable` carries it. `taxableBase(itemsTotal, deliveryFee, loc, exemptTotal)` subtracts the exempt share from the items, never from the delivery fee. **A topping follows the dish it is on**, not the topping category — its own category says nothing about the plate it arrives on. An **unmatched** item is taxed: claiming an exemption the server cannot substantiate is the expensive mistake, and it is the same conservatism as the unmatched-item pricing rule above it.
+- **The exemption is the server's knowledge**, so `authoritativeTotal` subtracts it even when the model's quote stands — it comes from the menu rows, which the model never sees.
+- **Nothing changes for an existing tenant, by construction:** `taxable` defaults to TRUE and only an explicit `false` exempts; a zone with no `tax_rate` returns the *same locale object*. `tests/il-pricing-frozen.test.js` stays green, and both new guards were verified to bite (ignoring the zone rate reddens 3 tests, ignoring the exemption 4).
+- **Settings, both of them:** the zone editor grows a "מס באזור" column and the category modal a "חייב במס" checkbox — **each rendered only in exclusive mode**, because per-city VAT and food exemptions are questions with no right answer for an Israeli tenant. An empty zone-rate field is stripped rather than stored as 0; a stored zero is a real instruction to charge no tax there. `PATCH /settings` validates zone rates at the door like `tax_rate`, since they arrive inside a JSONB blob nothing else inspects. Exempt categories carry a green "פטור ממס" tag in the מוצרים list, so the setting is visible without opening the modal.
+- **The edit modal used to display one total and save another** — `updateEditSummary` added the tax, `saveOrderEdit` wrote `subtotal + fee` — so opening the modal on a US order stripped the tax off the charged total (class 8). Both now read one `editTotals()`, and the PUT re-freezes `tax_rate`/`tax_amount` with the total, because an edit can move the delivery into another zone and a receipt whose tax does not add up to its own total is a tax document with a wrong number on it.
+- ⚠️ **The migration (`supabase/migrations/2026-08-27-zone-tax-and-exempt-categories.sql`) must be applied before deploying** — the categories PATCH passes `taxable` straight through. `delivery_zones` needs no migration; it is JSONB, and the optional key is documented in that file.
+
 - **Client money goes through `money()`** (`Intl.NumberFormat`, tenant currency, dashboard locale — $ leads in English, ₪ trails in Hebrew) and tax through `taxOf()` / `taxOfOrder()`. `LOCALE` is `en-US`, not `en-GB`: 12/08 means December 8th to the audience this was localised for.
 
 ### Money Display (2026-07-27)
@@ -542,7 +554,8 @@ A self-improvement loop that trains the customer bot offline. 12 simulated-custo
 ## Database Schema (see supabase/schema.sql)
 
 ```
-categories / products / product_additions   menu; per-product toppings (additions: no tenant_id)
+categories / products / product_additions   menu; per-product toppings (additions: no tenant_id);
+                    categories.taxable (FALSE = exempt from sales tax, CA 80/80 rule)
 settings            key/value JSONB per tenant — UNIQUE(tenant_id, key); includes channel creds
                     (meta_phone_number_id/meta_access_token/meta_waba_id | green_api_*), cardcom_*,
                     public_slug, business/delivery hours, zones, couriers, vendor prefs
@@ -609,7 +622,7 @@ Order status flow: `new (awaiting approval) → preparing → ready → out_for_
    ```
 5. **A local dev server against the prod DB competes with production.** Both run the same `setInterval` schedulers over the same rows, so a test you set up can be acted on by the deployed (older) code before your local code sees it — this cost real debugging time on 2026-07-26. Escalation and the handoff watchdog are already gated to `process.env.RENDER`; the scheduled-order and delivered→done sweeps are NOT. When testing scheduler behaviour, either read the logs of both servers or seed rows that production will ignore.
 6. **Every desktop UI change must include mobile** — media queries + `window.innerWidth <= 768` branches
-7. **delivery_zones** is authoritative (5 fields: city, area, fee, min_order, eta_minutes); `saveZones()` syncs legacy `delivery_cities`; bot reads zones first
+7. **delivery_zones** is authoritative (city, area, fee, min_order, eta_minutes, and an optional `tax_rate` for exclusive-tax regions); `saveZones()` syncs legacy `delivery_cities`; bot reads zones first. `zoneForAddress()` is the ONE matcher — fee and tax must resolve from the same row, or one address has two authorities
 8. **Vendor portal ≠ business dashboard** — separate SPAs, changes to one never affect the other
 9. **Always update CLAUDE.md** when architecture changes — and when enforcement logic changes, grep `prompts.js` for stale descriptions of the old rule (the prompt once promised a "15-minute cancellation window" that no longer existed)
 10. **No secrets in committed files.** New secrets → `.env.production` + Render; long-lived tool tokens → Claude memory.

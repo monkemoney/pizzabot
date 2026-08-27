@@ -290,6 +290,14 @@ const HE2EN = {
   'המס כבר כלול במחיר שבתפריט. הקבלה רק מפרקת כמה מתוך הסכום היה מס.':
     'Tax is already inside the menu price. The receipt only itemises how much of the total was tax.',
   'מדינה': 'Country',
+  // Per-zone tax rate + per-category exemption (US: tax is set per jurisdiction,
+  // and CA's 80/80 rule exempts some items)
+  'מס באזור': 'Zone tax', 'ריק = שיעור המס של העסק': 'Empty = the business\u2019s own tax rate',
+  'משלוח ממוסה לפי יעד. השאר ריק כדי להשתמש בשיעור המס של העסק; איסוף עצמי ממוסה תמיד לפי כתובת העסק.':
+    'A delivery is taxed where it lands. Leave blank to use the business\u2019s own rate; pickup is always taxed at the business address.',
+  'פטור ממס': 'Tax exempt', 'חייב במס': 'Taxable',
+  'בטל כדי לפטור את הקטגוריה ממס (לדוגמה: מזון קר לקחת)':
+    'Uncheck to exempt this category from tax (for example: cold food to go)',
   // Receipt
   'קבלה': 'Receipt', 'טל׳': 'Tel', 'מנה': 'Item', 'לפני מס': 'Subtotal',
   'סה"כ לתשלום': 'Total due', 'תודה שבחרת': 'Thank you for choosing',

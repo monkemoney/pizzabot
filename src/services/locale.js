@@ -126,11 +126,44 @@ function taxOf(base, loc) {
   return Math.round(tax * 100) / 100;
 }
 
-/** The taxable base of an order: items, plus delivery where the region taxes it. */
-function taxableBase(itemsTotal, deliveryFee, loc) {
-  const items = Number(itemsTotal) || 0;
-  const fee   = Number(deliveryFee) || 0;
-  return loc?.taxOnDelivery ? items + fee : items;
+/**
+ * The taxable base of an order: items, plus delivery where the region taxes it,
+ * minus anything the tenant has marked exempt.
+ *
+ * `exemptTotal` is the part of `itemsTotal` sitting in a category flagged
+ * non-taxable. California's 80/80 rule is the reason it exists: hot prepared
+ * food is taxable, cold food sold to go often is not, and the distinction is a
+ * property of the item, not of the order.
+ */
+function taxableBase(itemsTotal, deliveryFee, loc, exemptTotal = 0) {
+  const items  = Number(itemsTotal) || 0;
+  const fee    = Number(deliveryFee) || 0;
+  const exempt = Math.min(Math.max(Number(exemptTotal) || 0, 0), Math.max(items, 0));
+  const base   = items - exempt;
+  return Math.max(0, loc?.taxOnDelivery ? base + fee : base);
+}
+
+/**
+ * The tenant's locale as it applies AT one delivery address.
+ *
+ * Sales tax in the US is set per jurisdiction, so a tenant delivering from Los
+ * Angeles into Santa Monica owes 10.25% there and 9.5% at home — one tenant,
+ * two correct rates. The zone table already resolves an address to a row, so
+ * the rate rides along on it as a sixth field; a zone with no rate of its own
+ * simply keeps the tenant's, which is every Israeli tenant and every US tenant
+ * that has not filled the column in.
+ *
+ * Only ever an override of the RATE. The tax MODEL (inclusive vs exclusive) is
+ * a fact about the country the business trades in, not about the street it
+ * delivers to, and letting a zone flip it would let one row silently reprice
+ * a whole basket.
+ */
+function localeForZone(loc, zone) {
+  if (!loc || !zone) return loc;
+  const rate = _num(zone.tax_rate);
+  if (rate == null) return loc;
+  const clamped = Math.max(0, Math.min(100, rate));
+  return clamped === loc.taxRate ? loc : { ...loc, taxRate: clamped };
 }
 
 /** "מע\"מ 18%" / "Sales Tax 9.5%" — the label a receipt line carries. */
@@ -178,6 +211,29 @@ function promptMoney(amount, loc) {
   return loc?.currency === 'ILS' || !loc ? `${s}₪` : `${loc.currencySymbol}${s}`;
 }
 
+/**
+ * Validate and normalise the optional per-zone rates on a delivery_zones array,
+ * in place. Returns the city of the first bad row, or null when all are fine.
+ *
+ * A zone's rate is money, and it arrives inside a JSONB blob that nothing else
+ * inspects — so it is checked at the door, like `tax_rate` itself. An empty
+ * field means "use the tenant's rate" and is REMOVED rather than stored as 0:
+ * a stored zero is a real instruction to charge no tax in that zone, and the
+ * two must not be the same value.
+ */
+function normaliseZoneTaxRates(zones) {
+  if (!Array.isArray(zones)) return null;
+  for (const z of zones) {
+    if (!z || typeof z !== 'object') continue;
+    if (!('tax_rate' in z)) continue;
+    if (z.tax_rate === '' || z.tax_rate == null) { delete z.tax_rate; continue; }
+    const r = parseFloat(z.tax_rate);
+    if (!Number.isFinite(r) || r < 0 || r > 100) return String(z.city || '?');
+    z.tax_rate = r;
+  }
+  return null;
+}
+
 /** Convenience for callers that hold a tenantId rather than loaded settings. */
 async function forTenant(tenantId) {
   const settings = require('./settings');
@@ -187,5 +243,5 @@ async function forTenant(tenantId) {
 
 module.exports = {
   REGIONS, CURRENCIES, DEFAULT_REGION,
-  regionOf, resolveLocale, taxOf, taxableBase, taxLineLabel, formatMoney, promptMoney, forTenant,
+  regionOf, resolveLocale, localeForZone, normaliseZoneTaxRates, taxOf, taxableBase, taxLineLabel, formatMoney, promptMoney, forTenant,
 };

@@ -1111,6 +1111,18 @@ input[type=time] { direction: ltr; }
           <input type="checkbox" id="categoryHasToppings">
           <span data-tr>קטגוריה זו תומכת בתוספות (לדוגמה: פיצות)</span>
         </label>
+        <!-- Sales-tax exemption is a US question (CA 80/80: hot prepared food is
+             taxed, cold food to go often is not). Hidden for tax-inclusive
+             tenants, where there is no such distinction to make. -->
+        <div id="categoryTaxableRow" class="hidden" style="margin-top:12px">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:.88rem;font-weight:600">
+            <input type="checkbox" id="categoryTaxable" checked>
+            <span data-tr>חייב במס</span>
+          </label>
+          <div style="color:var(--text-muted);font-size:.78rem;margin-top:6px;margin-inline-start:28px" data-tr>
+            בטל כדי לפטור את הקטגוריה ממס (לדוגמה: מזון קר לקחת)
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
         <button type="button" onclick="closeModal('categoryModal')" class="btn btn-ghost" data-tr>ביטול</button>
