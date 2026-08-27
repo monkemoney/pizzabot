@@ -110,7 +110,7 @@ logs=data if isinstance(data,list) else data.get('logs',data.get('data',[]))
 
 # Before every push (MANDATORY)
 node --check public/app.js && node --check public/admin.js
-npm test -- --forceExit     # 535 tests across 29 suites; --forceExit avoids hanging on setInterval timers
+npm test -- --forceExit     # 544 tests across 29 suites; --forceExit avoids hanging on setInterval timers
 
 # Deploy (auto on push)
 git push origin main
@@ -145,6 +145,7 @@ pizza-bot/
 │   │   ├── status-notifier.js    # Customer + courier WhatsApp notifications on status change
 │   │   ├── locale.js             # Per-tenant region/currency/tax model (IL inclusive | US exclusive)
 │   │   ├── phone.js              # E.164 normalisation; dial code per tenant (also a comparison key)
+│   │   ├── tz-time.js            # Local-calendar helpers in a tenant's timezone (was il-time.js)
 │   │   ├── slug.js               # Business-name slugs for public menu URLs (Hebrew transliteration)
 │   │   ├── sse.js                # SSE broker — Map<tenantId, Set<res>>, broadcast(), subscribe();
 │   │   │                         #   25s keepalive is a REAL 'ping' event (client heartbeat), not a comment
@@ -166,7 +167,7 @@ pizza-bot/
 │   └── sw.js                     # Service Worker — push notifications only (no fetch caching)
 ├── supabase/schema.sql           # Full DB schema (documentation — NOT auto-applied, see Schema drift)
 ├── scripts/                      # backup/sync Render env, render-guard
-├── tests/                        # 29 suites / 535 tests — auth, sessions, admin bot, webhook routing
+├── tests/                        # 29 suites / 544 tests — auth, sessions, admin bot, webhook routing
 │                                 #   (incl. Meta), onboarding+draft, payments, audit, settings+overnight,
 │                                 #   meta-whatsapp parsing, slug, inbox/handoff, missed-call recovery
 ├── .design/jasell-dashboard/     # Design brief + review (Confident SaaS direction)
@@ -299,6 +300,15 @@ ACTION blocks: `SET_AVAILABLE` (checks ALL occurrences of a name — standalone 
 - **Closed loop:** every open/delivery-touching action (SET is_open/delivery_enabled, both HOURS actions, OVERRIDE) is followed by a read-back of the effective state, appended as "📍 מצב בפועל: …"; flag-on-but-outside-hours adds a hint to use the override. Success is reported from the outcome, never the write.
 - Dashboard: settings page shows an effective-state banner (`GET /api/settings` returns `_effective {open, delivery, override}`; `_`-prefixed keys are never persisted by PATCH) with an override chip + "בטל חריגה".
 
+### Per-Tenant Timezone (2026-08-26)
+
+`il-time.js` was hardcoded to `Asia/Jerusalem`, and 13 more sites built "now" with `toLocaleString('en-US', {timeZone: 'Asia/Jerusalem'})`. A file named for one country cannot answer "is this business open?" for a Los Angeles tenant — it was judging them by Israeli office hours, ten hours out, and on a day boundary by the wrong weekday entirely.
+
+- **`services/tz-time.js` replaces it.** The offset is now *solved* at the candidate instant rather than probed from Israel's two known values, which is what makes any IANA zone work. The Israel-bound aliases (`ilParts`, `ilDayKey`, …) remain, so every pre-existing caller is unchanged.
+- **The rewrite exposed a pre-existing bug.** `periodRange('week')` computes `day - weekday`, which goes ≤ 0 whenever the week starts in the previous month. An out-of-range day can never satisfy the old `p.day === day` round-trip check, so BOTH offset probes failed and it fell through to a hardcoded winter offset — **the weekly stats window started an hour late throughout Israeli DST**, roughly half the year. Found by A/B-ing 23,696 comparisons to prove the rewrite changed *nothing*; 200 differed, all `week`, and the new answer is the correct one. Pinned by `tests/tz-time.test.js`.
+- **Which clock a thing uses is a question about whose calendar it is.** A TENANT's own business day (opening hours, `/stats` boundaries, peak hours, orders-per-day, the public menu's "today") follows `resolveLocale().timezone`. The PLATFORM's own accounting (the vendor's Claude-cost month, the usage chart, vendor alerts) stays Israel-bound — that is the vendor's calendar, not a client's, and the `il*` aliases mark it.
+- ⚠️ **`admin-handler.js` still hardcodes Israel** in 6 places. The admin bot is Hebrew-only anyway (plan item B7), so it is consistent for now — but a US tenant's staff would see Israeli times. Fix them together.
+
 ### Bot Language & Tax Quoting (2026-08-26)
 
 `prompts.js:193` said *"language rule: default Hebrew"*, and all 174 lines of the prompt were Hebrew. The bot only switched once a customer wrote English first — so an American tenant's bot greeted every customer in Hebrew.
@@ -313,7 +323,7 @@ ACTION blocks: `SET_AVAILABLE` (checks ALL occurrences of a name — standalone 
   - **The tax rule was only in the English prompt.** The tax model is a fact about the TENANT; the language is a fact about the CUSTOMER — they move independently, and putting the rule in one prompt assumed they moved together. A Hebrew-speaking customer at a Los Angeles business was quoted `סה"כ: $58` on an order the server charges $63.51 for. Now injected into the Hebrew prompt too, but **only in exclusive mode**, so an inclusive tenant's prompt stays byte-for-byte unchanged and the freeze keeps meaning what it says.
   - **The bot had never been shown topping prices.** `buildMenuText` filtered the topping-addon category out entirely, so the model guessed — it priced mushrooms at 0 and quoted $62.99 on an order the server charged $69.99 for. `pricing.js` protected the charge; nothing protected the QUOTE, and a quote wrong by a topping is still a dispute. Toppings now appear with prices; the re-run quoted the correct $69.99 with `corrected: false`.
   - The run also confirmed the bilingual matching from B3 doing real work: the model emitted `"name": "Mushrooms"` in English and the server still matched it (`unmatched: []`). Before that fix it would have kept the model's price of 0.
-- ⚠️ The live-state block still reports **Israel time** for every tenant. The label no longer claims otherwise, but the value is wrong for a US tenant until D3 (per-tenant timezone) lands.
+- The live-state block now reports the **tenant's own** local time and weekday, and names the zone (D3, below).
 
 ### Attributes, Exports & Phone Numbers (2026-08-26)
 
@@ -390,7 +400,7 @@ Three defects made the stats page answer business questions wrongly:
 
 - **The payment-split donut was permanently empty** — the query never selected `payment_method` while the split filtered on it. Selected now, with a `bit` bucket alongside cash/credit.
 - **Revenue counted money that had not arrived.** It was every non-cancelled order, so orders the business never approved, unpaid Bit orders and refunded ones were all reported as income. `revenue` is now paid-and-not-refunded only, with `revenue_pending` and `revenue_refunded` returned separately; the dashboard shows "הכנסות (שולם)" next to "ממתין לתשלום" instead of one inflated figure.
-- **Days and hours were server-local (UTC on Render)** while the whole product reasons in Asia/Jerusalem, so "today" was off by 2-3 hours at both ends: the 00:00-03:00 rush was filed under the previous day and the peak-hours chart the owner staffs to was shifted by the offset. `src/services/il-time.js` owns the boundaries (`periodRange`, `ilHourOf`, `ilDayKey`), DST included — probing UTC+2/UTC+3 and keeping whichever round-trips.
+- **Days and hours were server-local (UTC on Render)** while the whole product reasons in Asia/Jerusalem, so "today" was off by 2-3 hours at both ends: the 00:00-03:00 rush was filed under the previous day and the peak-hours chart the owner staffs to was shifted by the offset. `src/services/tz-time.js` owns the boundaries (`periodRange`, `ilHourOf`, `ilDayKey`), DST included — probing UTC+2/UTC+3 and keeping whichever round-trips.
 
 ### Message Delivery Integrity (2026-07-27)
 

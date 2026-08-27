@@ -124,7 +124,7 @@ router.get('/orders', requireAuth, async (req, res) => {
     if (status && status !== 'all') query = query.eq('status', status);
     // Day boundaries in ISRAEL time — new Date('YYYY-MM-DD') is UTC midnight,
     // which filed the 00:00-03:00 IL rush under the wrong day (same class as
-    // the 2026-07-27 stats fix; see services/il-time.js).
+    // the 2026-07-27 stats fix; see services/tz-time.js).
     const ilDayStart = (s) => {
       const [y, m, d] = String(s).split('-').map(Number);
       return ilMidnightUTC(y, m, d);
@@ -387,15 +387,30 @@ router.post('/orders/:id/item-dispute', requireAdmin, async (req, res) => {
 
 // ─── Stats (admin only) ───────────────────────────────────────────────────────
 
-// Period boundaries, hour buckets and day keys are Israel-time — see
-// services/il-time.js for why the server clock cannot be used here.
-const { ilHourOf, ilDayKey, periodRange, ilParts, ilMidnightUTC } = require('../services/il-time');
+// Period boundaries, hour buckets and day keys are LOCAL-calendar questions —
+// see services/tz-time.js for why the server clock cannot answer them.
+//
+// The il* names are the Israel-bound aliases and are correct for the PLATFORM's
+// own accounting (the vendor's Claude-cost month, the usage chart): that is the
+// vendor's calendar, not a client's. Anything a TENANT reads about their own
+// business goes through tenantTz() instead.
+const { ilHourOf, ilDayKey, periodRange, ilParts, ilMidnightUTC,
+        hourOf, dayKey, DEFAULT_TZ } = require('../services/tz-time');
+
+/** The timezone a tenant's own business day is measured in. */
+async function tenantTz(req) {
+  try {
+    const all = await settings.loadAll(tid(req));
+    return require('../services/locale').resolveLocale(all).timezone;
+  } catch { return DEFAULT_TZ; }
+}
 
 
 router.get('/stats', requireAdmin, async (req, res) => {
   try {
     const { period = 'today', date } = req.query;
-    const { start, end } = periodRange(period, date);
+    const tz = await tenantTz(req);
+    const { start, end } = periodRange(period, date, tz);
 
     const { data: dayOrders } = await supabase
       .from('orders')
@@ -457,9 +472,9 @@ router.get('/stats', requireAdmin, async (req, res) => {
     const statusBreakdown = {};
     for (const o of all) statusBreakdown[o.status] = (statusBreakdown[o.status] || 0) + 1;
 
-    // Hourly distribution — in Israel time, which is what the owner staffs to
+    // Hourly distribution — in the tenant's OWN time, which is what they staff to
     const hourlyOrders = Array(24).fill(0);
-    for (const o of completed) hourlyOrders[ilHourOf(o.created_at)]++;
+    for (const o of completed) hourlyOrders[hourOf(o.created_at, tz)]++;
 
     // Average delivery time (created_at → delivered updated_at)
     const deliveredOrders = completed.filter((o) => o.status === 'delivered' || o.status === 'done');
@@ -489,7 +504,7 @@ router.get('/stats', requireAdmin, async (req, res) => {
     // Orders per day (for chart)
     const ordersByDay = {};
     for (const o of completed) {
-      const day = ilDayKey(o.created_at);
+      const day = dayKey(o.created_at, tz);
       if (!ordersByDay[day]) ordersByDay[day] = { count: 0, revenue: 0 };
       ordersByDay[day].count++;
       ordersByDay[day].revenue += parseFloat(o.total_price) || 0;
@@ -968,9 +983,15 @@ router.get('/public-menu', async (req, res) => {
       settings.isDeliveryOpen(publicTid).catch(() => allSettings.delivery_enabled !== false),
     ]);
 
-    // Today's hours window, for the "we're closed" state (IL calendar, not server-local).
+    // The public menu is CUSTOMER-facing, so its language follows the TENANT —
+    // and so does its calendar.
+    const loc = require('../services/locale').resolveLocale(allSettings);
+
+    // Today's hours window, for the "we're closed" state — in the TENANT's
+    // timezone, not the server's and not Israel's.
     const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-    const todayHours = allSettings.business_hours?.[dayNames[ilParts().weekday]] || null;
+    const todayHours = allSettings.business_hours?.[
+      dayNames[require('../services/tz-time').parts(new Date(), loc.timezone).weekday]] || null;
 
     // Customers only need the fields that affect them; zones may carry more.
     const zones = (Array.isArray(allSettings.delivery_zones) ? allSettings.delivery_zones : [])
@@ -984,10 +1005,6 @@ router.get('/public-menu', async (req, res) => {
 
     const halfPct    = Number(allSettings.topping_half_pct    ?? 100);
     const quarterPct = Number(allSettings.topping_quarter_pct ?? 100);
-
-    // The public menu is CUSTOMER-facing, so its language follows the TENANT —
-    // not the dashboard operator's localStorage, which is what i18n.js reads.
-    const loc = require('../services/locale').resolveLocale(allSettings);
 
     res.json({
       menu,

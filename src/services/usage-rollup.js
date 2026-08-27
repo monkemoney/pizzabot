@@ -11,7 +11,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { costOf } = require('./claude-pricing');
-const { periodRange, ilDayKey } = require('./il-time');
+const { periodRange, ilDayKey } = require('./tz-time');
 
 // class-11 (module-level mutable state): lazy client handle only — no data,
 // rebuilt after a deploy, per-instance duplication harmless.

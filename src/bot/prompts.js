@@ -48,11 +48,14 @@ async function buildSystemPrompt(customerProfile = null, tenantId = null, lang =
   const fmtMoney = (n) => promptMoney(n, loc);
 
   const prepLeadTime = allSettings.prep_lead_time ?? 45;
-  const nowIL  = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
-  const nowStr = nowIL.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false });
+  // The clock the bot quotes to customers, and schedules pre-orders against. It
+  // reported Israel time to every tenant — the label said so, which made it
+  // honest but no less wrong for a Los Angeles business ten hours away.
+  const tzTime = require('../services/tz-time');
+  const nowStr = tzTime.clock(new Date(), loc.timezone);
   const DAY_KEYS = ['sun','mon','tue','wed','thu','fri','sat'];
   const DAY_HE   = { sun:'ראשון', mon:'שני', tue:'שלישי', wed:'רביעי', thu:'חמישי', fri:'שישי', sat:'שבת' };
-  const todayKey = DAY_KEYS[nowIL.getDay()];
+  const todayKey = DAY_KEYS[tzTime.parts(new Date(), loc.timezone).weekday];
 
   // ── Build live-status block ──────────────────────────────────────────────────
   function todayHoursStr(hoursObj) {
@@ -71,7 +74,7 @@ async function buildSystemPrompt(customerProfile = null, tenantId = null, lang =
   const DAY_EN = { sun:'Sunday', mon:'Monday', tue:'Tuesday', wed:'Wednesday', thu:'Thursday', fri:'Friday', sat:'Saturday' };
 
   const liveStatus = promptLang === 'en' ? [
-    `Current local time: ${nowStr} | ${DAY_EN[todayKey]}`,
+    `Current local time (${loc.timezone}): ${nowStr} | ${DAY_EN[todayKey]}`,
     `The business is currently: ${isOpenNow ? 'OPEN — taking orders now (even if the clock is outside the hours shown below, e.g. a special opening or hours that cross midnight)' : 'CLOSED'}`,
     bizHoursToday ? `Today's hours: ${bizHoursToday === 'סגור היום' ? 'closed today' : bizHoursToday}` : 'Hours: not configured (always open)',
     dlvHoursToday ? `Delivery hours today: ${dlvHoursToday === 'סגור היום' ? 'no delivery today' : dlvHoursToday}` : null,
@@ -83,7 +86,7 @@ async function buildSystemPrompt(customerProfile = null, tenantId = null, lang =
       (allSettings.payment_paybox === true) ? 'Paybox' : null,
     ].filter(Boolean).join(' / ')}`,
   ].filter(Boolean).join('\n') : [
-    `השעה עכשיו (ישראל): ${nowStr} | יום ${DAY_HE[todayKey]}`,
+    `השעה עכשיו (${loc.timezone === 'Asia/Jerusalem' ? 'ישראל' : loc.timezone}): ${nowStr} | יום ${DAY_HE[todayKey]}`,
     `העסק כרגע: ${isOpenNow ? 'פתוח — מקבלים הזמנות עכשיו (גם אם השעה מחוץ לשעות המוצגות למטה, למשל פתיחה מיוחדת או שעות שחוצות חצות)' : 'סגור'}`,
     bizHoursToday ? `שעות פעילות היום: ${bizHoursToday}` : 'שעות פעילות: לא מוגדרות (פתוח תמיד)',
     dlvHoursToday ? `שעות משלוח היום: ${dlvHoursToday}` : null,

@@ -69,6 +69,10 @@ const CHECKS = [
     advice: 'State in a module variable resets on every deploy and breaks on scale-out. New store? Answer both questions in a comment (what happens on reset / on 2 instances), then raise the baseline.',
     baseline: {
       'src/index.js': 1,
+      // Intl formatter cache, one per timezone. On reset it rebuilds pure
+      // formatter objects (no correctness impact); with two instances each
+      // holds its own identical copies. Nothing is ever written from it.
+      'src/services/tz-time.js': 1,
       // prompts.js no longer caches lessons — the lessons service owns that now
       'src/bot/ai-handler.js': 4,
       'src/routes/call-events.js': 1,
@@ -98,37 +102,37 @@ const CHECKS = [
     },
   },
   {
-    name: 'class-12: raw new Date( outside il-time',
+    name: 'class-12: raw new Date( outside tz-time',
     pattern: /new Date\(/g,
     roots: ['src'],
-    exclude: ['src/services/il-time.js'],
-    advice: 'Every audited instance is epoch math, explicit timeZone formatting, or ISO stamping. If the new use compares/buckets by LOCAL calendar time — use services/il-time.js. Otherwise raise the baseline.',
+    exclude: ['src/services/tz-time.js'],
+    advice: 'Every audited instance is epoch math, explicit timeZone formatting, or ISO stamping. If the new use compares/buckets by LOCAL calendar time — use services/tz-time.js. Otherwise raise the baseline.',
     baseline: {
       // Audited 2026-07-28: every instance is epoch math, explicit-timeZone
       // formatting, or toISOString stamping — none buckets by local calendar.
       'src/index.js': 10,
-      'src/bot/prompts.js': 2,
+      'src/bot/prompts.js': 2,   // explicit-timeZone formatting via tz-time
       'src/bot/ai-handler.js': 7,
       'src/bot/admin-handler.js': 15,
       'src/routes/payment.js': 2,
       // 38 since the Bot Brain endpoints + lessons apply/deactivate (staleness epoch
-      // math + ISO stamping; the cost-today window uses il-time periodRange)
-      'src/routes/dashboard-api.js': 38,
+      // math + ISO stamping; the cost-today window uses tz-time periodRange)
+      'src/routes/dashboard-api.js': 39,  // +1: public-menu weekday in the TENANT's zone
       'src/services/vendor-alerts.js': 1,
       'src/services/supabase.js': 13,
       'src/services/order-state.js': 4,
       // rolling N-day window (epoch math) + accept-latency duration — no local
-      // calendar bucketing, so il-time is not the right tool here
+      // calendar bucketing, so tz-time is not the right tool here
       'src/services/funnel-stats.js': 3,
       // decided_at + applied_at ISO stamping only
       'src/bot/brain-handler.js': 2,
       // asked_at ISO stamping + a 24h elapsed check (epoch math, not calendar)
       'src/services/csat.js': 3,
-      // day WINDOWS come from il-time (periodRange/ilDayKey); these are epoch
+      // day WINDOWS come from tz-time (periodRange/ilDayKey); these are epoch
       // math for the N-days-back loop and updated_at ISO stamping
       'src/services/usage-rollup.js': 4,
       'src/services/slug.js': 1,
-      'src/services/settings.js': 8,
+      'src/services/settings.js': 4,   // _tenantNow() replaced three hardcoded IL clocks
       'src/services/push-notifier.js': 1,
       // audited 2026-07-28: epoch math (attribution window) + ISO stamping only
       'src/services/recovery-attribution.js': 4,

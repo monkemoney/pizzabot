@@ -72,6 +72,20 @@ function activeOverride(allSettings) {
 // Overnight-aware window check: a window whose close < open (e.g. 20:00–01:00)
 // spills into the next day. Open when either today's window contains now,
 // or yesterday's window crossed midnight and its tail still covers now.
+/**
+ * "Now", as a Date whose LOCAL getters read as the tenant's wall clock.
+ *
+ * _inHoursWindow compares getHours()/getDay() against the configured window, so
+ * the instant has to be shifted into the tenant's zone first. This was
+ * hardcoded to Asia/Jerusalem in three places, which meant a Los Angeles
+ * business was judged open or closed by Israeli office hours — ten hours out.
+ */
+function _tenantNow(allSettings) {
+  const { resolveLocale } = require('./locale');
+  const tz = resolveLocale(allSettings || {}).timezone;
+  return new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
+}
+
 function _inHoursWindow(hours, now) {
   const days = ['sun','mon','tue','wed','thu','fri','sat'];
   const nowMin = now.getHours() * 60 + now.getMinutes();
@@ -119,20 +133,19 @@ async function isOpen(tenantId = DEFAULT_TENANT_ID) {
   const hours = all.business_hours;
   if (!hours) return true;
 
-  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  const now = _tenantNow(all);
   const days = ['sun','mon','tue','wed','thu','fri','sat'];
   const day  = days[now.getDay()];
   const result = _inHoursWindow(hours, now);
 
-  console.log(`[settings] isOpen (tenant ${tenantId}) — IL time: ${now.toLocaleTimeString('he-IL')} day:${day} window:${hours[day]?.open || '—'}-${hours[day]?.close || '—'} → ${result}`);
+  console.log(`[settings] isOpen (tenant ${tenantId}) — local: ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')} day:${day} window:${hours[day]?.open || '—'}-${hours[day]?.close || '—'} → ${result}`);
 
   return result;
 }
 
-function _checkHoursWindow(hours, _day) {
+function _checkHoursWindow(hours, _day, allSettings) {
   if (!hours) return true;
-  const nowIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
-  return _inHoursWindow(hours, nowIL);
+  return _inHoursWindow(hours, _tenantNow(allSettings));
 }
 
 async function isDeliveryOpen(tenantId = DEFAULT_TENANT_ID) {
@@ -147,8 +160,8 @@ async function isDeliveryOpen(tenantId = DEFAULT_TENANT_ID) {
   const hours = all.delivery_hours;
   if (!hours || Object.keys(hours).length === 0) return true;
   const days = ['sun','mon','tue','wed','thu','fri','sat'];
-  const nowIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
-  return _checkHoursWindow(hours, days[nowIL.getDay()]);
+  const now = _tenantNow(all);
+  return _checkHoursWindow(hours, days[now.getDay()], all);
 }
 
 function _clearCache(tenantId = DEFAULT_TENANT_ID) {
