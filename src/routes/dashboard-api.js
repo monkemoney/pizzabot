@@ -1034,6 +1034,11 @@ router.get('/public-menu', async (req, res) => {
         tax_mode:  loc.taxMode,
         tax_rate:  loc.taxRate,
         tax_label: loc.taxLabel,
+        // The cart shows the ladder, but never charges it: the composed
+        // WhatsApp message carries the choice and the bot re-resolves it
+        // server-side, like every other number on this page.
+        tips_enabled: loc.tipsEnabled,
+        tip_presets:  loc.tipPresets,
       },
       business_name:    allSettings.business_name    || '',
       // No hardcoded fallback number — a tenant without a configured bot number
@@ -1132,6 +1137,8 @@ router.get('/business-config', requireAuth, async (req, res) => {
     // Address shape. The dashboard resolves a zone the same way the server does
     // (fee, tax rate, receipt), so it needs the same postal pattern — deriving
     // it client-side would be a second definition of the same rule.
+    tips_enabled:   loc.tipsEnabled,
+    tip_presets:    loc.tipPresets,
     postal_re:      loc.postalRe,
     postal_label:   loc.postalLabel,
     address_order:  loc.addressOrder,
@@ -1198,6 +1205,16 @@ router.patch('/settings', requireAdmin, async (req, res) => {
     }
     updates.tax_rate = r;
     updates.vat_rate = r;   // keep the legacy key in step; resolveLocale reads it as a fallback
+  }
+
+  // The tip ladder is money too, and it arrives as free text. An unusable
+  // ladder is rejected rather than silently replaced by the region default —
+  // a setting that appears to save and does nothing is failure class 9.
+  if ('tip_presets' in updates) {
+    const { normalisePresets } = require('../services/locale');
+    const list = normalisePresets(updates.tip_presets);
+    if (!list) return res.status(400).json({ error: 'אחוזי טיפ חייבים להיות מספרים בין 0 ל-100' });
+    updates.tip_presets = list;
   }
 
   // A zone's own rate is money too, and it arrives inside a JSONB blob nothing
@@ -2058,6 +2075,12 @@ router.post('/vendor/onboarding/:id/approve', requireVendor, async (req, res) =>
     ['tax_rate',           rd.tax_rate],
     ['tax_label',          rd.tax_label],
     ['tax_on_delivery',    rd.tax_on_delivery],
+    // Tipping is a convention of the country the business trades in, so the
+    // region seeds it ONCE, here, where somebody is actually deciding which
+    // country this client is in. Existing tenants are never touched by it:
+    // resolveLocale defaults tips_enabled to false everywhere.
+    ['tips_enabled',       obRegion === 'US'],
+    ['tip_presets',        rd.tip_presets],
     ['business_name',      ob.business_name   || ob.clients?.name || ''],
     ['bot_whatsapp',       ob.bot_whatsapp     ? ob.bot_whatsapp.replace(/\D/g, '') : ''],
     ['is_open',            true],

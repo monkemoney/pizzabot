@@ -279,7 +279,10 @@ function taxRateOf(o) {
 // The pre-tax figure is `total - tax` in BOTH models — inclusive because the tax
 // sits inside the total, exclusive because it was added to reach it. The two
 // models differ in how the tax is derived, not in how the net is read off.
-const netOf = (total, tax) => (parseFloat(total) || 0) - (parseFloat(tax) || 0);
+// A tip is passed in alongside the tax by callers that have one: it rides on
+// top of the total and was never part of the sale.
+const netOf = (total, ...deductions) =>
+  deductions.reduce((n, d) => n - (parseFloat(d) || 0), parseFloat(total) || 0);
 
 /** The tax recorded on the order; recomputed only when the row predates freezing. */
 function taxOfOrder(o) {
@@ -293,6 +296,22 @@ function taxOfOrder(o) {
   // so back-computing is the only honest reading of it.
   const r = taxRateOf(o);
   return r ? base * r / (100 + r) : 0;
+}
+
+/**
+ * The tip recorded on the order. Never recomputed from the current settings:
+ * an order placed before tips existed, or before the ladder changed, was
+ * charged what it was charged. Absent means no tip, not "work it out".
+ */
+function tipOfOrder(o) {
+  const t = parseFloat(o?.tip_amount);
+  return Number.isFinite(t) && t > 0 ? t : 0;
+}
+
+/** "טיפ" / "Tip 18%" — the label a receipt line carries. */
+function tipLineLabel(o) {
+  const pct = parseFloat(o?.tip_pct);
+  return Number.isFinite(pct) && pct > 0 ? `${TR('טיפ')} ${pct}%` : TR('טיפ');
 }
 
 /**
@@ -587,7 +606,10 @@ function exportOrdersCSV() {
   const headers = [
     TR('מספר הזמנה'),TR('תאריך'),TR('שעה'),TR('שם לקוח'),TR('טלפון'),
     TR('סוג אספקה'),TR('כתובת'),TR('אמצעי תשלום'),TR('סטטוס תשלום'),
-    TR('סטטוס הזמנה'),TR('פריטים'),TR('תוספות'),TR('סה"כ'),TR('הערות'),
+    TR('סטטוס הזמנה'),TR('פריטים'),TR('תוספות'),
+    // Broken out beside the total, because a bookkeeper reconciling card
+    // settlements needs the tip separately — it is not revenue from the sale.
+    TR('דמי משלוח'),TR('מס'),TR('טיפ'),TR('סה"כ'),TR('הערות'),
   ];
 
   const esc = (v) => {
@@ -619,6 +641,9 @@ function exportOrdersCSV() {
       STATUS_LABELS[o.status] || o.status || '',
       items,
       toppings,
+      (deliveryFeeOf(o) || 0).toFixed(2),
+      taxOfOrder(o).toFixed(2),
+      tipOfOrder(o).toFixed(2),
       (parseFloat(o.total_price)||0).toFixed(2),
       o.notes || '',
     ].map(esc).join(',');
@@ -772,7 +797,8 @@ function renderOrderRow(o) {
         <div style="margin-bottom:10px">${itemsHtml}</div>
         <div style="font-size:.8rem;display:flex;flex-direction:column;gap:4px;padding:10px;background:var(--bg);border-radius:10px;margin-bottom:14px">
           ${delivery ? `<div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>${TR('משלוח')}</span><span>${money(delivery, 0)}</span></div>` : ''}
-          <div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>${taxLabel()}</span><span>${money(tax)}</span></div>
+          <div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>${taxLabel(taxRateOf(o))}</span><span>${money(tax)}</span></div>
+          ${tipOfOrder(o) ? `<div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>${tipLineLabel(o)}</span><span>${money(tipOfOrder(o))}</span></div>` : ''}
           <div style="display:flex;justify-content:space-between;font-weight:800;font-size:.92rem;border-top:1.5px solid var(--border);padding-top:6px;margin-top:4px">
             <span>${TR('סה"כ')}</span><span>${money(total)}</span>
           </div>
@@ -1763,7 +1789,8 @@ function printOrder(orderId) {
   const delivery = deliveryFeeOf(o);
   const total    = parseFloat(o.total_price) || (subtotal + delivery);
   const tax      = taxOfOrder(o);
-  const net      = netOf(total, tax);
+  const tip      = tipOfOrder(o);
+  const net      = netOf(total, tax, tip);
 
   const itemRows = items.map(it => {
     const qty      = it.quantity || it.qty || 1;
@@ -1868,7 +1895,8 @@ function printOrder(orderId) {
   <div class="totals">
     ${delivery ? `<div class="total-row"><span>${TR('משלוח')}</span><span>${money(delivery)}</span></div>` : ''}
     <div class="total-row"><span>${TR('לפני מס')}</span><span>${money(net)}</span></div>
-    <div class="total-row"><span>${taxLabel()}</span><span>${money(tax)}</span></div>
+    <div class="total-row"><span>${taxLabel(taxRateOf(o))}</span><span>${money(tax)}</span></div>
+    ${tipOfOrder(o) ? `<div class="total-row"><span>${tipLineLabel(o)}</span><span>${money(tipOfOrder(o))}</span></div>` : ''}
     <div class="total-row big"><span>${TR('סה"כ לתשלום')}</span><span>${money(total)}</span></div>
   </div>
 
@@ -1978,8 +2006,12 @@ function editTotals(order) {
   const rate  = taxRateOf({ ...order, tax_rate: null });   // the rate in force now, not the frozen one
   const base  = taxAddedAtCheckout() && !_bizConfig.tax_on_delivery ? subtotal : subtotal + deliveryFee;
   const tax   = taxOf(base, rate);
-  const total = taxAddedAtCheckout() ? subtotal + deliveryFee + tax : subtotal + deliveryFee;
-  return { deliveryFee, subtotal, rate, tax, total };
+  // The tip the customer already agreed to, carried through untouched. Staff
+  // editing the basket is not the customer changing their mind about the tip,
+  // and re-deriving it from a percentage would move money nobody asked to move.
+  const tip   = tipOfOrder(order);
+  const total = (taxAddedAtCheckout() ? subtotal + deliveryFee + tax : subtotal + deliveryFee) + tip;
+  return { deliveryFee, subtotal, rate, tax, tip, total };
 }
 
 function updateEditSummary(order) {
@@ -3002,6 +3034,23 @@ function renderSettingsForm(s) {
       ${saveBtn('saveTaxSettings')}
     `)}
 
+    ${sCard(ICONS.pay, 'טיפ', 'האם הבוט והתפריט מציעים ללקוח להוסיף טיפ', `
+      ${sToggle('tips_enabled', 'הצע טיפ ללקוח', loc.tipsEnabled === true, '',
+                'הבוט ישאל פעם אחת, אחרי שההזמנה מוכנה ולפני התשלום. כבוי = אף אחד לא נשאל.')}
+      <div id="tipPresetsRow" style="${loc.tipsEnabled ? '' : 'display:none'};margin-top:12px">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <label style="font-size:.84rem;font-weight:600;min-width:150px">${TR('אחוזים מוצעים')}</label>
+          <input type="text" id="tipPresets" dir="ltr" value="${(loc.tipPresets || []).join(', ')}"
+            oninput="renderTipPreview()" style="min-width:220px" placeholder="15, 18, 20, 22">
+        </div>
+        <div style="font-size:.78rem;color:var(--text-muted);margin:6px 0 0">
+          ${TR('הטיפ מחושב על סכום הפריטים — לפני מס ולפני דמי משלוח — ואינו חייב במס. הלקוח תמיד יכול לנקוב בסכום אחר או לוותר.')}
+        </div>
+        <div id="tipPreview"></div>
+      </div>
+      ${saveBtn('saveTipSettings')}
+    `)}
+
     ${sCard(ICONS.pay, 'אמצעי תשלום', 'אילו אמצעי תשלום הבוט מציע ללקוחות', `
       ${sToggle('payment_cash',   'מזומן',   s.payment_cash   !== false, '', 'תשלום במזומן בעת המסירה')}
       ${sToggle('payment_credit', 'אשראי',   s.payment_credit !== false, '', 'תשלום מאובטח בכרטיס אשראי')}
@@ -3185,6 +3234,9 @@ function renderSettingsForm(s) {
   document.querySelector('.setting-toggle[data-key="tax_on_delivery"]')
     ?.addEventListener('change', renderTaxPreview);
   renderTaxPreview();
+  document.querySelector('.setting-toggle[data-key="tips_enabled"]')
+    ?.addEventListener('change', renderTipPreview);
+  renderTipPreview();
 }
 
 // ── Section save functions ──
@@ -3263,6 +3315,7 @@ function onRegionChange() {
   const toggle = document.querySelector('.setting-toggle[data-key="tax_on_delivery"]');
   if (toggle) toggle.checked = d.tax_on_delivery;
   renderTaxPreview();
+  renderTipPreview();
 }
 
 /**
@@ -3342,6 +3395,41 @@ async function saveTaxSettings() {
     tax_on_delivery: document.querySelector('.setting-toggle[data-key="tax_on_delivery"]')?.checked !== false,
   });
   await loadBusinessConfig();
+}
+
+async function saveTipSettings() {
+  const on = document.querySelector('.setting-toggle[data-key="tips_enabled"]')?.checked === true;
+  const raw = (document.getElementById('tipPresets')?.value || '').trim();
+  const list = [...new Set(raw.split(/[^0-9.]+/).map(parseFloat)
+    .filter(n => Number.isFinite(n) && n >= 0 && n <= 100))].sort((a, b) => a - b);
+  if (on && !list.length) {
+    // The server rejects an unusable ladder rather than quietly substituting a
+    // default; saying so here saves the round trip.
+    return showToast(TR('אחוזי טיפ חייבים להיות מספרים בין 0 ל-100'));
+  }
+  await saveSection({ tips_enabled: on, ...(list.length ? { tip_presets: list } : {}) });
+  await loadBusinessConfig();
+}
+
+/** A worked example of the tip, on the same order the tax card prices. */
+function renderTipPreview() {
+  const row = document.getElementById('tipPresetsRow');
+  const on  = document.querySelector('.setting-toggle[data-key="tips_enabled"]')?.checked === true;
+  if (row) row.style.display = on ? '' : 'none';
+  const el = document.getElementById('tipPreview');
+  if (!el || !on) return;
+  const list = (document.getElementById('tipPresets')?.value || '')
+    .split(/[^0-9.]+/).map(parseFloat).filter(n => Number.isFinite(n) && n > 0 && n <= 100);
+  const items = _bizConfig.currency === 'USD' ? 12.99 : 50;
+  el.innerHTML = !list.length ? '' : `
+    <div style="margin:12px 0 4px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--color-bg);font-size:.82rem">
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:8px">
+        ${TR('על הזמנה של')} ${money(items)}
+      </div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap">
+        ${list.map(p => `<span><b>${p}%</b> · ${money(items * p / 100)}</span>`).join('')}
+      </div>
+    </div>`;
 }
 
 async function saveHandoffSettings() {

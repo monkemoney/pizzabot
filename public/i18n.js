@@ -297,7 +297,16 @@ const HE2EN = {
     'A delivery is taxed where it lands. Leave blank to use the business\u2019s own rate; pickup is always taxed at the business address.',
   'פטור ממס': 'Tax exempt', 'חייב במס': 'Taxable',
   'מיקודים': 'ZIP codes', 'מיקוד': 'ZIP code', 'מדינה (state)': 'State',
-  'ללא + או רווחים, לדוגמה': 'No + or spaces, for example', 'ריק = התאמה לפי שם העיר': 'Empty = match by city name',
+  'ללא + או רווחים, לדוגמה': 'No + or spaces, for example',
+  // Tips
+  'טיפ': 'Tip', 'האם הבוט והתפריט מציעים ללקוח להוסיף טיפ': 'Whether the bot and menu offer the customer a tip',
+  'הצע טיפ ללקוח': 'Offer a tip', 'אחוזים מוצעים': 'Suggested percentages',
+  'הבוט ישאל פעם אחת, אחרי שההזמנה מוכנה ולפני התשלום. כבוי = אף אחד לא נשאל.':
+    'The bot asks once, after the order is complete and before payment. Off = nobody is asked.',
+  'הטיפ מחושב על סכום הפריטים — לפני מס ולפני דמי משלוח — ואינו חייב במס. הלקוח תמיד יכול לנקוב בסכום אחר או לוותר.':
+    'The tip is calculated on the food subtotal — before tax and before the delivery fee — and is never taxed. The customer can always name their own amount or decline.',
+  'אחוזי טיפ חייבים להיות מספרים בין 0 ל-100': 'Tip percentages must be numbers between 0 and 100',
+  'על הזמנה של': 'On an order of', 'ללא טיפ': 'No tip', 'סכום אחר': 'Other amount', 'ריק = התאמה לפי שם העיר': 'Empty = match by city name',
   'מיקוד הוא מפתח החיפוש המדויק: הוא מנצח את שם העיר. אפשר לרשום קידומת (904) כדי לכסות טווח.':
     'A ZIP is the precise lookup key and beats the city name. A prefix (904) covers a range.',
   'בטל כדי לפטור את הקטגוריה ממס (לדוגמה: מזון קר לקחת)':

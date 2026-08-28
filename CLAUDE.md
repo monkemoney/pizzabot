@@ -421,6 +421,20 @@ An address was one free-text string that a zone was resolved from by matching a 
 
 - **Client money goes through `money()`** (`Intl.NumberFormat`, tenant currency, dashboard locale — $ leads in English, ₪ trails in Hebrew) and tax through `taxOf()` / `taxOfOrder()`. `LOCALE` is `en-US`, not `en-GB`: 12/08 means December 8th to the audience this was localised for.
 
+### Tips (2026-08-28)
+
+Tipping is expected in an American restaurant and the product had no concept of it at all. A tip is money the customer is **charged**, so it goes down the same authoritative path as everything else: the model reports what the customer *chose*, the server resolves it against its own numbers.
+
+- **Off unless the tenant turns it on.** `tips_enabled` defaults to false for every region — a deploy must not make an existing business start asking its customers for a tip. The region supplies only the ladder (`tip_presets`: US 15/18/20/22, IL 0/10/12/15), and `approve()` seeds `tips_enabled: true` for a US onboarding session, in the same place and for the same reason it seeds the tax model: that is where somebody is actually deciding which country the client is in.
+- **The base is the food subtotal** — pre-tax, excluding the delivery fee. That is the American restaurant convention and the number a customer checks by eye.
+- **A tip is never taxed** and never enters `taxableBase`: it is a voluntary payment on top of a settled sale, not part of it. Pinned by a test that asserts the tax is identical with and without a tip.
+- **`tipOn()` resolves a percentage against the SERVER's items total**, so a mis-multiplication cannot reach a card. A *named* amount is taken literally but **capped at the food itself** — an uncapped free-text amount is an unbounded charge and a slipped decimal point is a real transaction — and a clamp is reported (`tipClamped`), never silent.
+- **`orders.tip_amount` + `orders.tip_pct` are frozen at order time**, like `delivery_fee` and `tax_amount`. The percentage is stored *as well as* the amount because "18%" and "$10.44" are different facts about one order and only the first survives an edit to the basket. ⚠️ Migration `supabase/migrations/2026-08-28-order-tip.sql` must be applied before deploying — `saveOrder` passes the object straight to `insert()`.
+- **Editing an order carries the tip through untouched.** Staff changing the basket is not the customer changing their mind about the tip; re-deriving it from the percentage would move money nobody asked to move.
+- **The prompt gains the tip step only when the tenant takes tips** — both the prose (`tipRule`) and the ACTION field pair — so the frozen Hebrew prompt is byte-for-byte what it was for every existing tenant. The bot is told the RULE and never the arithmetic: which field to set, that the base is the food subtotal, and that `total` stays pre-tax **and pre-tip**. If the model adds the tip into `total` anyway, the pre-tax comparison in `authoritativeTotal` means the server's number wins and the tip is applied exactly once.
+- **The public menu picks the tip but never charges it**: the ladder plus a custom amount and an explicit "no tip" (selected by default — nobody is opted in), and the composed WhatsApp message carries the *choice* (`Tip: 20%`), not an amount the page computed. Same rule that makes its cart total an estimate.
+- **The CSV export breaks out delivery, tax and tip beside the total** — a bookkeeper reconciling card settlements needs the tip separately, because it is not revenue from the sale.
+
 ### Money Display (2026-07-27)
 
 VAT and the delivery fee were literals in the client — `18%` and `₪30` in four places — and `orders.delivery_fee` did not exist, so the ₪30 fallback was the *only* branch that ever ran: a tenant charging 25 printed 30 on every receipt, which is a tax document with a wrong number on it.
@@ -589,7 +603,7 @@ sessions            per-phone (customer: phone, admin: 'admin:phone') — UNIQUE
                     is_bot_active, unread_count, last_customer_message, last_message_at
 pending_payments    Cardcom pendings; tenant_id real column (indexed)
 orders              order_number (seq 1000+), items JSONB, status, payment fields, dispute fields,
-                    delivery_fee + tax_rate + tax_amount frozen at order time,
+                    delivery_fee + tax_rate + tax_amount + tip_amount/tip_pct frozen at order time,
                     status_history JSONB [{status,at}] appended on every transition
                     CHECK orders_status_check: new|scheduled|preparing|ready|out_for_delivery|delivered|done|cancelled
 customers           VIEW over orders — includes tenant_id in SELECT and GROUP BY (column-set changes

@@ -37,6 +37,7 @@ const REGIONS = {
     postal_label:    'מיקוד',
     address_order:   'street-first',           // "רוטשילד 5, תל אביב"
     subdivision:     null,                     // Israel has no state line in an address
+    tip_presets:     [0, 10, 12, 15],          // tipping exists but is not assumed
   },
   US: {
     currency:        'USD',
@@ -52,6 +53,7 @@ const REGIONS = {
     postal_label:    'ZIP code',
     address_order:   'number-first',           // "123 Main St, Los Angeles, CA 90012"
     subdivision:     'state',
+    tip_presets:     [15, 18, 20, 22],         // the American default ladder
   },
 };
 
@@ -115,6 +117,11 @@ function resolveLocale(allSettings = {}) {
     postalLabel:    d.postal_label,
     addressOrder:   d.address_order,
     subdivision:    d.subdivision,
+    // Tips are OFF unless the tenant turns them on: an existing business must
+    // not start asking its customers for a tip because of a deploy. The region
+    // only supplies the ladder shown once they do.
+    tipsEnabled:    allSettings.tips_enabled === true || allSettings.tips_enabled === 'true',
+    tipPresets:     normalisePresets(allSettings.tip_presets) || d.tip_presets,
     // inclusive pricing has nothing to add at checkout — the price is the price
     addsTaxAtCheckout: mode === 'exclusive',
   };
@@ -176,6 +183,49 @@ function localeForZone(loc, zone) {
   if (rate == null) return loc;
   const clamped = Math.max(0, Math.min(100, rate));
   return clamped === loc.taxRate ? loc : { ...loc, taxRate: clamped };
+}
+
+/** A tip ladder from settings: numbers 0-100, deduped, ordered; null if unusable. */
+function normalisePresets(raw) {
+  const list = Array.isArray(raw) ? raw : String(raw ?? '').split(/[^0-9.]+/);
+  const out = [...new Set(list.map((x) => parseFloat(x))
+    .filter((n) => Number.isFinite(n) && n >= 0 && n <= 100))].sort((a, b) => a - b);
+  return out.length ? out : null;
+}
+
+/**
+ * The tip on an order.
+ *
+ * The base is the ITEMS subtotal — pre-tax and excluding the delivery fee,
+ * which is the American restaurant convention and the one a customer checks by
+ * eye. The tip is never taxed and never part of the taxable base: it is a
+ * voluntary payment, added after the tax is settled.
+ *
+ * A percentage is resolved against the SERVER's items total, not the model's,
+ * for the same reason every other number here is: the model quotes, the server
+ * charges. A named amount is taken literally but capped at the food itself —
+ * an uncapped free-text amount is an unbounded charge, and a slip of a decimal
+ * point is a real card transaction. A clamp is reported, never silent.
+ *
+ * @returns {{amount:number, pct:number|null, clamped:boolean}}
+ */
+function tipOn(itemsTotal, { tip_pct, tip_amount } = {}, loc) {
+  const none = { amount: 0, pct: null, clamped: false };
+  if (!loc?.tipsEnabled) return none;
+  const base = Math.max(0, Number(itemsTotal) || 0);
+
+  const pct = _num(tip_pct);
+  if (pct != null && pct > 0) {
+    const p = Math.min(100, Math.max(0, pct));
+    return { amount: Math.round(base * p) / 100, pct: p, clamped: p !== pct };
+  }
+
+  const amt = _num(tip_amount);
+  if (amt != null && amt > 0) {
+    const capped = Math.min(amt, base);
+    return { amount: Math.round(capped * 100) / 100, pct: null, clamped: capped !== amt };
+  }
+  return none;
 }
 
 /**
@@ -298,5 +348,5 @@ async function forTenant(tenantId) {
 
 module.exports = {
   REGIONS, CURRENCIES, DEFAULT_REGION,
-  regionOf, resolveLocale, localeForZone, normaliseZones, zipsOf, extractPostal, taxOf, taxableBase, taxLineLabel, formatMoney, promptMoney, forTenant,
+  regionOf, resolveLocale, localeForZone, normaliseZones, zipsOf, extractPostal, normalisePresets, tipOn, taxOf, taxableBase, taxLineLabel, formatMoney, promptMoney, forTenant,
 };

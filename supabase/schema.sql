@@ -139,6 +139,8 @@ CREATE TABLE IF NOT EXISTS orders (
   delivery_fee        NUMERIC(10,2),            -- charged fee, frozen at order time
   tax_rate            NUMERIC(5,2),             -- rate applied, frozen at order time
   tax_amount          NUMERIC(10,2),            -- tax charged (exclusive) or contained (inclusive)
+  tip_amount          NUMERIC(10,2),            -- tip charged, frozen at order time; never taxed
+  tip_pct             NUMERIC(5,2),             -- the ladder % the customer picked; null = named amount
   destination_type    TEXT,
   courier_notes       TEXT,
   notes               TEXT,

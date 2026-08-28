@@ -660,6 +660,11 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
         // the rate changes must show the rate this customer was charged.
         tax_rate:        priced.taxRate,
         tax_amount:      priced.tax,
+        // The tip too: it is charged, so it is frozen. `tip_pct` records HOW it
+        // was chosen — "18%" and "$10.44" are different facts about one order,
+        // and only the first survives an edit to the basket.
+        tip_amount:      priced.tip || null,
+        tip_pct:         priced.tipPct,
         notes:           payload.notes           || null,
         payment_method:  isBit ? 'bit' : 'cash',
         payment_status:  isBit ? 'pending' : 'paid',
@@ -771,6 +776,8 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
           delivery_fee: payload.delivery_method === 'delivery' ? priced.deliveryFee : 0,
           tax_rate:     priced.taxRate,
           tax_amount:   priced.tax,
+          tip_amount:   priced.tip || null,
+          tip_pct:      priced.tipPct,
         },
       });
 

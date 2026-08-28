@@ -238,6 +238,14 @@ ${parts.join('\n')}
   // meaning what it says.
   const heAddressAsk = require('./prompt-en').addressAsk(loc, 'he');
 
+  // Tips (C8). Both the ACTION field and the prose are absent unless the tenant
+  // takes tips — which is every existing tenant, so the frozen Hebrew prompt is
+  // byte-for-byte what it was.
+  const heTipField = loc.tipsEnabled ? ',"tip_pct":<אחוז טיפ או null>,"tip_amount":<סכום טיפ או null>' : '';
+  const heTipBlock = loc.tipsEnabled
+    ? `\n\n${require('./prompt-en').tipRule(loc, 'he', fmtMoney)}`
+    : '';
+
   const heTaxBlock = loc.addsTaxAtCheckout
     ? `\n\n${require('./prompt-en').taxRule(loc, 'he', hasExemptCategory)}`
     : '';
@@ -260,7 +268,7 @@ ${liveStatus}
 ══════════════════════════════════════════
 ${menuText}
 ══════════════════════════════════════════
-קישור לתפריט המלא עם תמונות: ${menuUrl}${heTaxBlock}
+קישור לתפריט המלא עם תמונות: ${menuUrl}${heTaxBlock}${heTipBlock}
 
 ══════════════════════════════════════════
 אזורי משלוח ומחירים
@@ -388,16 +396,16 @@ ACTION blocks
 מבנה תוספת: {"name":"<תוספת>","price":<מחיר בפועל לפי כלל התמחור>,"portion":"חצי"|"רבע"} — השמט את portion כשהתוספת על כל הפיצה.
 
 תשלום אשראי:
-<!--ACTION:CREATE_PAYMENT:{"customer_name":"<שם>","customer_phone":"<טלפון>","items":[{"name":"<פריט>","price":<מחיר יחידה>,"qty":<כמות>,"toppings":[{"name":"<תוספת>","price":<מחיר>,"portion":"<חצי|רבע — רק אם חלקית>"}]}],"delivery_method":"pickup|delivery","address":"<כתובת או null>","payment_method":"credit","total":<סכום סופי כולל משלוח>,"notes":"<הערות או null>"}-->
+<!--ACTION:CREATE_PAYMENT:{"customer_name":"<שם>","customer_phone":"<טלפון>","items":[{"name":"<פריט>","price":<מחיר יחידה>,"qty":<כמות>,"toppings":[{"name":"<תוספת>","price":<מחיר>,"portion":"<חצי|רבע — רק אם חלקית>"}]}],"delivery_method":"pickup|delivery","address":"<כתובת או null>","payment_method":"credit","total":<סכום סופי כולל משלוח>${heTipField},"notes":"<הערות או null>"}-->
 
 תשלום מזומן:
-<!--ACTION:SAVE_ORDER:{"customer_name":"<שם>","customer_phone":"<טלפון>","items":[{"name":"<פריט>","price":<מחיר יחידה>,"qty":<כמות>,"toppings":[...]}],"delivery_method":"pickup|delivery","address":"<כתובת או null>","payment_method":"cash","total":<סכום סופי כולל משלוח>,"notes":"<הערות או null>"}-->
+<!--ACTION:SAVE_ORDER:{"customer_name":"<שם>","customer_phone":"<טלפון>","items":[{"name":"<פריט>","price":<מחיר יחידה>,"qty":<כמות>,"toppings":[...]}],"delivery_method":"pickup|delivery","address":"<כתובת או null>","payment_method":"cash","total":<סכום סופי כולל משלוח>${heTipField},"notes":"<הערות או null>"}-->
 
 תשלום Bit:
-<!--ACTION:SAVE_ORDER:{"customer_name":"<שם>","customer_phone":"<טלפון>","items":[{"name":"<פריט>","price":<מחיר יחידה>,"qty":<כמות>,"toppings":[...]}],"delivery_method":"pickup|delivery","address":"<כתובת או null>","payment_method":"bit","total":<סכום סופי כולל משלוח>,"notes":"<הערות או null>"}-->
+<!--ACTION:SAVE_ORDER:{"customer_name":"<שם>","customer_phone":"<טלפון>","items":[{"name":"<פריט>","price":<מחיר יחידה>,"qty":<כמות>,"toppings":[...]}],"delivery_method":"pickup|delivery","address":"<כתובת או null>","payment_method":"bit","total":<סכום סופי כולל משלוח>${heTipField},"notes":"<הערות או null>"}-->
 
 הזמנה מתוזמנת (כשהלקוח מבקש שעה עתידית):
-<!--ACTION:SAVE_ORDER:{"customer_name":"<שם>","customer_phone":"<טלפון>","items":[...],"delivery_method":"pickup|delivery","address":"<כתובת או null>","payment_method":"cash|bit","total":<סכום>,"notes":"<הערות או null>","scheduled_for":"HH:MM"}-->
+<!--ACTION:SAVE_ORDER:{"customer_name":"<שם>","customer_phone":"<טלפון>","items":[...],"delivery_method":"pickup|delivery","address":"<כתובת או null>","payment_method":"cash|bit","total":<סכום>${heTipField},"notes":"<הערות או null>","scheduled_for":"HH:MM"}-->
 
 ביטול: <!--ACTION:RESET-->
 

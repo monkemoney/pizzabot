@@ -561,6 +561,19 @@
       font-size: .95rem;
       font-weight: 800;
     }
+    .tip-block {
+      margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);
+    }
+    .tip-title { font-size: .82rem; font-weight: 700; margin-bottom: 8px; }
+    .tip-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .tip-btn {
+      flex: 1 1 auto; min-width: 62px; padding: 9px 10px;
+      border: 1.5px solid var(--border); border-radius: 999px; background: var(--white);
+      font: inherit; font-size: .82rem; font-weight: 700; color: var(--text);
+      cursor: pointer;
+    }
+    .tip-btn-on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); }
+
     .cart-summary-note {
       font-size: .74rem;
       color: var(--text-muted);
@@ -748,6 +761,9 @@
 const MLANG = window.__MENU_LANG__ === 'en' ? 'en' : 'he';
 
 const MENU_HE2EN = {
+  // Tips
+  'טיפ': 'Tip', 'להוסיף טיפ?': 'Add a tip?', 'סכום אחר': 'Other amount',
+  'ללא טיפ': 'No tip', 'סכום הטיפ': 'Tip amount',
   'טוענים את התפריט...': 'Loading the menu...',
   'טוענים תפריט...': 'Loading menu...',
   'שגיאה בטעינת התפריט. נסו לרענן את הדף.': "Couldn't load the menu. Please refresh the page.",
@@ -1251,11 +1267,70 @@ function renderCartSheet() {
         </div>
       </div>
     </div>`).join('')
+    + tipPicker()
     + `<div class="cart-summary">
         <div class="cart-summary-row"><span>${M('סה"כ משוער')}</span><span>${fmtPrice(cartTotal())}</span></div>
+        ${tipChoice.pct || tipChoice.amount ? `<div class="cart-summary-row" style="opacity:.75"><span>${tipLabel()}</span><span>${fmtPrice(tipValue())}</span></div>` : ''}
         <div class="cart-summary-note">${estimateNote()}</div>
       </div>`;
 }
+
+/* ── Tip ──
+   The page never charges anything: the choice travels inside the composed
+   WhatsApp message and the bot re-resolves it server-side, exactly like the
+   cart total it sits under. Rendered only when the tenant takes tips. */
+let tipChoice = { pct: null, amount: null };
+
+function tipsOn() {
+  const loc = menuData?.locale;
+  return !!(loc?.tips_enabled && (loc.tip_presets || []).some((p) => p > 0));
+}
+
+/** The tip is on the food subtotal — the same base the bot and server use. */
+function tipValue() {
+  if (tipChoice.pct)    return cartTotal() * tipChoice.pct / 100;
+  if (tipChoice.amount) return tipChoice.amount;
+  return 0;
+}
+
+function tipLabel() {
+  return tipChoice.pct ? `${M('טיפ')} ${tipChoice.pct}%` : M('טיפ');
+}
+
+function tipPicker() {
+  if (!tipsOn()) return '';
+  const presets = (menuData.locale.tip_presets || []).filter((p) => p > 0);
+  const btn = (label, active, attrs) =>
+    `<button class="tip-btn${active ? ' tip-btn-on' : ''}" ${attrs}>${label}</button>`;
+  return `
+    <div class="tip-block">
+      <div class="tip-title">${M('להוסיף טיפ?')}</div>
+      <div class="tip-row">
+        ${presets.map((p) => btn(`${p}%`, tipChoice.pct === p, `data-tip-pct="${p}"`)).join('')}
+        ${btn(M('סכום אחר'), !!tipChoice.amount, 'data-tip-custom="1"')}
+        ${btn(M('ללא טיפ'), !tipChoice.pct && !tipChoice.amount, 'data-tip-none="1"')}
+      </div>
+    </div>`;
+}
+
+document.getElementById('cartBody').addEventListener('click', (e) => {
+  const pct    = e.target.closest('[data-tip-pct]');
+  const custom = e.target.closest('[data-tip-custom]');
+  const none   = e.target.closest('[data-tip-none]');
+  if (pct)      tipChoice = { pct: parseFloat(pct.getAttribute('data-tip-pct')), amount: null };
+  else if (none) tipChoice = { pct: null, amount: null };
+  else if (custom) {
+    const v = parseFloat(prompt(M('סכום הטיפ') + ':', ''));
+    // A tip larger than the food itself is a typo far more often than a
+    // gesture, and the server caps it anyway — say so here rather than
+    // composing a message that will be silently trimmed.
+    if (!Number.isFinite(v) || v <= 0) return;
+    tipChoice = { pct: null, amount: Math.min(v, cartTotal()) };
+  } else return;
+  saveCart();
+  renderCartSheet();
+  renderCartBar();
+});
 
 document.getElementById('cartBody').addEventListener('click', (e) => {
   const rm = e.target.closest('[data-remove]');
@@ -1280,10 +1355,16 @@ document.getElementById('cartSend').addEventListener('click', () => {
     const tops = item.toppings.length ? ` — ${item.toppings.map(toppingLabel).join(', ')}` : '';
     return `${item.qty}× ${item.name}${tops}`;
   });
-  const msg = `${M('היי! אני רוצה להזמין:')}\n${lines.join('\n')}\n\n${M('סה"כ משוער')}: ${fmtPrice(cartTotal())}`;
+  // The tip travels as the customer's stated CHOICE, not as an amount we
+  // computed — the bot and pricing.js resolve it against the server's own
+  // subtotal, the same rule that makes the cart total an estimate.
+  const tipLine = !tipsOn() || (!tipChoice.pct && !tipChoice.amount) ? ''
+    : `\n${M('טיפ')}: ${tipChoice.pct ? `${tipChoice.pct}%` : fmtPrice(tipChoice.amount)}`;
+  const msg = `${M('היי! אני רוצה להזמין:')}\n${lines.join('\n')}${tipLine}\n\n${M('סה"כ משוער')}: ${fmtPrice(cartTotal())}`;
   window.open(`https://wa.me/${menuData.whatsapp_number}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
   // The order moved to WhatsApp — an emptied cart prevents an accidental double-send.
   cart = [];
+  tipChoice = { pct: null, amount: null };
   saveCart();
   closeSheets();
   renderCartBar();

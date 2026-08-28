@@ -19,7 +19,7 @@
 const menuService = require('./menu-service');
 const settings = require('./settings');
 const { feeForAddress, zoneForAddress } = require('./delivery-fee');
-const { resolveLocale, localeForZone, taxOf, taxableBase } = require('./locale');
+const { resolveLocale, localeForZone, taxOf, taxableBase, tipOn } = require('./locale');
 
 const TOLERANCE = 1; // ₪ — rounding differences are not worth overriding
 
@@ -118,7 +118,8 @@ function portionFactor(portion, allSettings) {
  * @param {object} opts       {delivery_method, address, tenantId}
  * @returns {Promise<{total, subtotal, tax, taxRate, taxMode, deliveryFee, unmatched, itemsTotal}>}
  */
-async function computeTotal(items = [], { delivery_method, address, tenantId } = {}) {
+async function computeTotal(items = [], { delivery_method, address, tenantId, tip_pct, tip_amount } = {}) {
+  const tipInput = { tip_pct, tip_amount };
   const [menu, allSettings] = await Promise.all([
     menuService.getProducts(tenantId).catch(() => ({ main: [] })),
     settings.loadAll(tenantId).catch(() => ({})),
@@ -213,13 +214,19 @@ async function computeTotal(items = [], { delivery_method, address, tenantId } =
   const zone = isDelivery ? zoneForAddress(address, allSettings) : null;
   const loc = localeForZone(resolveLocale(allSettings), zone);
   const tax = taxOf(taxableBase(itemsTotal, deliveryFee, loc, exemptTotal), loc);
-  const total = loc.addsTaxAtCheckout
-    ? Math.round((subtotal + tax) * 100) / 100
-    : subtotal;
+
+  // The tip rides on top of everything and is never taxed — it is a voluntary
+  // payment, not part of the sale. Resolved from the SERVER's items total, so a
+  // percentage the customer chose cannot be mis-multiplied by the model.
+  const tip = tipOn(itemsTotal, tipInput, loc);
+
+  const total = Math.round(
+    ((loc.addsTaxAtCheckout ? subtotal + tax : subtotal) + tip.amount) * 100) / 100;
 
   return {
     total, subtotal, tax, loc,
     taxRate: loc.taxRate, taxMode: loc.taxMode,
+    tip: tip.amount, tipPct: tip.pct, tipClamped: tip.clamped,
     deliveryFee, unmatched, itemsTotal, exemptTotal,
     items: enriched,
   };
@@ -245,6 +252,8 @@ async function authoritativeTotal(payload, tenantId) {
     const r = await computeTotal(payload.items || [], {
       delivery_method: payload.delivery_method,
       address: payload.address,
+      tip_pct: payload.tip_pct,
+      tip_amount: payload.tip_amount,
       tenantId,
     });
 
@@ -261,12 +270,20 @@ async function authoritativeTotal(payload, tenantId) {
       - (r.exemptTotal || 0)
       - (r.loc.taxOnDelivery ? 0 : (r.deliveryFee || 0)));
     const tax = taxOf(base, r.loc);
-    const total = r.loc.addsTaxAtCheckout
-      ? Math.round((subtotal + tax) * 100) / 100
-      : subtotal;
+
+    // Re-resolved from the accepted items total for the same reason the tax is:
+    // the itemised lines have to add up to the total printed beside them.
+    const tip = tipOn(
+      Math.max(0, subtotal - (r.deliveryFee || 0)),
+      { tip_pct: payload.tip_pct, tip_amount: payload.tip_amount },
+      r.loc);
+
+    const total = Math.round(
+      ((r.loc.addsTaxAtCheckout ? subtotal + tax : subtotal) + tip.amount) * 100) / 100;
 
     return {
       total, subtotal, tax,
+      tip: tip.amount, tipPct: tip.pct, tipClamped: tip.clamped,
       taxRate: r.loc.taxRate,
       taxMode: r.loc.taxMode,
       deliveryFee: r.deliveryFee,
@@ -281,7 +298,8 @@ async function authoritativeTotal(payload, tenantId) {
   } catch (err) {
     console.error('[pricing] compute failed, keeping model total:', err.message);
     return {
-      total: claimed, subtotal: claimed, tax: 0, taxRate: null, taxMode: null,
+      total: claimed, subtotal: claimed, tax: 0, tip: 0, tipPct: null, tipClamped: false,
+      taxRate: null, taxMode: null,
       // No enrichment when the lookup failed — the caller keeps the original
       // items rather than storing a half-populated snapshot.
       deliveryFee: null, items: null, corrected: false, serverTotal: null,

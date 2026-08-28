@@ -23,13 +23,17 @@
  * @param {object} ctx {bitEnabled, bitPhone, prepLeadTime, currency, taxNote}
  */
 function actionSpec(L, ctx) {
-  const { bitEnabled, bitPhone, prepLeadTime } = ctx;
+  const { bitEnabled, bitPhone, prepLeadTime, tipsEnabled } = ctx;
   const bitRef = bitEnabled && bitPhone ? bitPhone : L.bitPlaceholder;
 
   const item = `{"name":"${L.ph.item}","price":${L.ph.unitPrice},"qty":${L.ph.qty},"toppings":[...]}`;
   const itemFull = `{"name":"${L.ph.item}","price":${L.ph.unitPrice},"qty":${L.ph.qty},"toppings":[{"name":"${L.ph.topping}","price":${L.ph.price},"portion":"${L.ph.portionOpt}"}]}`;
+  // Only present for a tenant that takes tips — a field in the contract that no
+  // tenant can fill is noise the model has to reason past, and adding it
+  // unconditionally would move the frozen Hebrew prompt for every business.
+  const tipField = tipsEnabled ? `,"tip_pct":${L.ph.tipPct},"tip_amount":${L.ph.tipAmount}` : '';
   const tail = (method, extra = '') =>
-    `"delivery_method":"pickup|delivery","address":"${L.ph.address}","payment_method":"${method}","total":${L.ph.total},"notes":"${L.ph.notes}"${extra}`;
+    `"delivery_method":"pickup|delivery","address":"${L.ph.address}","payment_method":"${method}","total":${L.ph.total}${tipField},"notes":"${L.ph.notes}"${extra}`;
 
   return `${L.toppingShape}
 
@@ -60,6 +64,7 @@ const EN_LABELS = {
     unitPrice: '<unit price>', qty: '<quantity>', price: '<price>',
     portionOpt: '<half|quarter — only when partial>',
     address: '<address or null>', total: '<final amount>', notes: '<notes or null>',
+    tipPct: '<tip % or null>', tipAmount: '<tip amount or null>',
   },
   bitPlaceholder: '<Bit number>',
   toppingShape: 'Topping shape: {"name":"<topping>","price":<actual price per the pricing rule>,"portion":"half"|"quarter"} — omit portion when the topping covers the whole pizza.',
@@ -116,6 +121,39 @@ function taxRule(loc, lang, hasExempt = false) {
         `• אל תציג סכום לפני מס כסכום הסופי שהלקוח ישלם.`,
         `• ב-ACTION, השדה "total" הוא הסכום לפני מס (פריטים + משלוח). המערכת מוסיפה את המס בעצמה — אל תוסיף אותו, אחרת הוא ייגבה פעמיים.`,
       ].filter(Boolean).join('\n');
+}
+
+/**
+ * The tipping step.
+ *
+ * Empty for a tenant that does not take tips, which is every existing one — a
+ * deploy must not start asking a business's customers for a tip.
+ *
+ * The bot is told the RULE and never the arithmetic: which field to set, that
+ * the base is the food subtotal, and that `total` stays pre-tax and pre-tip.
+ * pricing.js resolves the percentage against the server's own items total, so
+ * a mis-multiplication cannot reach a card.
+ */
+function tipRule(loc, lang, money) {
+  if (!loc?.tipsEnabled) return '';
+  const ladder = (loc.tipPresets || []).filter((p) => p > 0);
+  const list = ladder.length ? ladder.map((p) => `${p}%`).join(' / ') : '';
+  const example = money ? money(5) : '5';
+  return lang === 'en'
+    ? [
+        `Tips`,
+        `• Once the order is complete and BEFORE taking payment, offer a tip${list ? `: ${list}` : ''}, a custom amount, or none. Ask ONCE — if they decline, do not raise it again.`,
+        `• The tip is on the food subtotal, before tax and before the delivery fee.`,
+        `• In the ACTION block set "tip_pct" to the percentage they chose, OR "tip_amount" to the figure they named (e.g. ${example}) — never both. Leave both null if they declined.`,
+        `• Do NOT put the tip inside "total". "total" stays the pre-tax, pre-tip amount; the system adds the tip itself.`,
+      ].join('\n')
+    : [
+        `טיפ`,
+        `• כשההזמנה מוכנה ולפני גביית התשלום — הצע טיפ${list ? `: ${list}` : ''}, סכום חופשי, או בלי. שאל פעם אחת; אם הלקוח מסרב, אל תחזור על זה.`,
+        `• הטיפ מחושב על סכום הפריטים, לפני מס ולפני דמי משלוח.`,
+        `• ב-ACTION הצב "tip_pct" לאחוז שהלקוח בחר, או "tip_amount" לסכום שנקב (למשל ${example}) — אף פעם לא את שניהם. השאר את שניהם null אם סירב.`,
+        `• אל תכניס את הטיפ לתוך "total". "total" נשאר הסכום לפני מס ולפני טיפ; המערכת מוסיפה את הטיפ בעצמה.`,
+      ].join('\n');
 }
 
 /**
@@ -198,7 +236,7 @@ ${c.menuText}
 ${RULE}
 Full menu with photos: ${c.menuUrl}
 
-${taxRule(c.loc, 'en', c.hasExemptCategory)}
+${taxRule(c.loc, 'en', c.hasExemptCategory)}${c.loc && c.loc.tipsEnabled ? `\n\n${tipRule(c.loc, 'en', c.fmtMoney)}` : ''}
 
 ${RULE}
 Delivery areas and prices
@@ -322,7 +360,7 @@ ${RULE}
 ${RULE}
 ACTION blocks
 ${RULE}
-${actionSpec(EN_LABELS, { bitEnabled: c.bitEnabled, bitPhone: c.bitPhone, prepLeadTime: c.prepLeadTime })}
+${actionSpec(EN_LABELS, { bitEnabled: c.bitEnabled, bitPhone: c.bitPhone, prepLeadTime: c.prepLeadTime, tipsEnabled: c.loc && c.loc.tipsEnabled })}
 
 ${RULE}
 Scheduling orders
@@ -337,4 +375,4 @@ If a customer asks for a future time ("for 9:30pm" / "in an hour" / "at 9 tonigh
 `;
 }
 
-module.exports = { buildEnglish, taxRule, addressAsk, actionSpec, EN_LABELS };
+module.exports = { buildEnglish, taxRule, tipRule, addressAsk, actionSpec, EN_LABELS };
