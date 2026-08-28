@@ -44,7 +44,7 @@ jest.mock('@supabase/supabase-js', () => ({
 
 const { computeTotal, authoritativeTotal } = require('../src/services/pricing');
 const { zoneForAddress } = require('../src/services/delivery-fee');
-const { localeForZone, resolveLocale, taxableBase, normaliseZoneTaxRates } = require('../src/services/locale');
+const { localeForZone, resolveLocale, taxableBase, normaliseZones, zipsOf, extractPostal } = require('../src/services/locale');
 const TID = 'aaaaaaaa-0000-0000-0000-000000000001';
 
 const US = {
@@ -252,42 +252,159 @@ describe('authoritativeTotal carries both through', () => {
   });
 });
 
-describe('normaliseZoneTaxRates — the door PATCH /settings puts the value through', () => {
+describe('normaliseZones — the door PATCH /settings puts a zone row through', () => {
   test('an empty field is REMOVED, not stored as 0', () => {
     // "use the tenant's rate" and "charge no tax here" are different
     // instructions and must not collapse into the same stored value.
     const zones = [{ city: 'LA', tax_rate: '' }, { city: 'SM', tax_rate: null }];
-    expect(normaliseZoneTaxRates(zones)).toBeNull();
+    expect(normaliseZones(zones)).toBeNull();
     expect('tax_rate' in zones[0]).toBe(false);
     expect('tax_rate' in zones[1]).toBe(false);
   });
 
   test('an explicit 0 survives — it is a real instruction', () => {
     const zones = [{ city: 'Portland', tax_rate: 0 }];
-    expect(normaliseZoneTaxRates(zones)).toBeNull();
+    expect(normaliseZones(zones)).toBeNull();
     expect(zones[0].tax_rate).toBe(0);
   });
 
   test('a numeric string is coerced, so the comparison in pricing is a number', () => {
     const zones = [{ city: 'SM', tax_rate: '10.25' }];
-    normaliseZoneTaxRates(zones);
+    normaliseZones(zones);
     expect(zones[0].tax_rate).toBe(10.25);
   });
 
   test('an out-of-range or unparseable rate names the offending city', () => {
-    expect(normaliseZoneTaxRates([{ city: 'SM', tax_rate: 150 }])).toBe('SM');
-    expect(normaliseZoneTaxRates([{ city: 'SM', tax_rate: -1 }])).toBe('SM');
-    expect(normaliseZoneTaxRates([{ city: 'SM', tax_rate: 'abc' }])).toBe('SM');
+    expect(normaliseZones([{ city: 'SM', tax_rate: 150 }])).toBe('SM');
+    expect(normaliseZones([{ city: 'SM', tax_rate: -1 }])).toBe('SM');
+    expect(normaliseZones([{ city: 'SM', tax_rate: 'abc' }])).toBe('SM');
   });
 
   test('a zone array with no rates at all is untouched — every zone today', () => {
     const zones = [{ city: 'תל אביב', fee: 30, min_order: 0, eta_minutes: 45 }];
-    expect(normaliseZoneTaxRates(zones)).toBeNull();
+    expect(normaliseZones(zones)).toBeNull();
     expect(zones).toEqual([{ city: 'תל אביב', fee: 30, min_order: 0, eta_minutes: 45 }]);
   });
 
   test('a non-array is not an error — the caller may be patching something else', () => {
-    expect(normaliseZoneTaxRates(undefined)).toBeNull();
-    expect(normaliseZoneTaxRates('nope')).toBeNull();
+    expect(normaliseZones(undefined)).toBeNull();
+    expect(normaliseZones('nope')).toBeNull();
+  });
+});
+
+
+// ── D7: the ZIP is the lookup key, not the city name ─────────────────────────
+
+describe('extractPostal is region-shaped', () => {
+  const us = resolveLocale({ region: 'US' });
+  const il = resolveLocale({});
+
+  test('a US ZIP is found, and ZIP+4 reduces to the base five', () => {
+    expect(extractPostal('1200 Ocean Ave, Santa Monica, CA 90401', us)).toBe('90401');
+    expect(extractPostal('123 Main St #4, Los Angeles, CA 90012-1234', us)).toBe('90012');
+  });
+
+  test('an Israeli 7-digit מיקוד is never read as a 5-digit ZIP', () => {
+    // A bare \d{5} would hand back "67011" — and there is no useful difference
+    // between a wrong postal code and no postal code; both resolve an order to
+    // the wrong place.
+    expect(extractPostal('דרך מנחם בגין 132, תל אביב 6701101', us)).toBeNull();
+    expect(extractPostal('דרך מנחם בגין 132, תל אביב 6701101', il)).toBe('6701101');
+  });
+
+  test('an address with no postal code at all is null, not a house number', () => {
+    expect(extractPostal('רוטשילד 5, תל אביב', il)).toBeNull();
+    expect(extractPostal('1200 Ocean Ave, Santa Monica', us)).toBeNull();
+  });
+});
+
+describe('zipsOf accepts what the field actually produces', () => {
+  test('a typed line, an array, and duplicates all normalise the same', () => {
+    expect(zipsOf({ zips: '90401, 90402 90403' })).toEqual(['90401', '90402', '90403']);
+    expect(zipsOf({ zips: ['90401', '90401'] })).toEqual(['90401']);
+  });
+
+  test('nothing configured is an empty list, which is what turns the branch off', () => {
+    expect(zipsOf({})).toEqual([]);
+    expect(zipsOf({ zips: '' })).toEqual([]);
+    expect(zipsOf({ zips: 'not a zip' })).toEqual([]);
+  });
+});
+
+describe('zoneForAddress resolves by ZIP first', () => {
+  const ZIPPED = {
+    region: 'US',
+    delivery_zones: [
+      { city: 'Los Angeles',  fee: 5, zips: ['90012', '90013'] },
+      { city: 'Santa Monica', fee: 6, tax_rate: 10.25, zips: '90401, 90402' },
+      { city: 'Venice',       fee: 7 },                              // city-matched only
+      { city: 'Long Beach',   fee: 9, tax_rate: 10.25, zips: ['908'] }, // a prefix
+    ],
+  };
+
+  test('a ZIP resolves a city string that would never have matched', () => {
+    // "LA" is not "Los Angeles". This is the case city matching silently loses.
+    expect(zoneForAddress('500 S Main St, LA, CA 90013', ZIPPED).city).toBe('Los Angeles');
+  });
+
+  test('a street and a ZIP alone are enough', () => {
+    expect(zoneForAddress('1200 Ocean Ave, 90402', ZIPPED).city).toBe('Santa Monica');
+  });
+
+  test('the ZIP beats a conflicting city name in the same string', () => {
+    // Whatever the customer typed, the ZIP is the part that names a jurisdiction.
+    expect(zoneForAddress('1200 Ocean Ave, Los Angeles, CA 90401', ZIPPED).city).toBe('Santa Monica');
+  });
+
+  test('a prefix covers a range, and an exact ZIP still wins over it', () => {
+    const withBoth = { ...ZIPPED, delivery_zones: [
+      ...ZIPPED.delivery_zones, { city: 'Signal Hill', fee: 11, zips: ['90806'] }] };
+    expect(zoneForAddress('1 Ocean Blvd, CA 90802', withBoth).city).toBe('Long Beach');
+    expect(zoneForAddress('1 Hill St, CA 90806', withBoth).city).toBe('Signal Hill');
+  });
+
+  test('a zone with no ZIPs still matches by city', () => {
+    // A half-configured tenant keeps the answer it had before.
+    expect(zoneForAddress('99 Abbot Kinney Blvd, Venice, CA 90291', ZIPPED).city).toBe('Venice');
+  });
+
+  test('an unclaimed ZIP falls through to the city, it does not fail the lookup', () => {
+    expect(zoneForAddress('1 Nowhere Rd, Venice, CA 90291', ZIPPED).city).toBe('Venice');
+    expect(zoneForAddress('1 Nowhere Rd, Nowhere, CA 99999', ZIPPED)).toBeNull();
+  });
+
+  test('an Israeli tenant never enters the ZIP branch — no zone declares one', () => {
+    const il = { delivery_zones: [{ city: 'תל אביב יפו', fee: 30 }, { city: 'תל אביב', fee: 25 }] };
+    expect(zoneForAddress('רוטשילד 5, תל אביב יפו', il).fee).toBe(30);
+    expect(zoneForAddress('הרצל 10, תל אביב 6701101', il).fee).toBe(25);
+  });
+});
+
+describe('the ZIP carries the fee AND the rate, from one match', () => {
+  test('an order that only names a ZIP is priced and taxed at that zone', async () => {
+    mockSettings = { ...US, delivery_zones: [
+      { city: 'Los Angeles',  fee: 5, zips: ['90012'] },
+      { city: 'Santa Monica', fee: 6, tax_rate: 10.25, zips: ['90401'] },
+    ] };
+    const r = await computeTotal([{ name: 'Family Pizza', qty: 1 }],
+      { delivery_method: 'delivery', address: '1200 Ocean Ave, 90401', tenantId: TID });
+    expect(r.deliveryFee).toBe(6);
+    expect(r.taxRate).toBe(10.25);
+    expect(r.total).toBe(100 + 6 + 10.25);
+  });
+});
+
+describe('normaliseZones handles the zips field too', () => {
+  test('a typed line becomes the stored array', () => {
+    const zones = [{ city: 'SM', zips: '90401, 90402' }];
+    expect(normaliseZones(zones)).toBeNull();
+    expect(zones[0].zips).toEqual(['90401', '90402']);
+  });
+
+  test('an emptied field removes the key — a zone covering no ZIP would match nothing', () => {
+    const zones = [{ city: 'SM', zips: '' }, { city: 'LA', zips: [] }];
+    normaliseZones(zones);
+    expect('zips' in zones[0]).toBe(false);
+    expect('zips' in zones[1]).toBe(false);
   });
 });

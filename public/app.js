@@ -196,6 +196,7 @@ let _bizConfig = {
   region: 'IL', currency: 'ILS', currency_symbol: '₪', locale_code: 'he-IL',
   tax_mode: 'inclusive', tax_rate: 18, tax_label: 'מע"מ', tax_on_delivery: true,
   delivery_price: null, delivery_zones: [],
+  postal_re: '\\b\\d{7}\\b', postal_label: 'מיקוד', address_order: 'street-first', subdivision: null,
 };
 
 async function loadBusinessConfig() {
@@ -293,15 +294,97 @@ function money(n, decimals = 2) {
   }
 }
 
+/** The postal codes a zone covers, from an array or a typed "90401, 90402". */
+function zipsOfZone(z) {
+  const raw = z?.zips;
+  const list = Array.isArray(raw) ? raw : String(raw || '').split(/[^0-9]+/);
+  return [...new Set(list.map(x => String(x).trim()).filter(x => /^\d{3,10}$/.test(x)))];
+}
+
+/** The postal code inside a free-text address, in this region's shape, or null. */
+function postalOf(address) {
+  const re = _bizConfig.postal_re;
+  if (!re) return null;
+  const m = String(address || '').match(new RegExp(re));
+  if (!m) return null;
+  return _bizConfig.region === 'US' ? m[0].slice(0, 5) : m[0];
+}
+
 /**
- * The configured zone whose city appears in an address, or null.
- * Longest city name first, so "תל אביב יפו" beats "תל אביב" — and, for the same
- * reason, "West Hollywood" beats "Hollywood". Mirrors services/delivery-fee.js.
+ * Split a stored address back into fields, and put it together again.
+ *
+ * Two regions write an address in two different orders — "רוטשילד 5, תל אביב"
+ * puts the street first, "123 Main St, Los Angeles, CA 90012" puts the number
+ * first and ends with a state and a ZIP. This is a best-effort read of a free
+ * text field, so anything it cannot place is left in `street` rather than
+ * dropped: an address the operator did not touch must survive the round trip.
+ */
+function parseAddress(address) {
+  const out = { street: '', num: '', city: '', state: '', zip: '' };
+  let s = String(address || '').trim();
+  if (!s) return out;
+
+  if (_bizConfig.subdivision) {
+    out.zip = postalOf(s) || '';
+    if (out.zip) s = s.replace(new RegExp(`\\s*${out.zip}(?:-\\d{4})?\\s*$`), '').trim();
+    const parts = s.split(',').map(x => x.trim()).filter(Boolean);
+    // …, City, ST  — a trailing two-letter token is the state, nothing else is
+    if (parts.length && /^[A-Za-z]{2}$/.test(parts[parts.length - 1])) out.state = parts.pop().toUpperCase();
+    if (parts.length > 1) out.city = parts.pop();
+    const line = parts.join(', ');
+    const m = line.match(/^(\d+[A-Za-z]?)\s+(.*)$/);   // "123 Main St"
+    if (m) { out.num = m[1]; out.street = m[2]; } else { out.street = line; }
+    return out;
+  }
+
+  const parts = s.split(',').map(x => x.trim()).filter(Boolean);
+  if (parts.length > 1) out.city = parts.pop();
+  const line = parts.join(', ');
+  const m = line.match(/^(.*?)[\s,]+(\d+[A-Za-z]?)$/);  // "רוטשילד 5"
+  if (m) { out.street = m[1]; out.num = m[2]; } else { out.street = line; }
+  return out;
+}
+
+/** The inverse of parseAddress, in the region's own order. */
+function composeAddress(f) {
+  if (_bizConfig.subdivision) {
+    const line1 = [f.num, f.street].filter(Boolean).join(' ');
+    const tail  = [f.state, f.zip].filter(Boolean).join(' ');
+    return [line1, f.city, tail].filter(Boolean).join(', ');
+  }
+  return [[f.street, f.num].filter(Boolean).join(' '), f.city].filter(Boolean).join(', ');
+}
+
+/**
+ * The configured zone an address falls in, or null.
+ * Mirrors services/delivery-fee.js — the server is the authority, this is the
+ * dashboard rendering the same answer, and the two must not disagree.
+ *
+ * ZIP first where the tenant configured one (a US address names its
+ * jurisdiction by ZIP, not by a city string a customer may write as "LA"),
+ * then longest city name, so "תל אביב יפו" beats "תל אביב" and "West
+ * Hollywood" beats "Hollywood".
  */
 function zoneOf(address) {
   const addr = String(address || '').toLowerCase();
   if (!addr) return null;
-  return [...(_bizConfig.delivery_zones || [])]
+  const zones = _bizConfig.delivery_zones || [];
+
+  const withZips = zones.filter(z => z && zipsOfZone(z).length);
+  if (withZips.length) {
+    const code = postalOf(address);
+    if (code) {
+      const hits = [];
+      for (const z of withZips) {
+        for (const zip of zipsOfZone(z)) {
+          if (code === zip || code.startsWith(zip)) hits.push({ z, len: zip.length });
+        }
+      }
+      if (hits.length) return hits.sort((a, b) => b.len - a.len)[0].z;
+    }
+  }
+
+  return [...zones]
     .filter(z => z && z.city)
     .sort((a, b) => String(b.city).length - String(a.city).length)
     .find(z => addr.includes(String(z.city).trim().toLowerCase())) || null;
@@ -1791,11 +1874,21 @@ async function openOrderEdit(orderId) {
 
   document.getElementById('orderEditTitle').textContent = `${TR('עריכת הזמנה')} #${order.order_number}`;
 
-  // Parse address
-  const addr = order.address || '';
-  document.getElementById('editCity').value       = order.address_city   || '';
-  document.getElementById('editStreet').value     = order.address_street || '';
-  document.getElementById('editStreetNum').value  = order.address_num    || '';
+  // The address is one free-text string on the order; these fields used to read
+  // address_city/address_street/address_num, columns that do not exist — so the
+  // modal always opened blank and saving replaced a good address with whatever
+  // the operator retyped. Parsed back out now, and composed the same way round.
+  const parsed = parseAddress(order.address);
+  document.getElementById('editCity').value       = parsed.city   || '';
+  document.getElementById('editStreet').value     = parsed.street || '';
+  document.getElementById('editStreetNum').value  = parsed.num    || '';
+  document.getElementById('editState').value      = parsed.state  || '';
+  document.getElementById('editZip').value        = parsed.zip    || '';
+  const structuredAddr = !!_bizConfig.subdivision;
+  document.getElementById('editStateWrap').classList.toggle('hidden', !structuredAddr);
+  document.getElementById('editZipWrap').classList.toggle('hidden', !structuredAddr);
+  const zipLabel = document.getElementById('editZipLabel');
+  if (zipLabel && structuredAddr) zipLabel.textContent = _bizConfig.postal_label || TR('מיקוד');
   document.getElementById('editDestType').value   = order.destination_type || '';
   document.getElementById('editCourierNotes').value = order.courier_notes || '';
 
@@ -1882,10 +1975,13 @@ function openAddProductToOrder() {
 
 async function saveOrderEdit() {
   if (!_editOrder) return;
-  const city   = document.getElementById('editCity').value.trim();
-  const street = document.getElementById('editStreet').value.trim();
-  const num    = document.getElementById('editStreetNum').value.trim();
-  const addr   = [street, num, city].filter(Boolean).join(', ');
+  const addr = composeAddress({
+    city:   document.getElementById('editCity').value.trim(),
+    street: document.getElementById('editStreet').value.trim(),
+    num:    document.getElementById('editStreetNum').value.trim(),
+    state:  document.getElementById('editState').value.trim(),
+    zip:    document.getElementById('editZip').value.trim(),
+  });
 
   // The fee the order was actually placed with — recomputing it from a literal
   // rewrote the charged total every time anyone opened the edit modal.
@@ -3303,6 +3399,10 @@ function renderZonesTable() {
   // Israeli VAT is national. Showing the column to an Israeli tenant would be a
   // field with no right answer.
   const perZoneTax = taxAddedAtCheckout();
+  // Postal codes are the lookup key wherever an address has one that names a
+  // jurisdiction. In Israel the city name IS the answer, so the column would be
+  // a field with nothing to put in it.
+  const structuredAddr = !!_bizConfig.subdivision;
 
   t.innerHTML = `
     <div style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-md)">
@@ -3315,6 +3415,7 @@ function renderZonesTable() {
           <th>${TR('מינימום')} (${_bizConfig.currency_symbol || ''})</th>
           <th>${TR('זמן משוער (דק׳)')}</th>
           ${perZoneTax ? `<th>${TR('מס באזור')} (%)</th>` : ''}
+          ${structuredAddr ? `<th>${TR('מיקודים')}</th>` : ''}
           <th></th>
         </tr>
       </thead>
@@ -3335,6 +3436,10 @@ function renderZonesTable() {
           <td style="padding:8px 10px"><input type="number" value="${z.tax_rate ?? ''}" data-zi="${i}" data-zf="tax_rate"
             style="width:80px" class="zone-inp" min="0" max="100" step="0.01"
             placeholder="${taxRate()}" title="${TR('ריק = שיעור המס של העסק')}"></td>` : ''}
+          ${structuredAddr ? `
+          <td style="padding:8px 10px"><input type="text" value="${zipsOfZone(z).join(', ')}" data-zi="${i}" data-zf="zips"
+            style="width:150px" class="zone-inp" dir="ltr" inputmode="numeric"
+            placeholder="90401, 90402" title="${TR('ריק = התאמה לפי שם העיר')}"></td>` : ''}
           <td style="padding:8px 10px">
             <button onclick="removeZone(${i})" class="btn-danger" style="font-size:.75rem;padding:4px 10px">${TR('הסר')}</button>
           </td>
@@ -3344,6 +3449,9 @@ function renderZonesTable() {
     </div>
     ${perZoneTax ? `<div style="color:var(--text-muted);font-size:.8rem;margin-top:8px">
       ${TR('משלוח ממוסה לפי יעד. השאר ריק כדי להשתמש בשיעור המס של העסק; איסוף עצמי ממוסה תמיד לפי כתובת העסק.')}
+    </div>` : ''}
+    ${structuredAddr ? `<div style="color:var(--text-muted);font-size:.8rem;margin-top:4px">
+      ${TR('מיקוד הוא מפתח החיפוש המדויק: הוא מנצח את שם העיר. אפשר לרשום קידומת (904) כדי לכסות טווח.')}
     </div>` : ''}`;
 
   document.querySelectorAll('.zone-inp').forEach((inp) => {
@@ -3351,6 +3459,15 @@ function renderZonesTable() {
       const i = parseInt(inp.dataset.zi);
       const f = inp.dataset.zf;
       if (!_deliveryZones[i]) return;
+      if (f === 'zips') {
+        // Stored as an array, typed as a line. An empty field removes the key
+        // rather than storing an empty list — a zone that covers no postal code
+        // at all would never match anything again.
+        const list = zipsOfZone({ zips: inp.value });
+        if (list.length) _deliveryZones[i].zips = list;
+        else delete _deliveryZones[i].zips;
+        return;
+      }
       if (f === 'tax_rate') {
         // Empty means "the tenant's rate", which is not the same instruction as
         // 0 — a stored zero is a real order to charge no tax in that zone.

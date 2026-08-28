@@ -225,6 +225,11 @@ ${parts.join('\n')}
   // same warning an English-speaking one does — a live eval caught the bot
   // quoting "סה"כ: $58" to one, with $63.51 actually charged. Injected only in
   // exclusive mode, so an inclusive tenant's prompt is byte-for-byte unchanged.
+  // Byte-identical to the previous literal for a region with no subdivision,
+  // which is every Israeli tenant — the frozen Hebrew prompt has to keep
+  // meaning what it says.
+  const heAddressAsk = require('./prompt-en').addressAsk(loc, 'he');
+
   const heTaxBlock = loc.addsTaxAtCheckout
     ? `\n\n${require('./prompt-en').taxRule(loc, 'he')}`
     : '';
@@ -318,7 +323,7 @@ ${paymentQuestion}"
 
 שלב 2 — אחרי deal-breakers:
 • אשר בקצרה ("מצוין, משלוח + אשראי")
-• משלוח: שאל כתובת מלאה (עיר, רחוב, בית, קומה/דירה).
+${heAddressAsk}
   — עיר מורשת (${allowedCitiesStr}) → המשך, ציין את דמי המשלוח לפי האזור.
   — עיר שאינה ברשימה → הצע איסוף עצמי מ-${pickupAddress}.
 • איסוף: ציין כתובת: *${pickupAddress}*.

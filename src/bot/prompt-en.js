@@ -107,6 +107,34 @@ function taxRule(loc, lang) {
 }
 
 /**
+ * How to ask for a delivery address, in the shape the region actually uses.
+ *
+ * An Israeli address is a street and a city; an American one is street · city ·
+ * state · ZIP, and the ZIP is the part that names a jurisdiction — it is what
+ * resolves the delivery zone and, through it, the tax rate. City-name matching
+ * demonstrates fine and then meets a customer who writes "LA", or writes only a
+ * street and a ZIP, and silently resolves their order to the wrong place.
+ *
+ * Returns the pre-existing line unchanged for a region with no subdivision, so
+ * an Israeli tenant's prompt is byte-for-byte what it was.
+ */
+function addressAsk(loc, lang) {
+  const structured = !!loc?.subdivision;
+  if (lang === 'en') {
+    return structured
+      ? [`• Delivery: ask for the full address — street and number, city, state, and ${loc.postalLabel}.`,
+         `  The ${loc.postalLabel} is required: it is what decides the delivery area and the tax rate. Ask for it if they leave it out.`,
+         `  The "address" you put in the ACTION block must contain it.`].join('\n')
+      : '• Delivery: ask for the full address (street, number, city, unit/floor).';
+  }
+  return structured
+    ? [`• משלוח: שאל כתובת מלאה — רחוב ומספר, עיר, מדינה (state) ומיקוד (${loc.postalLabel}).`,
+       `  המיקוד חובה: הוא מה שקובע את אזור המשלוח ואת שיעור המס. אם הלקוח לא ציין אותו — בקש.`,
+       `  השדה "address" ב-ACTION חייב לכלול אותו.`].join('\n')
+    : '• משלוח: שאל כתובת מלאה (עיר, רחוב, בית, קומה/דירה).';
+}
+
+/**
  * Build the English prompt.
  * @param {object} c  everything prompts.js already computed
  */
@@ -228,7 +256,7 @@ ${c.paymentQuestion}"
 
 Step 2 — after the deal-breakers:
 • Confirm briefly ("Great — delivery and card")
-• Delivery: ask for the full address (street, number, city, unit/floor).
+${addressAsk(c.loc, 'en')}
   — An area we cover (${c.allowedCitiesStr}) → continue, and state the delivery fee for that area.
   — Anywhere else → offer pickup from ${c.pickupAddress}.
 • Pickup: give the address: *${c.pickupAddress}*.
@@ -297,4 +325,4 @@ If a customer asks for a future time ("for 9:30pm" / "in an hour" / "at 9 tonigh
 `;
 }
 
-module.exports = { buildEnglish, taxRule, actionSpec, EN_LABELS };
+module.exports = { buildEnglish, taxRule, addressAsk, actionSpec, EN_LABELS };

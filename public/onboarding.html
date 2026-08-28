@@ -435,6 +435,7 @@ const OB_HE2EN = {
   'תל אביב': 'Santa Monica',
   'מרכז העיר': 'Downtown',
   'מחיר משלוח (₪)': 'Delivery fee ($)',
+  'מיקודים (אופציונלי)': 'ZIP codes (optional)',
   'מינימום הזמנה (₪)': 'Order minimum ($)',
   'זמן משוער (דק׳)': 'Est. time (min)',
   'לדוגמה:\nפיצה משפחתית — 60₪ (תוספות: זיתים, בצל, פטריות — 5₪ כל אחת)\nפיצה אישית — 35₪\nשתייה: קולה / ספרייט — 12₪':
@@ -698,6 +699,14 @@ function addZoneCard(z) {
         <input type="number" placeholder="45" value="${z.eta_minutes??45}" min="1" dir="ltr" data-zf="eta_minutes">
       </div>
     </div>
+    ${OLANG === 'en' ? `
+    <div class="zone-card-bottom">
+      <div class="zone-field" style="flex:1">
+        <label>${O('מיקודים (אופציונלי)')}</label>
+        <input type="text" placeholder="90401, 90402" value="${Array.isArray(z.zips) ? z.zips.join(', ') : (z.zips || '')}"
+               dir="ltr" inputmode="numeric" data-zf="zips">
+      </div>
+    </div>` : ''}
     <button type="button" class="zone-remove" onclick="this.closest('.zone-card').remove()">${O('הסר אזור')}</button>`;
   c.appendChild(div);
 }
@@ -707,12 +716,17 @@ function getZones() {
     const get = (f) => card.querySelector(`[data-zf="${f}"]`)?.value ?? '';
     const city = get('city').trim();
     if (!city) return null;
+    const zips = [...new Set(get('zips').split(/[^0-9]+/).map(x => x.trim()).filter(x => /^\d{3,10}$/.test(x)))];
     return {
       city,
       area:        get('area').trim(),
       fee:         parseFloat(get('fee'))         || 0,
       min_order:   parseFloat(get('min_order'))   || 0,
       eta_minutes: parseFloat(get('eta_minutes')) || 45,
+      // A US address names its jurisdiction by ZIP, and the zone's ZIPs are
+      // what the server matches on before falling back to the city string.
+      // Omitted entirely when blank — an empty list would match nothing.
+      ...(zips.length ? { zips } : {}),
     };
   }).filter(Boolean);
 }

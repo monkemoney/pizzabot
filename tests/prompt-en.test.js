@@ -29,7 +29,7 @@ jest.mock('../src/services/lessons', () => ({
 }));
 
 const { buildSystemPrompt } = require('../src/bot/prompts');
-const { taxRule } = require('../src/bot/prompt-en');
+const { taxRule, addressAsk } = require('../src/bot/prompt-en');
 
 const BASE = {
   business_name: 'Tony\'s Pizza',
@@ -215,5 +215,44 @@ describe('the tax rule follows the TENANT, in whichever language the customer sp
     // Not even a blank line — the byte-for-byte freeze has to keep meaning it.
     const p = await build(IL, 'he');
     expect(p).not.toContain('לפני מס');
+  });
+});
+
+describe('the address the bot asks for is the shape the region uses (D7)', () => {
+  /**
+   * The ZIP is not a nicety in an American address — it is the key that
+   * resolves the delivery zone, and through the zone the tax rate. A bot that
+   * never asks for one hands the server a string it can only match on a city
+   * name the customer may have written as "LA".
+   */
+  test('a US tenant is told to ask for state and ZIP, in both languages', async () => {
+    const en = await build(US);
+    expect(en).toContain('street and number, city, state, and ZIP code');
+    expect(en).toMatch(/ZIP code is required/);
+
+    const he = await build(US, 'he');
+    expect(he).toContain('מדינה (state)');
+    expect(he).toContain('המיקוד חובה');
+  });
+
+  test('the ACTION address is required to carry it', async () => {
+    expect(await build(US)).toMatch(/"address" you put in the ACTION block must contain it/);
+    expect(await build(US, 'he')).toMatch(/השדה "address" ב-ACTION חייב לכלול אותו/);
+  });
+
+  test('an Israeli tenant\'s line is the pre-existing one, unchanged', () => {
+    // The Hebrew prompt is frozen byte-for-byte; this is the literal it froze.
+    expect(addressAsk({ subdivision: null }, 'he'))
+      .toBe('• משלוח: שאל כתובת מלאה (עיר, רחוב, בית, קומה/דירה).');
+    expect(addressAsk({ subdivision: null }, 'en'))
+      .toBe('• Delivery: ask for the full address (street, number, city, unit/floor).');
+    expect(addressAsk(null, 'he')).toContain('קומה/דירה');
+  });
+
+  test('an English-speaking customer at an Israeli business is not asked for a ZIP', async () => {
+    // The address shape follows the TENANT; only the wording follows the customer.
+    const p = await build(IL, 'en');
+    expect(p).toContain('street, number, city, unit/floor');
+    expect(p).not.toMatch(/ZIP/);
   });
 });

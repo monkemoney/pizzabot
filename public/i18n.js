@@ -296,6 +296,9 @@ const HE2EN = {
   'משלוח ממוסה לפי יעד. השאר ריק כדי להשתמש בשיעור המס של העסק; איסוף עצמי ממוסה תמיד לפי כתובת העסק.':
     'A delivery is taxed where it lands. Leave blank to use the business\u2019s own rate; pickup is always taxed at the business address.',
   'פטור ממס': 'Tax exempt', 'חייב במס': 'Taxable',
+  'מיקודים': 'ZIP codes', 'מיקוד': 'ZIP code', 'מדינה (state)': 'State', 'ריק = התאמה לפי שם העיר': 'Empty = match by city name',
+  'מיקוד הוא מפתח החיפוש המדויק: הוא מנצח את שם העיר. אפשר לרשום קידומת (904) כדי לכסות טווח.':
+    'A ZIP is the precise lookup key and beats the city name. A prefix (904) covers a range.',
   'בטל כדי לפטור את הקטגוריה ממס (לדוגמה: מזון קר לקחת)':
     'Uncheck to exempt this category from tax (for example: cold food to go)',
   // Receipt

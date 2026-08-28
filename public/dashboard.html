@@ -1023,6 +1023,12 @@ input[type=time] { direction: ltr; }
           <div><label data-tr>עיר</label><input type="text" id="editCity" style="width:100%;margin-top:4px"></div>
           <div><label data-tr>רחוב</label><input type="text" id="editStreet" style="width:100%;margin-top:4px"></div>
           <div><label data-tr>מספר</label><input type="text" id="editStreetNum" style="width:100%;margin-top:4px"></div>
+          <!-- State and postal code exist only where an address has them. The
+               postal code is the delivery zone's lookup key, and through the
+               zone it decides the tax rate — so editing an address without it
+               can move an order to another jurisdiction silently. -->
+          <div id="editStateWrap" class="hidden"><label data-tr>מדינה (state)</label><input type="text" id="editState" dir="ltr" style="width:100%;margin-top:4px" placeholder="CA"></div>
+          <div id="editZipWrap" class="hidden"><label id="editZipLabel" data-tr>מיקוד</label><input type="text" id="editZip" dir="ltr" inputmode="numeric" style="width:100%;margin-top:4px" placeholder="90012"></div>
         </div>
         <div style="margin-bottom:10px">
           <label data-tr>סוג יעד</label>

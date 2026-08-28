@@ -1118,6 +1118,13 @@ router.get('/business-config', requireAuth, async (req, res) => {
     tax_label:      loc.taxLabel,
     tax_on_delivery: loc.taxOnDelivery,
     vat_rate:       loc.taxRate,   // legacy name, kept so an older cached client still renders
+    // Address shape. The dashboard resolves a zone the same way the server does
+    // (fee, tax rate, receipt), so it needs the same postal pattern — deriving
+    // it client-side would be a second definition of the same rule.
+    postal_re:      loc.postalRe,
+    postal_label:   loc.postalLabel,
+    address_order:  loc.addressOrder,
+    subdivision:    loc.subdivision,
     // The receipt printed a hardcoded "פיצה דליבריס" for every tenant. It is
     // not a secret — customers read it off the receipt — so it belongs here
     // rather than behind admin-only /settings, which managers cannot read.
@@ -1185,7 +1192,7 @@ router.patch('/settings', requireAdmin, async (req, res) => {
   // A zone's own rate is money too, and it arrives inside a JSONB blob nothing
   // else inspects — so it is checked at the door, like tax_rate itself.
   if ('delivery_zones' in updates) {
-    const badZone = require('../services/locale').normaliseZoneTaxRates(updates.delivery_zones);
+    const badZone = require('../services/locale').normaliseZones(updates.delivery_zones);
     if (badZone) return res.status(400).json({ error: `שיעור מס לא תקין באזור "${badZone}"` });
   }
 

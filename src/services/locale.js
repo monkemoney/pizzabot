@@ -33,6 +33,10 @@ const REGIONS = {
     dial_code:       '972',
     national_len:    9,             // digits after the country code
     timezone:        'Asia/Jerusalem',
+    postal_re:       '\\b\\d{7}\\b',        // Israeli מיקוד (7 digits since 2013)
+    postal_label:    'מיקוד',
+    address_order:   'street-first',           // "רוטשילד 5, תל אביב"
+    subdivision:     null,                     // Israel has no state line in an address
   },
   US: {
     currency:        'USD',
@@ -44,6 +48,10 @@ const REGIONS = {
     dial_code:       '1',
     national_len:    10,
     timezone:        'America/Los_Angeles',
+    postal_re:       '\\b\\d{5}(?:-\\d{4})?\\b',   // ZIP, with or without +4
+    postal_label:    'ZIP code',
+    address_order:   'number-first',           // "123 Main St, Los Angeles, CA 90012"
+    subdivision:     'state',
   },
 };
 
@@ -103,6 +111,10 @@ function resolveLocale(allSettings = {}) {
     dialCode:       String(allSettings.dial_code || d.dial_code),
     nationalLen:    d.national_len,
     timezone:       d.timezone,
+    postalRe:       d.postal_re,
+    postalLabel:    d.postal_label,
+    addressOrder:   d.address_order,
+    subdivision:    d.subdivision,
     // inclusive pricing has nothing to add at checkout — the price is the price
     addsTaxAtCheckout: mode === 'exclusive',
   };
@@ -166,6 +178,23 @@ function localeForZone(loc, zone) {
   return clamped === loc.taxRate ? loc : { ...loc, taxRate: clamped };
 }
 
+/**
+ * The postal code inside a free-text address, or null.
+ *
+ * Region-shaped on purpose. A bare `\d{5}` would bite the first seven-digit
+ * Israeli מיקוד it met and hand back five digits of it, and there is no
+ * meaningful difference between a wrong postal code and no postal code — both
+ * resolve an order to the wrong place. A US ZIP+4 is reduced to its base five,
+ * which is the unit a delivery zone is actually configured in.
+ */
+function extractPostal(address, loc) {
+  const s = String(address || '');
+  if (!s || !loc?.postalRe) return null;
+  const m = s.match(new RegExp(loc.postalRe));
+  if (!m) return null;
+  return loc.region === 'US' ? m[0].slice(0, 5) : m[0];
+}
+
 /** "מע\"מ 18%" / "Sales Tax 9.5%" — the label a receipt line carries. */
 function taxLineLabel(loc) {
   const r = Number(loc?.taxRate) || 0;
@@ -212,24 +241,50 @@ function promptMoney(amount, loc) {
 }
 
 /**
- * Validate and normalise the optional per-zone rates on a delivery_zones array,
- * in place. Returns the city of the first bad row, or null when all are fine.
+ * Postal codes a zone covers, normalised to an array of digit strings.
  *
- * A zone's rate is money, and it arrives inside a JSONB blob that nothing else
- * inspects — so it is checked at the door, like `tax_rate` itself. An empty
- * field means "use the tenant's rate" and is REMOVED rather than stored as 0:
- * a stored zero is a real instruction to charge no tax in that zone, and the
- * two must not be the same value.
+ * Accepts what a text field actually produces — "90401, 90402 90403" — as well
+ * as a real array, because this value round-trips through a JSONB blob and a
+ * one-line input, and a setting that only works when typed one exact way is a
+ * setting that silently does nothing.
  */
-function normaliseZoneTaxRates(zones) {
+function zipsOf(zone) {
+  const raw = zone?.zips;
+  const list = Array.isArray(raw) ? raw : String(raw || '').split(/[^0-9]+/);
+  return [...new Set(list.map((z) => String(z).trim()).filter((z) => /^\d{3,10}$/.test(z)))];
+}
+
+/**
+ * Validate and normalise a delivery_zones array in place. Returns the city of
+ * the first bad row, or null when every row is fine.
+ *
+ * The zone row is the one place an address is turned into money, and it arrives
+ * inside a JSONB blob that nothing else inspects — so both of its newer fields
+ * are checked here, at the door, the way `tax_rate` on settings is.
+ *
+ * An empty rate means "use the tenant's rate" and is REMOVED rather than stored
+ * as 0: a stored zero is a real instruction to charge no tax in that zone, and
+ * the two must not collapse into the same value.
+ */
+function normaliseZones(zones) {
   if (!Array.isArray(zones)) return null;
   for (const z of zones) {
     if (!z || typeof z !== 'object') continue;
-    if (!('tax_rate' in z)) continue;
-    if (z.tax_rate === '' || z.tax_rate == null) { delete z.tax_rate; continue; }
-    const r = parseFloat(z.tax_rate);
-    if (!Number.isFinite(r) || r < 0 || r > 100) return String(z.city || '?');
-    z.tax_rate = r;
+
+    if ('tax_rate' in z) {
+      if (z.tax_rate === '' || z.tax_rate == null) delete z.tax_rate;
+      else {
+        const r = parseFloat(z.tax_rate);
+        if (!Number.isFinite(r) || r < 0 || r > 100) return String(z.city || '?');
+        z.tax_rate = r;
+      }
+    }
+
+    if ('zips' in z) {
+      const list = zipsOf(z);
+      if (list.length) z.zips = list;
+      else delete z.zips;   // an empty list is not a zone that covers nothing
+    }
   }
   return null;
 }
@@ -243,5 +298,5 @@ async function forTenant(tenantId) {
 
 module.exports = {
   REGIONS, CURRENCIES, DEFAULT_REGION,
-  regionOf, resolveLocale, localeForZone, normaliseZoneTaxRates, taxOf, taxableBase, taxLineLabel, formatMoney, promptMoney, forTenant,
+  regionOf, resolveLocale, localeForZone, normaliseZones, zipsOf, extractPostal, taxOf, taxableBase, taxLineLabel, formatMoney, promptMoney, forTenant,
 };

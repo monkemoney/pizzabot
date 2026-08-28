@@ -14,6 +14,7 @@
  */
 
 const settings = require('./settings');
+const { zipsOf, resolveLocale, extractPostal } = require('./locale');
 
 /** Cheap Hebrew/Latin normalisation for city comparison. */
 function norm(s) {
@@ -37,6 +38,35 @@ function zoneForAddress(address, allSettings = {}) {
   const zones = Array.isArray(allSettings.delivery_zones) ? allSettings.delivery_zones : [];
   const a = norm(address);
   if (!a || !zones.length) return null;
+
+  // ── Postal code first, where the tenant has configured one ────────────────
+  // A US address is street · city · state · ZIP, and the ZIP is the part that
+  // actually names a jurisdiction: city-name matching gets "L.A.", "LA" and a
+  // customer who writes only a street and a ZIP all wrong, and it cannot tell
+  // an address in one city from a neighbouring one whose name is a substring.
+  //
+  // This branch only exists once a zone declares `zips`. That is deliberate:
+  // no tenant has one today, so every existing address resolves through the
+  // city path below, exactly as before.
+  const withZips = zones.filter((z) => z && zipsOf(z).length);
+  if (withZips.length) {
+    const code = extractPostal(address, resolveLocale(allSettings));
+    if (code) {
+      // Most specific first, the same rule the city sort uses: an exact ZIP
+      // beats a prefix, so "90401" wins over a zone that claims all of "904".
+      const candidates = [];
+      for (const z of withZips) {
+        for (const zip of zipsOf(z)) {
+          if (code === zip || code.startsWith(zip)) candidates.push({ z, len: zip.length });
+        }
+      }
+      if (candidates.length) {
+        return candidates.sort((x, y) => y.len - x.len)[0].z;
+      }
+    }
+    // No ZIP, or no zone claims it — fall through to the city match rather than
+    // giving up: a half-configured tenant still gets the answer it had before.
+  }
 
   // Longest city name first, so "תל אביב יפו" wins over "תל אביב" — and, for
   // exactly the same reason, "West Hollywood" over "Hollywood".
