@@ -60,6 +60,10 @@ jest.mock('../src/services/settings', () => ({
 }));
 jest.mock('../src/services/menu-service', () => ({
   buildMenuText: jest.fn(async () => '<<MENU>>'),
+  // prompts.js reads the category list off the same snapshot to learn whether
+  // the tenant exempts anything from tax — a mock that omits it is the trap,
+  // not the safety net.
+  getProducts:   jest.fn(async () => ({ main: [], categories: [] })),
 }));
 jest.mock('../src/services/lessons', () => ({
   isEnabled: jest.fn(async () => false),

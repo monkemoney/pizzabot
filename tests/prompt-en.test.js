@@ -22,6 +22,10 @@ jest.mock('../src/services/settings', () => ({
 }));
 jest.mock('../src/services/menu-service', () => ({
   buildMenuText: jest.fn(async () => '<<MENU>>'),
+  // prompts.js reads the category list off the same snapshot to learn whether
+  // the tenant exempts anything from tax — a mock that omits it is the trap,
+  // not the safety net.
+  getProducts:   jest.fn(async () => ({ main: [], categories: [] })),
 }));
 jest.mock('../src/services/lessons', () => ({
   isEnabled: jest.fn(async () => false),
@@ -97,6 +101,26 @@ describe('tax guidance (C5)', () => {
 
   test('a zero rate never produces a tax instruction', () => {
     expect(taxRule({ addsTaxAtCheckout: true, taxRate: 0 }, 'en')).toMatch(/already included/);
+  });
+
+  test('an exempt category changes how the bot is told to talk about tax', () => {
+    // Without this the bot names a flat rate against the whole basket, and an
+    // order containing an exempt item is quoted a tax the server will not
+    // charge. Found by a live run: an exempt drink made the bot's "9.5% will be
+    // added" over-state the real $5.51 by $1.62. It is told the rule, never
+    // asked to do the arithmetic — the ACTION total stays pre-tax.
+    const loc = { addsTaxAtCheckout: true, taxRate: 9.5, taxLabel: 'Sales Tax' };
+    expect(taxRule(loc, 'en', true)).toMatch(/taxable items only/);
+    expect(taxRule(loc, 'en', true)).toMatch(/never multiply the whole total by the rate/);
+    expect(taxRule(loc, 'he', true)).toMatch(/רק על הפריטים החייבים/);
+  });
+
+  test('a tenant with nothing exempt gets exactly the previous wording', () => {
+    const loc = { addsTaxAtCheckout: true, taxRate: 9.5, taxLabel: 'Sales Tax' };
+    for (const lang of ['en', 'he']) {
+      expect(taxRule(loc, lang, false)).toBe(taxRule(loc, lang));
+      expect(taxRule(loc, lang)).not.toMatch(/exempt|פטור/);
+    }
   });
 });
 

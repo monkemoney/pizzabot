@@ -84,26 +84,38 @@ const EN_LABELS = {
  * pre-tax subtotal and adds the tax itself. Two different numbers, and the
  * prompt has to be explicit about which goes where.
  */
-function taxRule(loc, lang) {
+/**
+ * @param {boolean} hasExempt  the tenant has at least one non-taxable category
+ *   (C10). Without this the bot names a flat rate against the whole basket, and
+ *   an order containing an exempt item is quoted a tax the server will not
+ *   charge. It is told the rule, not asked to do the arithmetic — the ACTION
+ *   total stays pre-tax and the server still owns the number.
+ */
+function taxRule(loc, lang, hasExempt = false) {
   if (!loc || !loc.addsTaxAtCheckout || !loc.taxRate) {
     return lang === 'en'
       ? 'Prices on the menu are final — tax is already included.'
       : 'המחירים בתפריט סופיים — המס כבר כלול בהם.';
   }
   const label = `${loc.taxLabel} ${loc.taxRate}%`;
+  const exemptLine = !hasExempt ? null : lang === 'en'
+    ? `• Some items are tax exempt, so the tax is charged on the taxable items only — never state the tax as an amount, and never multiply the whole total by the rate.`
+    : `• חלק מהפריטים פטורים ממס, ולכן המס נגבה רק על הפריטים החייבים — אל תנקוב בסכום המס, ואל תכפיל את הסכום הכולל בשיעור.`;
   return lang === 'en'
     ? [
         `Menu prices are BEFORE tax. ${label} is added at checkout.`,
+        exemptLine,
         `• When you quote a running total or an order summary, say the amount is before tax — for example "$28.50 before tax".`,
         `• Never present a pre-tax number as the final amount the customer will pay.`,
         `• In the ACTION block, "total" is the PRE-TAX amount (items + delivery). The system adds the tax itself — do not add it yourself, or it will be charged twice.`,
-      ].join('\n')
+      ].filter(Boolean).join('\n')
     : [
         `מחירי התפריט הם לפני מס. ${label} מתווסף בקופה.`,
+        exemptLine,
         `• כשאתה מציג סכום ביניים או סיכום הזמנה — ציין שהסכום לפני מס.`,
         `• אל תציג סכום לפני מס כסכום הסופי שהלקוח ישלם.`,
         `• ב-ACTION, השדה "total" הוא הסכום לפני מס (פריטים + משלוח). המערכת מוסיפה את המס בעצמה — אל תוסיף אותו, אחרת הוא ייגבה פעמיים.`,
-      ].join('\n');
+      ].filter(Boolean).join('\n');
 }
 
 /**
@@ -186,7 +198,7 @@ ${c.menuText}
 ${RULE}
 Full menu with photos: ${c.menuUrl}
 
-${taxRule(c.loc, 'en')}
+${taxRule(c.loc, 'en', c.hasExemptCategory)}
 
 ${RULE}
 Delivery areas and prices

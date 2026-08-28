@@ -38,7 +38,13 @@ async function getProducts(tenantId = DEFAULT_TENANT_ID) {
 
   const { data: products, error: pErr } = await supabase
     .from('products')
-    .select('*, categories(id, name_he, name_en, emoji, has_toppings, taxable)')
+    // `taxable` is deliberately NOT in this join. A join naming a column the
+    // database does not have yet fails the WHOLE query, and getProducts turns a
+    // query error into an empty menu — so deploying before the migration ran
+    // would have left every tenant's bot with no menu at all. The flag is read
+    // from the categories list below instead, which is select('*') and simply
+    // comes back without the key until the column exists.
+    .select('*, categories(id, name_he, name_en, emoji, has_toppings)')
     .eq('tenant_id', tenantId)
     .eq('is_available', true)
     .order('sort_order');

@@ -1,7 +1,8 @@
 'use strict';
 
 const settings          = require('../services/settings');
-const { buildMenuText } = require('../services/menu-service');
+const menuService = require('../services/menu-service');
+const { buildMenuText } = menuService;
 const lessonsService    = require('../services/lessons');
 
 // Accumulated lessons are injected at the END of the prompt (highest recency).
@@ -46,6 +47,13 @@ async function buildSystemPrompt(customerProfile = null, tenantId = null, lang =
   // wrote in the other one) wins.
   const promptLang = lang === 'en' || lang === 'he' ? lang : (loc.region === 'IL' ? 'he' : 'en');
   const fmtMoney = (n) => promptMoney(n, loc);
+
+  // Whether the tenant exempts any category from tax (C10). Read off the menu
+  // snapshot buildMenuText just built, so it is a cache hit rather than a
+  // second query. False for every tenant until someone sets the flag — which is
+  // what keeps the frozen Hebrew prompt byte-for-byte what it was.
+  const hasExemptCategory = ((await menuService.getProducts(tid).catch(() => ({}))).categories || [])
+    .some((c) => c && c.taxable === false);
 
   const prepLeadTime = allSettings.prep_lead_time ?? 45;
   // The clock the bot quotes to customers, and schedules pre-orders against. It
@@ -216,7 +224,7 @@ ${parts.join('\n')}
       businessName, liveStatus, menuText, menuUrl, deliveryZonesText,
       allowedCitiesStr, defaultFee, pickupAddress, deliveryQuestion, paymentQuestion,
       bitEnabled, bitPhone, prepLeadTime, halfPct, quarterPct,
-      nowStr, loc, fmtMoney, profile: customerProfile,
+      nowStr, loc, fmtMoney, hasExemptCategory, profile: customerProfile,
     }), lessonsText);
   }
 
@@ -231,7 +239,7 @@ ${parts.join('\n')}
   const heAddressAsk = require('./prompt-en').addressAsk(loc, 'he');
 
   const heTaxBlock = loc.addsTaxAtCheckout
-    ? `\n\n${require('./prompt-en').taxRule(loc, 'he')}`
+    ? `\n\n${require('./prompt-en').taxRule(loc, 'he', hasExemptCategory)}`
     : '';
 
   const __base = `אתה ג׳אסל, מלצר-בוט של ${businessName}.${returningBlock}

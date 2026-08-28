@@ -143,16 +143,12 @@ async function computeTotal(items = [], { delivery_method, address, tenantId } =
   const toppingIndex = await toppingPrices(tenantId, products);
 
   // Per-category taxability (C10). `taxable` defaults to TRUE in the schema and
-  // is absent from any row that predates it, so a tenant who has never opened
-  // the setting is taxed exactly as before — only an explicit `false` exempts.
+  // is absent from any row that predates it — and absent from EVERY row until
+  // the migration runs — so a tenant who has never opened the setting is taxed
+  // exactly as before. Only an explicit `false` exempts.
   const catIndex = new Map(
     (menu.categories || []).map((c) => [String(c.id), c.taxable !== false]));
-  const isExempt = (row) => {
-    if (!row) return false;
-    if (row.categories && row.categories.taxable === false) return true;
-    const known = catIndex.get(String(row.category_id));
-    return known === false;
-  };
+  const isExempt = (row) => (row ? catIndex.get(String(row.category_id)) === false : false);
 
   // The matched row's names are copied onto the item that gets STORED.
   // orders.items is a JSONB snapshot that historically held only `name` — the

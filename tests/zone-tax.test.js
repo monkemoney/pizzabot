@@ -201,6 +201,23 @@ describe('computeTotal exempts a non-taxable category', () => {
     expect(r.tax).toBe(9.5);
   });
 
+  test('a menu whose categories have no `taxable` column yet is fully taxable', async () => {
+    // The state of the live database until the migration runs. Reading the flag
+    // from the categories list (select('*')) rather than from the products JOIN
+    // is what makes this work: a join naming a column that does not exist fails
+    // the whole query, and getProducts turns a query error into an EMPTY MENU —
+    // deploying before the migration would have left the bot with no menu.
+    const svc = require('../src/services/menu-service');
+    const preMigration = [CAT_HOT, CAT_COLD, CAT_OLD].map(({ taxable, ...rest }) => rest);
+    svc.getProducts.mockResolvedValueOnce({ main: mockProducts, categories: preMigration });
+    const r = await computeTotal(
+      [{ name: 'Family Pizza', qty: 1 }, { name: 'Cola', qty: 1 }],
+      { delivery_method: 'pickup', tenantId: TID });
+    expect(r.itemsTotal).toBe(150);
+    expect(r.exemptTotal).toBe(0);
+    expect(r.tax).toBe(14.25);      // 150 × 9.5% — exactly the pre-C10 answer
+  });
+
   test('a menu with no category rows at all still prices — nothing is exempt', async () => {
     // The path a tenant mid-migration takes, and the shape the frozen Israeli
     // pricing test mocks.

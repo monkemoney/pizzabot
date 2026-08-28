@@ -17,6 +17,13 @@
 --
 -- Apply via the Supabase Management API (see CLAUDE.md → Commands) BEFORE
 -- deploying — the categories PATCH passes the column straight through.
+--
+-- Reads do NOT depend on this migration: `taxable` is read from the categories
+-- list, which is select('*') and simply comes back without the key until the
+-- column exists (every category then reads as taxable, the pre-C10 answer). It
+-- is deliberately absent from the products JOIN in menu-service, because a join
+-- naming a column the database does not have fails the WHOLE query and
+-- getProducts turns a query error into an empty menu.
 
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS taxable BOOLEAN DEFAULT TRUE;
 
