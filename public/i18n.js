@@ -296,7 +296,8 @@ const HE2EN = {
   'משלוח ממוסה לפי יעד. השאר ריק כדי להשתמש בשיעור המס של העסק; איסוף עצמי ממוסה תמיד לפי כתובת העסק.':
     'A delivery is taxed where it lands. Leave blank to use the business\u2019s own rate; pickup is always taxed at the business address.',
   'פטור ממס': 'Tax exempt', 'חייב במס': 'Taxable',
-  'מיקודים': 'ZIP codes', 'מיקוד': 'ZIP code', 'מדינה (state)': 'State', 'ריק = התאמה לפי שם העיר': 'Empty = match by city name',
+  'מיקודים': 'ZIP codes', 'מיקוד': 'ZIP code', 'מדינה (state)': 'State',
+  'ללא + או רווחים, לדוגמה': 'No + or spaces, for example', 'ריק = התאמה לפי שם העיר': 'Empty = match by city name',
   'מיקוד הוא מפתח החיפוש המדויק: הוא מנצח את שם העיר. אפשר לרשום קידומת (904) כדי לכסות טווח.':
     'A ZIP is the precise lookup key and beats the city name. A prefix (904) covers a range.',
   'בטל כדי לפטור את הקטגוריה ממס (לדוגמה: מזון קר לקחת)':
@@ -343,7 +344,29 @@ const HE2EN = {
   'אין הזמנות': 'No orders', 'הרגע': 'Just now', "ש'": 'h ',
 };
 
-const LANG = localStorage.getItem('lang') === 'en' ? 'en' : 'he';
+/**
+ * The dashboard's language.
+ *
+ * It used to be `localStorage.lang` and nothing else — so the language was a
+ * property of the BROWSER: every new device opened in Hebrew, and there was no
+ * way to say "this business is American". Now the tenant supplies the default
+ * (stored at login, where the tenant is first known) and an explicit choice by
+ * this user overrides it, because someone who pressed the toggle meant it.
+ *
+ * Read synchronously from localStorage rather than fetched, because <html dir>
+ * has to be right before the first paint — resolving it after an API round trip
+ * lays the entire page out backwards for a frame.
+ */
+function resolveLang() {
+  try {
+    const chosen = localStorage.getItem('lang');            // the toggle
+    if (chosen === 'en' || chosen === 'he') return chosen;
+    const tenant = localStorage.getItem('lang_default');    // written at login
+    if (tenant === 'en' || tenant === 'he') return tenant;
+  } catch { /* private mode / storage blocked — fall through to Hebrew */ }
+  return 'he';
+}
+const LANG = resolveLang();
 
 function tr(he) {
   if (LANG !== 'en') return he;
@@ -359,8 +382,19 @@ function t(key) {
 }
 
 function setLang(lang) {
-  localStorage.setItem('lang', lang === 'en' ? 'en' : 'he');
+  // Writing this key IS the explicit choice — from here on the tenant default
+  // no longer moves this browser's language.
+  try { localStorage.setItem('lang', lang === 'en' ? 'en' : 'he'); } catch { /* storage blocked */ }
   location.reload();
+}
+
+/**
+ * The tenant's language, recorded at login. Never overwrites an explicit
+ * choice: it is a default, and a default that overrules the user is not one.
+ */
+function setTenantLang(lang) {
+  if (lang !== 'en' && lang !== 'he') return;
+  try { localStorage.setItem('lang_default', lang); } catch { /* storage blocked */ }
 }
 
 function toggleLang() {

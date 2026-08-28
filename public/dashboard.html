@@ -872,13 +872,17 @@ input[type=time] { direction: ltr; }
       <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
         <div class="form-group">
           <label data-tr>שם מלא</label>
+          <!-- placeholder filled per region by applyExamplePlaceholders() -->
           <input type="text" id="adminName" placeholder="ישראל ישראלי" required>
         </div>
         <div class="form-group">
           <label data-tr>מספר טלפון (בינלאומי)</label>
           <input type="tel" id="adminPhone" dir="ltr" placeholder="972501234567" required
             style="letter-spacing:.05em">
-          <div style="font-size:.74rem;color:var(--text-muted);margin-top:4px" data-tr>ללא + או רווחים, לדוגמה: 972501234567</div>
+          <!-- No data-tr: the text is rebuilt by applyExamplePlaceholders(), which
+               also swaps the example number for the tenant's region. Two owners
+               for one string is how the wrong one wins. -->
+          <div id="adminPhoneHint" style="font-size:.74rem;color:var(--text-muted);margin-top:4px">ללא + או רווחים, לדוגמה: 972501234567</div>
         </div>
         <div class="form-group">
           <label data-tr>תפקיד</label>

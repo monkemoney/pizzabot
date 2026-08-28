@@ -11,6 +11,17 @@ if (!token || role !== 'vendor') {
   window.location.href = '/';
 }
 
+/**
+ * The vendor portal's date locale.
+ *
+ * `he-IL` was written into four render calls, so a vendor reading the portal in
+ * English still got Hebrew month names and d/m/y dates. The portal is the
+ * PLATFORM's own screen, not a client's, so it follows the operator's chosen
+ * dashboard language — not any tenant's region. One definition; a literal
+ * repeated at each call site is how the four drifted apart in the first place.
+ */
+const VLOCALE = (typeof LANG !== 'undefined' && LANG === 'en') ? 'en-US' : 'he-IL';
+
 function logout() {
   localStorage.clear();
   window.location.href = '/';
@@ -111,7 +122,7 @@ async function refreshDashboard() {
               <td style="font-weight:700">${c.name}</td>
               <td><span class="badge" style="background:#f0f0f0;color:#555">${c.plan}</span></td>
               <td><span class="badge badge-${c.status}">${{active:'פעיל',trial:'ניסיון',inactive:'מושבת'}[c.status]||c.status}</span></td>
-              <td style="font-size:.78rem;color:#9b8fc0">${new Date(c.created_at).toLocaleDateString('he-IL')}</td>
+              <td style="font-size:.78rem;color:#9b8fc0">${new Date(c.created_at).toLocaleDateString(VLOCALE)}</td>
             </tr>`).join('')}
         </tbody>
       </table>`;
@@ -356,7 +367,7 @@ function renderClients() {
             <div style="font-weight:700;color:${c.month_cost>0?'#5e17eb':'#c4b8e0'};font-size:.85rem">${fmtCost(c.month_cost)}</div>
             ${c.month_calls>0 ? `<div style="font-size:.7rem;color:#9b8fc0">${c.month_calls} קריאות</div>` : ''}
           </td>
-          <td style="font-size:.78rem;color:#9b8fc0">${new Date(c.created_at).toLocaleDateString('he-IL')}</td>
+          <td style="font-size:.78rem;color:#9b8fc0">${new Date(c.created_at).toLocaleDateString(VLOCALE)}</td>
           <td>
             <button onclick="deleteClient('${c.id}','${c.name}')" class="btn-danger">הסר</button>
           </td>
@@ -949,7 +960,7 @@ function insightCard(it) {
       <div class="insight-meta">
         <span class="chip ${it.type}">${TYPE_LABEL[it.type] || it.type}</span>
         <span class="chip">${esc(it.source)}</span>
-        <span class="chip">${new Date(it.created_at).toLocaleDateString('he-IL')}</span>
+        <span class="chip">${new Date(it.created_at).toLocaleDateString(VLOCALE)}</span>
         ${it.metrics && it.metrics.sample_size != null
           ? `<span class="chip ${thin ? 'thin' : ''}">מדגם ${it.metrics.sample_size}${thin ? ' — קטן' : ''}</span>` : ''}
         ${!open ? `<span class="chip">${esc(it.status)}</span>` : ''}
@@ -998,7 +1009,7 @@ async function loadBrain() {
     if (!lr) {
       banner = `<div class="stale-banner stale-bad">אף ריצת בדיקה לא נרשמה עדיין.</div>`;
     } else {
-      const when = new Date(lr.run_at).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' });
+      const when = new Date(lr.run_at).toLocaleString(VLOCALE, { dateStyle: 'short', timeStyle: 'short' });
       const days = ov.staleness_days;
       const cls = lr.status === 'failed' ? 'stale-bad' : days > 8 ? 'stale-warn' : 'stale-ok';
       const statusHe = lr.status === 'completed' ? `הושלמה — ${lr.verdict || '—'}`

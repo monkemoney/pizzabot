@@ -159,6 +159,10 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     localStorage.setItem('token', data.token);
     localStorage.setItem('role', data.role);
     localStorage.setItem('username', data.username);
+    // The tenant's language, as a DEFAULT. An operator who pressed the toggle
+    // keeps their choice; a fresh browser at an American business now opens the
+    // dashboard in English instead of Hebrew RTL.
+    if (typeof setTenantLang === 'function') setTenantLang(data.lang);
     const dest = data.role === 'vendor' ? '/admin' : data.role === 'kitchen' ? '/kitchen' : '/dashboard.html';
     window.location.href = dest;
   } catch (err) {

@@ -88,10 +88,21 @@ router.post('/auth/login', loginLimiter, async (req, res) => {
     vendor:  { password: process.env.DASHBOARD_VENDOR_PASSWORD,  role: 'vendor'  },
   };
 
+  // The dashboard's language is a fact about the BUSINESS, not about the
+  // browser. Returned at login because i18n.js has to set <html dir> before the
+  // first paint — an API round-trip later would lay the whole page out
+  // backwards for a frame. An explicit toggle by the user still wins over it.
+  const langOf = async (tenantId) => {
+    try {
+      const all = await settings.loadAll(tenantId);
+      return require('../services/locale').resolveLocale(all).region === 'IL' ? 'he' : 'en';
+    } catch { return 'he'; }
+  };
+
   const builtInUser = builtIn[username];
   if (builtInUser && builtInUser.password === password) {
     const token = signDashboard(username, builtInUser.role, DEFAULT_TENANT_ID);
-    return res.json({ token, role: builtInUser.role, username });
+    return res.json({ token, role: builtInUser.role, username, lang: await langOf(DEFAULT_TENANT_ID) });
   }
 
   // 2. Per-tenant users stored in tenant_users table
@@ -103,7 +114,7 @@ router.post('/auth/login', loginLimiter, async (req, res) => {
 
   if (!error && tenantUser && await bcrypt.compare(password, tenantUser.password)) {
     const token = signDashboard(username, tenantUser.role, tenantUser.tenant_id);
-    return res.json({ token, role: tenantUser.role, username });
+    return res.json({ token, role: tenantUser.role, username, lang: await langOf(tenantUser.tenant_id) });
   }
 
   return res.status(401).json({ error: 'שם משתמש או סיסמא שגויים' });

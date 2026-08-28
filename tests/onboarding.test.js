@@ -680,3 +680,47 @@ describe('POST /api/vendor/onboarding/:id/reset-credentials', () => {
     await request(app).post(`/api/vendor/onboarding/${s.id}/reset-credentials`).expect(401);
   });
 });
+
+
+// ── Login carries the tenant's language (A1) ─────────────────────────────────
+//
+// The dashboard's language used to live in localStorage and nowhere else, so it
+// was a property of the BROWSER: every new device opened in Hebrew and there
+// was no way to say "this business is American". It is returned at login
+// because <html dir> has to be right before the first paint.
+describe('POST /api/auth/login returns the tenant language', () => {
+  const settings = require('../src/services/settings');
+
+  test('an Israeli tenant logs in to Hebrew', async () => {
+    settings.loadAll.mockResolvedValueOnce({});
+    const res = await request(app).post('/api/auth/login')
+      .send({ username: 'vendor', password: 'vendor-test-pw' });
+    expect(res.status).toBe(200);
+    expect(res.body.lang).toBe('he');
+  });
+
+  test('a US tenant logs in to English', async () => {
+    settings.loadAll.mockResolvedValueOnce({ region: 'US' });
+    const res = await request(app).post('/api/auth/login')
+      .send({ username: 'vendor', password: 'vendor-test-pw' });
+    expect(res.body.lang).toBe('en');
+  });
+
+  test('a settings failure never breaks the login', async () => {
+    // Language is a nicety; being able to sign in is not. It falls back to
+    // Hebrew rather than turning a settings hiccup into a 500 at the door.
+    settings.loadAll.mockRejectedValueOnce(new Error('db down'));
+    const res = await request(app).post('/api/auth/login')
+      .send({ username: 'vendor', password: 'vendor-test-pw' });
+    expect(res.status).toBe(200);
+    expect(res.body.lang).toBe('he');
+    expect(res.body.token).toBeTruthy();
+  });
+
+  test('bad credentials still 401, with no language leak', async () => {
+    const res = await request(app).post('/api/auth/login')
+      .send({ username: 'vendor', password: 'wrong' });
+    expect(res.status).toBe(401);
+    expect(res.body.lang).toBeUndefined();
+  });
+});

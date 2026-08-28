@@ -355,6 +355,16 @@ The wizard runs **before the tenant exists**, so its language cannot come from t
 - **`nameOf()`/`altName()`** render product and category names by language; a legacy row whose `name_en` was backfilled with the Hebrew name is correctly treated as untranslated (same test as `hasEnglishName`).
 - **The cart caveat names the tax in exclusive regions.** The cart was already labelled "משוער" because the server is the pricing authority — but in a US region it is also systematically LOW, since the menu is pre-tax. Quoting $12.99 and charging $14.22 without saying so is a dispute, not a rounding difference.
 
+### Dashboard Language Follows the Tenant (2026-08-27)
+
+`LANG` was `localStorage.getItem('lang')` and nothing else, so the dashboard's language was a property of the **browser**: every new device opened in Hebrew RTL, and there was no way to say "this business is American". An operator at a Los Angeles tenant met a Hebrew dashboard on every fresh login until they found the toggle.
+
+- **Two keys, and the distinction between them is the whole design.** `lang_default` is the tenant's language, written at login (where the tenant is first known); `lang` is written only by `setLang()`, i.e. only when a person pressed the toggle. `resolveLang()` reads the explicit choice first — a default that overrules the user is not a default.
+- **It is returned by `POST /api/auth/login`, not fetched.** `<html dir>` has to be right before the first paint; resolving it after an API round-trip lays the whole page out backwards for a frame — the same reason the public menu is stamped server-side. A `settings` failure falls back to Hebrew rather than turning a hiccup into a 500 at the door: being able to sign in matters more than the language it is in.
+- **Chrome follows the LANGUAGE; examples follow the REGION.** `EXAMPLES` in app.js supplies the placeholder person, phone, business name, address and tagline per region, and is deliberately *not* in the i18n dictionary — a translated "Rothschild 19, Tel Aviv" is still the wrong example for a Los Angeles business. Same rule the onboarding wizard already followed. Verified in a browser: a US tenant reading the dashboard in Hebrew still sees American examples.
+- The one string that carried an example inside it (`ללא + או רווחים, לדוגמה: 972501234567`) lost its `data-tr` — `applyExamplePlaceholders()` owns that text now, and two owners for one string is how the wrong one wins.
+- `public/admin.js` had `'he-IL'` written into four date renders (D2). One `VLOCALE` now, so the vendor portal switches with its operator's language the moment A8 translates it — a literal repeated at each call site is how the four drifted apart.
+
 ### Customer Language & Menu Names (2026-08-26)
 
 Two separate defects, both of which made an English-speaking customer read Hebrew.

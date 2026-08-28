@@ -199,6 +199,24 @@ let _bizConfig = {
   postal_re: '\\b\\d{7}\\b', postal_label: 'מיקוד', address_order: 'street-first', subdivision: null,
 };
 
+/**
+ * Placeholder EXAMPLES, by region.
+ *
+ * These are not UI strings and they do not belong in the i18n dictionary — a
+ * translated "Rothschild 19, Tel Aviv" is still the wrong example for a Los
+ * Angeles business. Same rule the onboarding wizard already follows: chrome is
+ * translated, examples are chosen for the region.
+ */
+const EXAMPLES = {
+  IL: { person: 'ישראל ישראלי', phone: '972501234567', biz: 'פיצה דליבריס',
+        slug: 'pizza-deliveries', address: 'רוטשילד 19, תל אביב',
+        tagline: 'הפיצה הכי טעימה בעיר 🍕' },
+  US: { person: 'John Smith',   phone: '13105551234',  biz: "Tony's Pizza",
+        slug: 'tonys-pizza',    address: '123 Main St, Los Angeles, CA 90012',
+        tagline: 'The best pizza in town 🍕' },
+};
+const ex = () => EXAMPLES[_bizConfig.region] || EXAMPLES.IL;
+
 async function loadBusinessConfig() {
   try { _bizConfig = await api('GET', '/business-config'); } catch { /* keep defaults */ }
   // Static markup cannot know the tenant's currency; the price labels in the
@@ -206,6 +224,17 @@ async function loadBusinessConfig() {
   document.querySelectorAll('.cur-symbol').forEach((el) => {
     el.textContent = _bizConfig.currency_symbol ? `(${_bizConfig.currency_symbol})` : '';
   });
+  applyExamplePlaceholders();
+}
+
+/** Fill the region-specific examples that live in static markup. */
+function applyExamplePlaceholders() {
+  const e = ex();
+  const ph = (id, v) => { const el = document.getElementById(id); if (el) el.placeholder = v; };
+  ph('adminName',  e.person);
+  ph('adminPhone', e.phone);
+  const hint = document.getElementById('adminPhoneHint');
+  if (hint) hint.textContent = `${TR('ללא + או רווחים, לדוגמה')}: ${e.phone}`;
 }
 
 const taxMode     = () => (_bizConfig.tax_mode === 'exclusive' ? 'exclusive' : 'inclusive');
@@ -2899,12 +2928,12 @@ function renderSettingsForm(s) {
     ${effBanner}
 
     ${sCard(ICONS.biz, 'פרטי העסק', 'פרטים המוצגים ללקוחות בבוט ובתפריט הציבורי', `
-      ${sField('biz_name',    'שם העסק',           s.business_name    || '', 'text', 'פיצה דליבריס')}
-      ${sField('biz_name_en', 'שם לועזי (לקישור התפריט הציבורי)', s.business_name_en || '', 'text', 'pizza-deliveries')}
-      ${sField('biz_address', 'כתובת העסק',         s.business_address || '', 'text', 'רוטשילד 19, תל אביב')}
+      ${sField('biz_name',    'שם העסק',           s.business_name    || '', 'text', ex().biz)}
+      ${sField('biz_name_en', 'שם לועזי (לקישור התפריט הציבורי)', s.business_name_en || '', 'text', ex().slug)}
+      ${sField('biz_address', 'כתובת העסק',         s.business_address || '', 'text', ex().address)}
       ${sField('biz_bot_url', 'כתובת שרת הבוט',     s.bot_url          || '', 'url',  'https://...')}
-      ${sField('biz_pickup',  'כתובת לאיסוף עצמי', s.pickup_address   || '', 'text', 'רוטשילד 19, תל אביב')}
-      ${sField('biz_whatsapp','מספר וואטסאפ להזמנות (בתפריט הציבורי)', s.bot_whatsapp || '', 'tel', '972500000000')}
+      ${sField('biz_pickup',  'כתובת לאיסוף עצמי', s.pickup_address   || '', 'text', ex().address)}
+      ${sField('biz_whatsapp','מספר וואטסאפ להזמנות (בתפריט הציבורי)', s.bot_whatsapp || '', 'tel', ex().phone)}
       ${saveBtn('saveBizInfo')}
     `)}
 
@@ -2917,7 +2946,7 @@ function renderSettingsForm(s) {
         <button onclick="resetBrandColor()" class="btn btn-outline btn-sm">${TR('איפוס לברירת מחדל')}</button>
       </div>
       ${sField('menuLogoUrl', 'כתובת לוגו (URL לתמונה)', s.menu_logo_url || '', 'url', 'https://.../logo.png')}
-      ${sField('menuTagline', 'סלוגן בכותרת התפריט', s.menu_tagline || '', 'text', 'הפיצה הכי טעימה בעיר 🍕')}
+      ${sField('menuTagline', 'סלוגן בכותרת התפריט', s.menu_tagline || '', 'text', ex().tagline)}
       <div style="font-size:.78rem;color:var(--text-muted)">${TR('שינויים נראים בתפריט הציבורי מיד אחרי שמירה.')}</div>
       ${saveBtn('saveMenuBranding')}
     `)}
@@ -3518,7 +3547,7 @@ function renderCouriersTable() {
         style="font-size:.84rem;min-width:0">
       <input type="tel" dir="ltr"
         value="${c.phone || ''}"
-        placeholder="972501234567"
+        placeholder="${ex().phone}"
         oninput="_couriers[${i}].phone=this.value.replace(/\\D/g,'')"
         style="font-size:.84rem;letter-spacing:.04em;min-width:0">
       <button onclick="removeCourier(${i})" class="btn-danger" title="${TR('הסר שליח')}"
