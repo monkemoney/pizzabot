@@ -10,6 +10,18 @@
 
 process.env.META_WA_VERIFY_TOKEN = 'test-verify-token';
 
+// The module reads META_APP_SECRET at load time, and the unconfigured-secret
+// case below asserts what happens when there is none. Inheriting a real secret
+// from the developer's shell turned that assertion red — so the suite states
+// the environment it needs instead of assuming an empty one, and the signature
+// tests set it explicitly in their own beforeAll.
+const _realAppSecret = process.env.META_APP_SECRET;
+delete process.env.META_APP_SECRET;
+afterAll(() => {
+  if (_realAppSecret === undefined) delete process.env.META_APP_SECRET;
+  else process.env.META_APP_SECRET = _realAppSecret;
+});
+
 const metaWA = require('../src/services/meta-whatsapp');
 
 // ── Payload builders ──────────────────────────────────────────────────────────

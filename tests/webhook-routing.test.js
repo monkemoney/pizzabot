@@ -12,6 +12,14 @@
 // Green API's only authentication is the instance id in the payload, so the
 // routing tests need one configured to be accepted at all.
 process.env.GREEN_API_INSTANCE_ID = 'test-instance-1';
+
+// This suite tests ROUTING, not signatures — its Meta payloads are unsigned.
+// Signature verification enforces whenever META_APP_SECRET is set, so a
+// developer who sources .env.production before running the tests got 403s and
+// four red tests that are green in CI. A test that only passes when a variable
+// happens to be absent is a test whose result depends on who ran it: state the
+// environment the suite needs rather than assuming an empty one.
+delete process.env.META_APP_SECRET;
 const TEST_INSTANCE = process.env.GREEN_API_INSTANCE_ID;
 
 // ── Service mocks (must be before require) ────────────────────────────────────
