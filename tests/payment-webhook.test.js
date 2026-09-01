@@ -281,3 +281,66 @@ describe('idempotency', () => {
     expect(mockSavedOrders).toHaveLength(1);
   });
 });
+
+// ─── The charged tax is frozen on the order, never recomputed at payment ─────
+// The rate a customer was charged is a fact about THEIR order. Jurisdictions
+// move — CDTFA publishes new California rates on quarterly effective dates —
+// and a receipt reprinted afterwards must still show what was actually taken.
+// payment.js rebuilds the order from `pending.order_data` for exactly this
+// reason, and `expected` for the amount guard comes from the stored total
+// rather than a fresh price. Both were correct by construction and guarded by
+// nothing; this is the guard.
+describe('tax freeze — the charged rate survives a settings change', () => {
+  const FROZEN = {
+    tax_rate:   9.125,   // a real three-decimal CDTFA rate (Los Altos Hills)
+    tax_amount: 1.83,
+    tip_amount: 2.5,
+    tip_pct:    18,
+    total:      64.33,
+  };
+
+  const frozenPending = (cardcom_code) => makePending({
+    cardcom_code,
+    order_data: {
+      customer_name:   'Jane Doe',
+      items:           [{ name: 'Pizza', qty: 1, price: 60 }],
+      delivery_method: 'delivery',
+      address:         '123 Main St, Los Angeles, CA 90012',
+      ...FROZEN,
+    },
+  });
+
+  test('the order carries the stored rate, to three decimals', async () => {
+    frozenPending('CODE-FROZEN');
+
+    await request(app).post('/webhook/payment').type('form')
+      .send({ LowProfileCode: 'CODE-FROZEN', ResponseCode: '0', Amount: String(FROZEN.total) })
+      .expect(200);
+    await settle();
+
+    expect(mockSavedOrders).toHaveLength(1);
+    const o = mockSavedOrders[0];
+    // The settings mock returns {}, so any recomputation would resolve to the
+    // Israeli default (18%, inclusive) and none of these would survive.
+    expect(o.tax_rate).toBe(9.125);
+    expect(o.tax_amount).toBe(1.83);
+    expect(o.tip_amount).toBe(2.5);
+    expect(o.tip_pct).toBe(18);
+    expect(o.total_price).toBe(64.33);
+    expect(o.payment_status).toBe('paid');
+  });
+
+  test('the amount guard compares against the frozen total, not a fresh price', async () => {
+    frozenPending('CODE-FROZEN-2');
+
+    // 60 is the pre-tax items total — what a recomputation would drift toward.
+    // The frozen total is 64.33, so this must NOT be accepted as paid.
+    await request(app).post('/webhook/payment').type('form')
+      .send({ LowProfileCode: 'CODE-FROZEN-2', ResponseCode: '0', Amount: '60' })
+      .expect(200);
+    await settle();
+
+    expect(mockSavedOrders[0].payment_status).toBe('pending');
+    expect(vendorAlerts.alerts.paymentMismatch).toHaveBeenCalled();
+  });
+});
