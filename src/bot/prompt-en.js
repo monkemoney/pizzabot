@@ -102,7 +102,15 @@ function taxRule(loc, lang, hasExempt = false) {
       ? 'Prices on the menu are final — tax is already included.'
       : 'המחירים בתפריט סופיים — המס כבר כלול בהם.';
   }
-  const label = `${loc.taxLabel} ${loc.taxRate}%`;
+  // The RATE is deliberately absent from what the bot is told. Under C9 the rate
+  // follows the delivery address — a Los Angeles restaurant delivering into
+  // Santa Monica owes the destination's rate — so before the address is known
+  // there is no rate to state, and stating one early is wrong independently of
+  // whether it later changes. Jurisdictions also move on quarterly effective
+  // dates. A number the bot never received is a number it cannot get wrong;
+  // that is construction rather than discipline. The server still owns it, and
+  // orders.tax_rate still freezes what was actually charged.
+  const label = loc.taxLabel;
   const exemptLine = !hasExempt ? null : lang === 'en'
     ? `• Some items are tax exempt, so the tax is charged on the taxable items only — never state the tax as an amount, and never multiply the whole total by the rate.`
     : `• חלק מהפריטים פטורים ממס, ולכן המס נגבה רק על הפריטים החייבים — אל תנקוב בסכום המס, ואל תכפיל את הסכום הכולל בשיעור.`;
@@ -112,6 +120,7 @@ function taxRule(loc, lang, hasExempt = false) {
         exemptLine,
         `• When you quote a running total or an order summary, say the amount is before tax — for example "$28.50 before tax".`,
         `• Never present a pre-tax number as the final amount the customer will pay.`,
+        `• Never state a tax rate or a tax amount, not even approximately, and not if asked directly. The rate depends on the delivery address. Say the exact tax is shown at checkout.`,
         `• In the ACTION block, "total" is the PRE-TAX amount (items + delivery). The system adds the tax itself — do not add it yourself, or it will be charged twice.`,
       ].filter(Boolean).join('\n')
     : [
@@ -119,6 +128,7 @@ function taxRule(loc, lang, hasExempt = false) {
         exemptLine,
         `• כשאתה מציג סכום ביניים או סיכום הזמנה — ציין שהסכום לפני מס.`,
         `• אל תציג סכום לפני מס כסכום הסופי שהלקוח ישלם.`,
+        `• אל תנקוב בשיעור המס או בסכומו, גם לא בקירוב וגם לא אם שואלים ישירות. השיעור תלוי בכתובת המסירה. אמור שהמס המדויק מוצג בקופה.`,
         `• ב-ACTION, השדה "total" הוא הסכום לפני מס (פריטים + משלוח). המערכת מוסיפה את המס בעצמה — אל תוסיף אותו, אחרת הוא ייגבה פעמיים.`,
       ].filter(Boolean).join('\n');
 }

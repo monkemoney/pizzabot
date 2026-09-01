@@ -76,11 +76,34 @@ describe('language follows the tenant', () => {
 });
 
 describe('tax guidance (C5)', () => {
+  /**
+   * The rate never reaches the model at all.
+   *
+   * Under C9 the rate follows the DELIVERY ADDRESS — a Los Angeles restaurant
+   * delivering into Santa Monica owes the destination's rate — so before the
+   * address is known there is no rate to state. Jurisdictions also move on
+   * quarterly effective dates, and CDTFA publishes three decimals. A number the
+   * model was never given is one it cannot quote wrong; the two live-run defects
+   * on this branch were both a quote diverging from the charge.
+   */
+  test('no tax rate reaches the prompt, whatever the rate is', async () => {
+    for (const taxRate of [9.5, 9.125, 10.25, 8.875]) {
+      const rule = taxRule({ addsTaxAtCheckout: true, taxRate, taxLabel: 'Sales Tax' }, 'en');
+      expect(rule).not.toContain(String(taxRate));
+      expect(rule).toContain('Sales Tax is added at checkout');
+      expect(rule).toMatch(/Never state a tax rate/);
+      // and the same in Hebrew, which a US tenant also serves
+      expect(taxRule({ addsTaxAtCheckout: true, taxRate, taxLabel: 'Sales Tax' }, 'he'))
+        .not.toContain(String(taxRate));
+    }
+  });
+
   test('exclusive: the bot is told prices are pre-tax and must say so', async () => {
     const p = await build(US);
     expect(p).toContain('Menu prices are BEFORE tax');
-    expect(p).toContain('Sales Tax 9.5%');
+    expect(p).toContain('Sales Tax is added at checkout');
     expect(p).toMatch(/before tax/i);
+    expect(p).not.toMatch(/9\.5/);   // the label, never the rate
   });
 
   test('exclusive: the ACTION total stays PRE-tax', async () => {
@@ -224,7 +247,8 @@ describe('the tax rule follows the TENANT, in whichever language the customer sp
   test('a Hebrew customer at a US business is warned about tax, in Hebrew', async () => {
     const p = await build(US, 'he');
     expect(p).toContain('מחירי התפריט הם לפני מס');
-    expect(p).toContain('Sales Tax 9.5%');
+    expect(p).toContain('Sales Tax');
+    expect(p).not.toMatch(/9\.5/);
     expect(p).toMatch(/הסכום לפני מס \(פריטים \+ משלוח\)/);
   });
 
