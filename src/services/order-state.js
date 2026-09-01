@@ -448,4 +448,7 @@ module.exports = {
   TRANSITIONS, STATUSES, transition, accept, confirmPayment, afterCreate,
   notifyAdminsNewOrder, notifyAdminsPaymentClaim, scheduledTimeLabel,
   getAcceptanceMode, getDefaultPrepMinutes,
+  // Exported so the payment route resolves language through the SAME lookup
+  // rather than repeating the session query — one resolver, as above.
+  customerLang,
 };

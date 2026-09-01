@@ -2132,6 +2132,11 @@ router.post('/vendor/onboarding/:id/approve', requireVendor, async (req, res) =>
     // country this client is in. Existing tenants are never touched by it:
     // resolveLocale defaults tips_enabled to false everywhere.
     ['tips_enabled',       obRegion === 'US'],
+    // Missed-call recovery texts the CALLER, and call-events.js defaults the
+    // template language to 'he' when nothing set it. Nothing ever did, so an
+    // American who missed a call got a Hebrew SMS. Same class as the payment
+    // route: a customer-facing sender whose language nobody resolved.
+    ['missed_call_template_lang', obRegion === 'US' ? 'en' : 'he'],
     ['tip_presets',        rd.tip_presets],
     ['business_name',      ob.business_name   || ob.clients?.name || ''],
     ['bot_whatsapp',       ob.bot_whatsapp     ? ob.bot_whatsapp.replace(/\D/g, '') : ''],

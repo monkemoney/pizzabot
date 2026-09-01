@@ -10,6 +10,7 @@ let mockPendingStore  = {};
 const mockSavedOrders = [];
 const mockSentMessages= [];
 let mockVerifyResult  = { success: true };
+let mockCustomerLang  = 'he';
 
 // ── Service mocks ─────────────────────────────────────────────────────────────
 jest.mock('../src/services/cardcom', () => ({
@@ -21,6 +22,7 @@ jest.mock('../src/services/cardcom', () => ({
 }));
 
 jest.mock('../src/services/order-state', () => ({
+  customerLang:         jest.fn(async () => mockCustomerLang),
   afterCreate:          jest.fn(async () => 'manual'),
   notifyAdminsNewOrder: jest.fn(async () => {}),
   confirmPayment:       jest.fn(async (id) => {
@@ -129,6 +131,7 @@ beforeEach(() => {
   mockSavedOrders.length  = 0;
   mockSentMessages.length = 0;
   mockVerifyResult        = { success: true };
+  mockCustomerLang        = 'he';
   jest.clearAllMocks();
 });
 
@@ -342,5 +345,66 @@ describe('tax freeze — the charged rate survives a settings change', () => {
 
     expect(mockSavedOrders[0].payment_status).toBe('pending');
     expect(vendorAlerts.alerts.paymentMismatch).toHaveBeenCalled();
+  });
+});
+
+// ── Payment messages follow the customer's language ─────────────────────────
+// This route had no language branch at all: an American customer whose card was
+// declined was told so in Hebrew, on production. status-notifier had carried
+// both languages since the localisation work; the payment route never asked.
+describe('payment messages follow the customer language', () => {
+  const textsFor = (phone) => mockSentMessages.filter(m => m.phone === phone).map(m => m.text);
+
+  test('an English customer is declined in English', async () => {
+    mockCustomerLang = 'en';
+    const p = makePending({ cardcom_code: 'CODE-EN-DECLINE' });
+
+    await request(app).post('/webhook/payment').type('form')
+      .send({ LowProfileCode: 'CODE-EN-DECLINE', ResponseCode: '5', Description: 'Card declined' })
+      .expect(200);
+    await settle();
+
+    const [text] = textsFor(p.phone);
+    expect(text).toMatch(/did not approve the payment/);
+    expect(text).not.toMatch(/[֐-׿]/);          // no Hebrew reaches them at all
+  });
+
+  test('an English customer is confirmed in English, order number intact', async () => {
+    mockCustomerLang = 'en';
+    const p = makePending({ cardcom_code: 'CODE-EN-OK' });
+
+    await request(app).post('/webhook/payment').type('form')
+      .send({ LowProfileCode: 'CODE-EN-OK', ResponseCode: '0', Amount: '60', DealNumber: 'DN-1' })
+      .expect(200);
+    await settle();
+
+    const text = textsFor(p.phone).join('\n');
+    expect(text).toMatch(/Payment received/);
+    expect(text).toMatch(/\*1000\*/);
+    expect(text).not.toMatch(/[֐-׿]/);
+  });
+
+  test('a Hebrew customer is unaffected', async () => {
+    const p = makePending({ cardcom_code: 'CODE-HE-DECLINE' });
+
+    await request(app).post('/webhook/payment').type('form')
+      .send({ LowProfileCode: 'CODE-HE-DECLINE', ResponseCode: '5' })
+      .expect(200);
+    await settle();
+
+    expect(textsFor(p.phone)[0]).toMatch(/לא אושר/);
+  });
+
+  test('a language lookup failure falls back to Hebrew rather than throwing', async () => {
+    const orderState = require('../src/services/order-state');
+    orderState.customerLang.mockRejectedValueOnce(new Error('sessions unreachable'));
+    const p = makePending({ cardcom_code: 'CODE-LANG-FAIL' });
+
+    await request(app).post('/webhook/payment').type('form')
+      .send({ LowProfileCode: 'CODE-LANG-FAIL', ResponseCode: '5' })
+      .expect(200);
+    await settle();
+
+    expect(textsFor(p.phone)[0]).toMatch(/לא אושר/);
   });
 });

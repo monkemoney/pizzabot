@@ -625,6 +625,8 @@ describe('POST /api/vendor/onboarding/:id/approve — provisioning', () => {
     expect(seeded.tax_mode).toBe('exclusive');
     expect(seeded.tax_label).toBe('Sales Tax');
     expect(seeded.tax_rate).toBe(10.25);
+    // Missed-call SMS goes to the CALLER; its default was Hebrew for everyone.
+    expect(seeded.missed_call_template_lang).toBe('en');
   });
 
   // The rate 9.5 was carried in REGIONS.US as "City of Los Angeles — verify per
@@ -654,6 +656,7 @@ describe('POST /api/vendor/onboarding/:id/approve — provisioning', () => {
       expect(seeded.region).toBe('IL');
       expect(seeded.tax_mode).toBe('inclusive');
       expect(seeded.currency).toBe('ILS');
+      expect(seeded.missed_call_template_lang).toBe('he');
     }
   });
 
