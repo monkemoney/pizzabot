@@ -328,9 +328,19 @@ app.post('/webhook/:tenantId', (req, res) => handleWebhook(req, res, req.params.
 // ─── 404 ──────────────────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 
+// ─── Scheduler helper ─────────────────────────────────────────────────────────
+// A background job should run *while* the process runs, not be the reason it
+// stays alive. In production `app.listen()` at the bottom holds the event loop
+// open and these still fire on schedule underneath it. Under Jest the
+// difference is load-bearing: eight suites `require()` this file for supertest
+// and nothing ever listens, so an un-unref'd interval kept the worker alive
+// past the last assertion and Jest force-exited it. unref() is the line between
+// "runs while the server runs" and "keeps the server running".
+const every = (fn, ms) => setInterval(fn, ms).unref();
+
 // ─── Auto-complete delivered orders hourly ────────────────────────────────────
-setInterval(autoCompleteDeliveredOrders, 60 * 60 * 1000);
-setInterval(pruneOldSessions, 24 * 60 * 60 * 1000); // daily
+every(autoCompleteDeliveredOrders, 60 * 60 * 1000);
+every(pruneOldSessions, 24 * 60 * 60 * 1000); // daily
 
 // Daily Claude-spend rollup + budget alarm. Gated like the other write-side
 // jobs: a local dev server pointed at the production DB must not alert the
@@ -340,7 +350,7 @@ if (process.env.RENDER || process.env.ENABLE_ROLLUP) {
   const runRollup = () => usageRollup.rollup(2)
     .then(() => usageRollup.checkBudget())
     .catch((err) => console.error('[usage-rollup] job error:', err.message));
-  setInterval(runRollup, 60 * 60 * 1000);
+  every(runRollup, 60 * 60 * 1000);
 } else {
   console.log('[usage-rollup] disabled (not on Render; set ENABLE_ROLLUP=1 to enable locally)');
 }
@@ -398,7 +408,7 @@ async function processScheduledOrders() {
     console.error('[scheduler] error:', err.message);
   }
 }
-setInterval(processScheduledOrders, 60 * 1000); // every minute
+every(processScheduledOrders, 60 * 1000); // every minute
 
 // ─── Unaccepted-order escalation (every minute) ──────────────────────────────
 // Manual-acceptance flow: an order sitting in 'new' means the business hasn't
@@ -502,7 +512,7 @@ async function escalateUnacceptedOrders() {
 // pointed at the production DB must never WhatsApp real admins/customers.
 // Local override for testing: ENABLE_ESCALATION=1.
 if (process.env.RENDER || process.env.ENABLE_ESCALATION) {
-  setInterval(escalateUnacceptedOrders, 60 * 1000);
+  every(escalateUnacceptedOrders, 60 * 1000);
 } else {
   console.log('[escalation] disabled (not on Render; set ENABLE_ESCALATION=1 to enable locally)');
 }
@@ -579,7 +589,7 @@ async function superviseHandoffs() {
 // Same production-only gate as the escalation loop — a local dev server against
 // the prod DB must never message real customers.
 if (process.env.RENDER || process.env.ENABLE_ESCALATION) {
-  setInterval(superviseHandoffs, 60 * 1000);
+  every(superviseHandoffs, 60 * 1000);
 }
 
 // ─── Pending payment watchdog (every 2 min) ──────────────────────────────────
@@ -611,7 +621,7 @@ async function pollPendingPayments() {
   }
 }
 
-setInterval(pollPendingPayments, 2 * 60 * 1000); // every 2 minutes
+every(pollPendingPayments, 2 * 60 * 1000); // every 2 minutes
 
 // ─── Start (only when run directly, not when require()'d in tests) ───────────
 if (require.main === module) app.listen(PORT, async () => {
