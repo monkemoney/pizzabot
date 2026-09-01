@@ -524,6 +524,10 @@ function openNewOnboardingModal() {
   document.getElementById('obPhone').value = '';
   document.getElementById('obPlan').value  = 'trial';
   document.getElementById('obRegion').value = 'IL';
+  // Reset the rate with the region it belongs to — reopening after a US draft
+  // otherwise leaves the field visible and pre-filled under an Israeli region.
+  document.getElementById('obTaxRate').value = '';
+  toggleObTaxRate();
   document.getElementById('obLinkBox').style.display = 'none';
   document.getElementById('obSubmitBtn').style.display = '';
   document.getElementById('newOnboardingModal').style.display = 'flex';
@@ -543,6 +547,7 @@ async function submitNewOnboarding(e) {
       contact_phone: document.getElementById('obPhone').value.trim(),
       plan:          document.getElementById('obPlan').value,
       region:        document.getElementById('obRegion').value,
+      tax_rate:      document.getElementById('obTaxRate').value.trim() || null,
     });
     document.getElementById('obLinkInput').value = data.link;
     document.getElementById('obLinkBox').style.display = '';
@@ -552,6 +557,12 @@ async function submitNewOnboarding(e) {
     alert(err.message);
     btn.disabled = false; btn.textContent = 'צור לקוח ויצר לינק';
   }
+}
+
+// The rate field only means anything for a region that adds tax at checkout.
+function toggleObTaxRate() {
+  const isUS = document.getElementById('obRegion').value === 'US';
+  document.getElementById('obTaxRateGroup').style.display = isUS ? '' : 'none';
 }
 
 function copyOnboardingLink() {

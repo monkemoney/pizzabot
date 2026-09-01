@@ -329,6 +329,56 @@ describe('POST /api/vendor/onboarding', () => {
       .send({ name: 'לקוח' })
       .expect(401);
   });
+
+  // The rate is chosen with the region, by the only person who can look it up.
+  // REGIONS.US.tax_rate is 9.5 labelled "verify per address" — an unsourced
+  // number that no published figure for Los Angeles agrees with.
+  test('a US link cannot be created without an explicit rate', async () => {
+    const res = await request(app)
+      .post('/api/vendor/onboarding')
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .send({ name: 'LA Pizza', region: 'US' })
+      .expect(400);
+
+    expect(res.body.field).toBe('tax_rate');
+    // Rejected BEFORE the client row is written — validating after the insert
+    // would leave an orphan client with no session attached to it.
+    expect(insertLog.find(l => l.table === 'clients' && l.data.name === 'LA Pizza')).toBeUndefined();
+  });
+
+  test('a US link stores the rate the vendor verified, to three decimals', async () => {
+    await request(app)
+      .post('/api/vendor/onboarding')
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .send({ name: 'LA Pizza', region: 'US', tax_rate: '9.125' })
+      .expect(200);
+
+    const session = insertLog.find(l => l.table === 'onboarding_sessions');
+    expect(session.data.region).toBe('US');
+    expect(session.data.tax_rate).toBe(9.125);
+  });
+
+  test('an Israeli link needs no rate — the national rate is the authority', async () => {
+    await request(app)
+      .post('/api/vendor/onboarding')
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .send({ name: 'פיצה תל אביב', region: 'IL' })
+      .expect(200);
+
+    const session = insertLog.find(l => l.table === 'onboarding_sessions');
+    expect(session.data.region).toBe('IL');
+    expect(session.data.tax_rate).toBeNull();
+  });
+
+  test('a rate outside 0-100 is refused', async () => {
+    for (const bad of ['-1', '101', 'abc']) {
+      await request(app)
+        .post('/api/vendor/onboarding')
+        .set('Authorization', `Bearer ${vendorToken}`)
+        .send({ name: 'X', region: 'US', tax_rate: bad })
+        .expect(400);
+    }
+  });
 });
 
 // ── Vendor side: GET /api/vendor/onboarding ───────────────────────────────────
@@ -563,7 +613,9 @@ describe('POST /api/vendor/onboarding/:id/approve — provisioning', () => {
    * is thinking about which country the client is in.
    */
   test('the region seeds the tenant\'s whole tax model', async () => {
-    const s = readySession({ region: 'US' });
+    // 10.25, not the region default: the seeded rate is the one the vendor
+    // verified, and REGIONS.US.tax_rate must never reach a live tenant.
+    const s = readySession({ region: 'US', tax_rate: 10.25 });
     await approve(s.id).expect(200);
 
     const seeded = Object.fromEntries(
@@ -572,7 +624,21 @@ describe('POST /api/vendor/onboarding/:id/approve — provisioning', () => {
     expect(seeded.currency).toBe('USD');
     expect(seeded.tax_mode).toBe('exclusive');
     expect(seeded.tax_label).toBe('Sales Tax');
-    expect(seeded.tax_rate).toBe(9.5);
+    expect(seeded.tax_rate).toBe(10.25);
+  });
+
+  // The rate 9.5 was carried in REGIONS.US as "City of Los Angeles — verify per
+  // address" and seeded straight into settings, where it read as a decision
+  // somebody made. No published source agrees on Los Angeles and seventeen
+  // district rates apply inside the city. Approving is the moment a business
+  // starts charging real customers, so an unverified rate is refused outright.
+  test('a US session with no explicit rate cannot be approved', async () => {
+    const s = readySession({ region: 'US' });
+    const res = await approve(s.id).expect(400);
+    expect(res.body.field).toBe('tax_rate');
+
+    // and nothing was provisioned on the way to that refusal
+    expect(Object.values(tables.settings).filter(r => r.tenant_id === TENANT)).toHaveLength(0);
   });
 
   test('an unset or unknown region provisions a working Israeli tenant', async () => {
@@ -722,5 +788,49 @@ describe('POST /api/auth/login returns the tenant language', () => {
       .send({ username: 'vendor', password: 'wrong' });
     expect(res.status).toBe(401);
     expect(res.body.lang).toBeUndefined();
+  });
+});
+
+// ── The other door into the same decision ────────────────────────────────────
+// approve() is not the only way a tenant becomes American: an existing business
+// can be switched with a settings PATCH. That path seeded the region default
+// too, and silently — nobody reviews a settings write the way somebody reviews
+// an approval. Leaving the previous country's rate would be worse still: 18%
+// Israeli VAT charged to a Los Angeles customer as sales tax.
+describe('PATCH /api/settings — switching region', () => {
+  const settingsSvc = require('../src/services/settings');
+  const adminToken  = signDashboard('admin', 'admin', 'aaaaaaaa-0000-0000-0000-000000000001');
+
+  const patch = (body) => request(app).patch('/api/settings')
+    .set('Authorization', `Bearer ${adminToken}`).send(body);
+  const persisted = () => Object.fromEntries(settingsSvc.set.mock.calls.map(([k, v]) => [k, v]));
+
+  beforeEach(() => { settingsSvc.set.mockClear(); });
+
+  test('switching to US without a rate is refused, and writes nothing', async () => {
+    const res = await patch({ region: 'US' }).expect(400);
+    expect(res.body.field).toBe('tax_rate');
+    expect(settingsSvc.set).not.toHaveBeenCalled();
+  });
+
+  test('switching to US keeps the rate given in the same request', async () => {
+    await patch({ region: 'US', tax_rate: 10.25 }).expect(200);
+    const p = persisted();
+    expect(p.region).toBe('US');
+    expect(p.tax_rate).toBe(10.25);        // NOT REGIONS.US.tax_rate
+    expect(p.currency).toBe('USD');
+    expect(p.tax_mode).toBe('exclusive');
+  });
+
+  test('switching to IL still seeds the national rate, which is the authority there', async () => {
+    await patch({ region: 'IL' }).expect(200);
+    const p = persisted();
+    expect(p.region).toBe('IL');
+    expect(p.tax_rate).toBe(18);
+    expect(p.currency).toBe('ILS');
+  });
+
+  test('an unknown region is refused rather than throwing', async () => {
+    await patch({ region: 'ZZ' }).expect(400);
   });
 });

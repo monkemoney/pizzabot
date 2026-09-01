@@ -481,12 +481,23 @@ label { display: block; font-size: .82rem; font-weight: 700; color: var(--text-m
            vendor is actually thinking about which country the client is in. -->
       <div class="form-group" style="margin-bottom:14px">
         <label style="font-size:.84rem;font-weight:600">אזור</label>
-        <select id="obRegion" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-family:inherit;font-size:.88rem">
+        <select id="obRegion" onchange="toggleObTaxRate()" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-family:inherit;font-size:.88rem">
           <option value="IL">🇮🇱 ישראל — עברית, ₪, מע"מ כלול במחיר</option>
           <option value="US">🇺🇸 ארה"ב — אנגלית, $, מס מתווסף בקופה</option>
         </select>
         <div style="font-size:.75rem;color:var(--text-muted);margin-top:5px">
           קובע את שפת אשף ההקמה, ואת המטבע ומודל המס של העסק לאחר האישור.
+        </div>
+      </div>
+      <!-- Required for US and hidden otherwise. approve() refuses a US tenant
+           with no explicit rate: the region default is an unverified 9.5, and
+           this is the one moment somebody can look the real one up. Israel's
+           rate is national, so the field has nothing to ask there. -->
+      <div class="form-group" id="obTaxRateGroup" style="margin-bottom:14px;display:none">
+        <label style="font-size:.84rem;font-weight:600">שיעור מס (%)</label>
+        <input type="number" id="obTaxRate" step="0.001" min="0" max="100" placeholder="10.25" dir="ltr" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-family:inherit;font-size:.88rem">
+        <div style="font-size:.75rem;color:var(--text-muted);margin-top:5px">
+          אמת מול <a href="https://maps.cdtfa.ca.gov/" target="_blank" rel="noopener">כלי הכתובות של CDTFA</a>. השיעור נקבע לפי כתובת, נפרסם בשלוש ספרות עשרוניות, ומשתנה בין ערים סמוכות.
         </div>
       </div>
       <div class="form-group" style="margin-bottom:20px">

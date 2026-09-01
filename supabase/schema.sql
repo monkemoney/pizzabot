@@ -297,6 +297,7 @@ CREATE TABLE IF NOT EXISTS onboarding_sessions (
   -- Region: chosen by the vendor at link creation. Drives the wizard's language
   -- and examples, and seeds settings.region (and with it the tax model) on approve.
   region               TEXT DEFAULT 'IL',
+  tax_rate            NUMERIC(6,3),             -- vendor-set rate; NULL = not stated (approve refuses for US)
 
   -- Filled by the client
   business_name        TEXT,

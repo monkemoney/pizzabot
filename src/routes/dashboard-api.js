@@ -1230,10 +1230,25 @@ router.patch('/settings', requireAdmin, async (req, res) => {
   // outrank the new region's default through the legacy fallback.
   if ('region' in updates) {
     const code = String(updates.region).toUpperCase();
+    if (!REGIONS[code]) return res.status(400).json({ error: `אזור לא מוכר: ${code}` });
     updates.region = code;
     const d = REGIONS[code];
+
+    // Switching INTO the US requires the rate in the same request. Seeding the
+    // region default here would be the same unsourced 9.5 that approve() now
+    // refuses, and worse it would happen silently — nobody reviews a settings
+    // PATCH. Keeping the previous country's rate would be worse still: 18%
+    // Israeli VAT charged as American sales tax.
+    if (code === 'US' && !('tax_rate' in updates)) {
+      return res.status(400).json({
+        error: 'מעבר לאזור אמריקאי מחייב שיעור מס מפורש באותה בקשה — אמת מול CDTFA',
+        field: 'tax_rate',
+      });
+    }
+
     for (const [k, v] of Object.entries({
-      currency: d.currency, tax_mode: d.tax_mode, tax_rate: d.tax_rate,
+      currency: d.currency, tax_mode: d.tax_mode,
+      ...(code === 'US' ? {} : { tax_rate: d.tax_rate }),
       tax_label: d.tax_label, tax_on_delivery: d.tax_on_delivery,
     })) {
       if (!(k in updates)) updates[k] = v;
@@ -1902,6 +1917,30 @@ router.post('/vendor/onboarding', requireVendor, async (req, res) => {
   const askedRegion = String(req.body.region || 'IL').toUpperCase();
   const region = REGIONS[askedRegion] ? askedRegion : 'IL';
 
+  // The rate travels with the region, and for US it is REQUIRED. Falling back
+  // to the region's own default would write a guess into settings where it
+  // reads as a decision somebody made: no published source agrees on Los
+  // Angeles (9.75? 10.25?) and seventeen district rates apply inside the city.
+  // Israel's rate is national, so there the region default IS the authority and
+  // leaving this null is correct.
+  //
+  // Validated here, BEFORE the client row is inserted — a rejection after that
+  // insert would leave an orphan client behind with no session.
+  let taxRate = null;
+  if (req.body.tax_rate != null && String(req.body.tax_rate).trim() !== '') {
+    const r = parseFloat(req.body.tax_rate);
+    if (!Number.isFinite(r) || r < 0 || r > 100) {
+      return res.status(400).json({ error: 'שיעור המס חייב להיות מספר בין 0 ל-100' });
+    }
+    taxRate = r;
+  }
+  if (region === 'US' && taxRate === null) {
+    return res.status(400).json({
+      error: 'עסק אמריקאי מחייב שיעור מס מפורש — אמת את הכתובת מול CDTFA לפני יצירת הקישור',
+      field: 'tax_rate',
+    });
+  }
+
   const { data: client, error: cErr } = await supabase
     .from('clients')
     .insert({ name, contact_phone: contact_phone?.replace(/\D/g, ''), plan: plan || 'trial', notes, status: 'trial' })
@@ -1910,7 +1949,7 @@ router.post('/vendor/onboarding', requireVendor, async (req, res) => {
 
   const { data: session, error: sErr } = await supabase
     .from('onboarding_sessions')
-    .insert({ client_id: client.id, business_name: name, region })
+    .insert({ client_id: client.id, business_name: name, region, tax_rate: taxRate })
     .select().single();
   if (sErr) return res.status(500).json({ error: sErr.message });
 
@@ -2068,11 +2107,24 @@ router.post('/vendor/onboarding/:id/approve', requireVendor, async (req, res) =>
   const obRegion = REGIONS[askedRegion] ? askedRegion : 'IL';
   const rd = REGIONS[obRegion];
 
+  // Approving is the moment this becomes a live business charging real people,
+  // so a US tenant must not go live on a rate nobody verified. The vendor sets
+  // it alongside the region when the link is created; if that never happened,
+  // refuse rather than fall back to REGIONS.US.tax_rate. Seeding the default
+  // would put a guess in the settings table looking exactly like a decision.
+  const obTaxRate = ob.tax_rate == null ? null : parseFloat(ob.tax_rate);
+  if (obRegion === 'US' && !Number.isFinite(obTaxRate)) {
+    return res.status(400).json({
+      error: 'לא ניתן לאשר עסק אמריקאי בלי שיעור מס מפורש — הגדר אותו בסשן ההקמה ואמת מול CDTFA',
+      field: 'tax_rate',
+    });
+  }
+
   const settingsToSeed = [
     ['region',             obRegion],
     ['currency',           rd.currency],
     ['tax_mode',           rd.tax_mode],
-    ['tax_rate',           rd.tax_rate],
+    ['tax_rate',           Number.isFinite(obTaxRate) ? obTaxRate : rd.tax_rate],
     ['tax_label',          rd.tax_label],
     ['tax_on_delivery',    rd.tax_on_delivery],
     // Tipping is a convention of the country the business trades in, so the
