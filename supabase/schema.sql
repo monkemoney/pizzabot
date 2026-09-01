@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS orders (
   delivery_method     TEXT NOT NULL CHECK (delivery_method IN ('pickup','delivery')),
   address             TEXT,
   delivery_fee        NUMERIC(10,2),            -- charged fee, frozen at order time
-  tax_rate            NUMERIC(5,2),             -- rate applied, frozen at order time
+  tax_rate            NUMERIC(6,3),             -- rate applied, frozen at order time (3dp: US rates)
   tax_amount          NUMERIC(10,2),            -- tax charged (exclusive) or contained (inclusive)
   tip_amount          NUMERIC(10,2),            -- tip charged, frozen at order time; never taxed
   tip_pct             NUMERIC(5,2),             -- the ladder % the customer picked; null = named amount
