@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jasell — Your restaurant answers every order, instantly</title>
+<meta name="description" content="An AI ordering assistant on your own phone number. No marketplace commission, no missed calls, no one tied to the phone.">
+<script>
+// Already logged in → straight to your surface. The landing page is for
+// visitors who have not signed in; the root used to BE the login page, so
+// without this an existing bookmark would land on marketing copy instead of
+// the dashboard. Same rule index.html applies, and it runs before paint.
+(function () {
+  var t = localStorage.getItem('token');
+  if (!t) return;
+  var r = localStorage.getItem('role');
+  window.location.replace(r === 'vendor' ? '/admin' : r === 'kitchen' ? '/kitchen' : '/dashboard.html');
+})();
+</script>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&family=Heebo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --brand:var(--color-brand,#5e17eb); --brand-dark:var(--color-brand-dark,#4a0fd4);
+    --brand-soft:var(--color-brand-soft,#ede8fd); --accent:var(--color-accent,#ff66c4);
+    --bg:var(--color-bg,#f9fafb); --surface:var(--color-surface,#fff);
+    --border:var(--color-border,#e5e7eb); --text:var(--color-text,#111827);
+    --muted:var(--color-text-secondary,#4b5563); --danger:var(--color-danger,#e0004d);
+    --ok:var(--color-success,#16a34a);
+    --maxw:1120px;
+  }
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:'Poppins','Heebo',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased}
+  html[dir="rtl"] body{font-family:'Heebo','Poppins',system-ui,sans-serif}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+
+  /* ── nav ─────────────────────────────────────────────────────── */
+  nav{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+  .nav-in{max-width:var(--maxw);margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:16px}
+  .logo{font-weight:800;font-size:1.15rem;letter-spacing:-.02em;color:var(--brand);text-decoration:none}
+  .logo span{color:var(--accent)}
+  .nav-sp{flex:1}
+  .langsel{display:flex;gap:2px;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:3px}
+  .langsel button{border:0;background:transparent;font:inherit;font-size:.74rem;font-weight:700;color:var(--muted);padding:4px 9px;border-radius:6px;cursor:pointer;transition:.18s}
+  .langsel button[aria-pressed="true"]{background:var(--brand);color:#fff}
+  .btn{display:inline-block;border:0;font:inherit;font-weight:700;border-radius:10px;padding:11px 20px;cursor:pointer;text-decoration:none;transition:transform .16s,box-shadow .16s,background .16s}
+  .btn-primary{background:var(--brand);color:#fff;box-shadow:0 6px 18px -6px color-mix(in srgb,var(--brand) 70%,transparent)}
+  .btn-primary:hover{background:var(--brand-dark);transform:translateY(-1px)}
+  .btn-ghost{background:transparent;color:var(--text);border:1px solid var(--border);padding:10px 16px}
+  .btn-ghost:hover{border-color:var(--brand);color:var(--brand)}
+  .btn-lg{padding:15px 30px;font-size:1.02rem}
+
+  /* ── reveal ──────────────────────────────────────────────────── */
+  .rv{opacity:0;transform:translateY(18px);transition:opacity .7s cubic-bezier(.2,.7,.3,1),transform .7s cubic-bezier(.2,.7,.3,1)}
+  .rv.in{opacity:1;transform:none}
+  @media (prefers-reduced-motion:reduce){.rv{opacity:1;transform:none;transition:none}}
+
+  /* ── hero ────────────────────────────────────────────────────── */
+  header{padding:76px 0 64px;position:relative;overflow:hidden}
+  header::before{content:"";position:absolute;inset:-40% 30% auto -10%;height:620px;background:radial-gradient(closest-side,color-mix(in srgb,var(--brand) 16%,transparent),transparent);pointer-events:none}
+  header::after{content:"";position:absolute;inset:-20% -15% auto auto;width:520px;height:520px;background:radial-gradient(closest-side,color-mix(in srgb,var(--accent) 14%,transparent),transparent);pointer-events:none}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;background:var(--brand-soft);color:var(--brand-dark);font-size:.78rem;font-weight:700;padding:6px 13px;border-radius:999px;margin-bottom:20px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);animation:pulse 2.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.8)}}
+  h1{font-size:clamp(2.1rem,5.4vw,3.5rem);line-height:1.1;letter-spacing:-.03em;font-weight:800;margin:0 0 20px;max-width:17ch;position:relative}
+  .sub{font-size:clamp(1.02rem,2vw,1.2rem);color:var(--muted);max-width:56ch;margin:0 0 32px;position:relative}
+  .cta-row{display:flex;gap:12px;flex-wrap:wrap;position:relative}
+  .note{font-size:.82rem;color:var(--muted);margin-top:16px;position:relative}
+
+  /* ── stats ───────────────────────────────────────────────────── */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;margin:64px 0}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:22px}
+  .stat .n{font-size:2.1rem;font-weight:800;letter-spacing:-.03em;color:var(--brand);line-height:1.1}
+  .stat .l{font-size:.86rem;color:var(--muted);margin-top:5px}
+
+  /* ── sections ────────────────────────────────────────────────── */
+  section{padding:64px 0}
+  h2{font-size:clamp(1.6rem,3.4vw,2.2rem);letter-spacing:-.025em;font-weight:800;margin:0 0 12px;max-width:20ch}
+  .lede{color:var(--muted);max-width:62ch;margin:0 0 36px;font-size:1.02rem}
+
+  /* ── commission chart ────────────────────────────────────────── */
+  .cmp{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:28px}
+  .bar-row{display:grid;grid-template-columns:132px 1fr 76px;align-items:center;gap:14px;margin-bottom:14px}
+  .bar-row .who{font-size:.88rem;font-weight:600}
+  .track{height:32px;background:var(--bg);border-radius:8px;overflow:hidden}
+  .fill{height:100%;width:0;border-radius:8px;transition:width 1.1s cubic-bezier(.2,.7,.3,1)}
+  .fill.rival{background:linear-gradient(90deg,color-mix(in srgb,var(--danger) 55%,#fff),var(--danger))}
+  .fill.ours{background:linear-gradient(90deg,var(--brand),var(--accent))}
+  .val{font-size:.9rem;font-weight:800;text-align:end}
+  .rival .val{color:var(--danger)}
+  .srcs{font-size:.74rem;color:var(--muted);margin-top:18px;line-height:1.7}
+  .srcs a{color:var(--muted)}
+
+  /* ── features ────────────────────────────────────────────────── */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .2s,box-shadow .2s,border-color .2s}
+  .card:hover{transform:translateY(-3px);box-shadow:0 14px 34px -18px rgba(17,24,39,.28);border-color:color-mix(in srgb,var(--brand) 32%,var(--border))}
+  .ico{width:42px;height:42px;border-radius:11px;background:var(--brand-soft);display:grid;place-items:center;margin-bottom:14px}
+  .ico svg{width:21px;height:21px;stroke:var(--brand);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .card h3{margin:0 0 7px;font-size:1.03rem;font-weight:700}
+  .card p{margin:0;color:var(--muted);font-size:.92rem}
+
+  /* ── steps ───────────────────────────────────────────────────── */
+  .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:22px;counter-reset:s}
+  .step{position:relative;padding-top:44px}
+  .step::before{counter-increment:s;content:counter(s);position:absolute;top:0;inset-inline-start:0;width:32px;height:32px;border-radius:9px;background:var(--brand);color:#fff;font-weight:800;font-size:.9rem;display:grid;place-items:center}
+  .step h3{margin:0 0 6px;font-size:1rem;font-weight:700}
+  .step p{margin:0;color:var(--muted);font-size:.92rem}
+
+  /* ── final cta ───────────────────────────────────────────────── */
+  .final{background:linear-gradient(135deg,var(--brand),var(--brand-dark) 62%,#2d0a80);border-radius:22px;padding:52px 34px;text-align:center;color:#fff;position:relative;overflow:hidden}
+  .final::after{content:"";position:absolute;inset:auto -14% -58% auto;width:400px;height:400px;background:radial-gradient(closest-side,color-mix(in srgb,var(--accent) 42%,transparent),transparent)}
+  .final h2{color:#fff;margin:0 auto 12px;max-width:22ch;position:relative}
+  .final p{color:color-mix(in srgb,#fff 82%,transparent);max-width:52ch;margin:0 auto 26px;position:relative}
+  .final .btn{background:#fff;color:var(--brand);position:relative}
+  .final .btn:hover{background:#f2eeff}
+
+  footer{padding:36px 0 52px;color:var(--muted);font-size:.84rem;border-top:1px solid var(--border);margin-top:56px}
+  .foot-in{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-in">
+    <a class="logo" href="/">Jasell<span>.</span></a>
+    <div class="nav-sp"></div>
+    <div class="langsel" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="es" aria-pressed="false">ES</button>
+      <button type="button" data-lang="he" aria-pressed="false">עב</button>
+    </div>
+    <a class="btn btn-ghost" href="/login" data-t="nav_login">Log in</a>
+  </div>
+</nav>
+
+<header>
+  <div class="wrap">
+    <div class="eyebrow rv"><span class="dot"></span><span data-t="eyebrow">Answers in seconds, around the clock</span></div>
+    <h1 class="rv" data-t="h1">Every order answered. Nobody on the phone.</h1>
+    <p class="sub rv" data-t="sub">Jasell is an AI ordering assistant that runs on your restaurant's own number. It takes the whole order — menu, toppings, address, delivery fee, tax and tip — and sends it straight to your kitchen. You keep the customer, and you keep the margin.</p>
+    <div class="cta-row rv">
+      <a class="btn btn-primary btn-lg" href="#contact" data-t="cta_main">Get started</a>
+      <a class="btn btn-ghost btn-lg" href="#how" data-t="cta_alt">See how it works</a>
+    </div>
+    <p class="note rv" data-t="note">Works on your existing number. Your phone service stays exactly where it is.</p>
+
+    <div class="stats">
+      <div class="stat rv"><div class="n" data-count="24">0</div><div class="l" data-t="s1">Hours a day it answers — 7 days a week</div></div>
+      <div class="stat rv"><div class="n"><span data-count="0">0</span>%</div><div class="l" data-t="s2">Commission per order. Not a slice of anything.</div></div>
+      <div class="stat rv"><div class="n" data-t="s3n">Seconds</div><div class="l" data-t="s3">To reply, whether it is one order or twenty at once</div></div>
+      <div class="stat rv"><div class="n" data-t="s4n">Your number</div><div class="l" data-t="s4">Not a new one your customers have to learn</div></div>
+    </div>
+  </div>
+</header>
+
+<section id="cost">
+  <div class="wrap">
+    <h2 class="rv" data-t="h2_cost">The marketplaces charge you for your own customers</h2>
+    <p class="lede rv" data-t="lede_cost">Delivery marketplaces take a cut of every single order, and the advertised rate is not what most operators end up paying. Jasell charges a setup fee and a subscription. What a customer pays you is what you keep.</p>
+    <div class="cmp rv" id="chart">
+      <div class="bar-row rival"><div class="who">DoorDash</div><div class="track"><div class="fill rival" data-w="30"></div></div><div class="val">15–30%</div></div>
+      <div class="bar-row rival"><div class="who">Uber Eats</div><div class="track"><div class="fill rival" data-w="27"></div></div><div class="val">15–27%</div></div>
+      <div class="bar-row rival"><div class="who" data-t="effective">Effective cost</div><div class="track"><div class="fill rival" data-w="40"></div></div><div class="val">30–40%</div></div>
+      <div class="bar-row"><div class="who"><strong>Jasell</strong></div><div class="track"><div class="fill ours" data-w="2"></div></div><div class="val" style="color:var(--brand)">0%</div></div>
+      <p class="srcs" data-t="srcs">Published 2026 marketplace rates; effective cost reflects processing fees, required promotions and refunds on top of the base commission. Sources listed at the bottom of this page.</p>
+    </div>
+  </div>
+</section>
+
+<section id="what">
+  <div class="wrap">
+    <h2 class="rv" data-t="h2_what">What it actually does</h2>
+    <p class="lede rv" data-t="lede_what">Not a chat widget. A working ordering line that behaves like your best phone person on their best day.</p>
+    <div class="grid">
+      <div class="card rv">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5Z"/></svg></div>
+        <h3 data-t="f1h">It takes the whole order</h3>
+        <p data-t="f1p">Menu questions, toppings by the half or quarter, the address, the delivery zone and fee, sales tax and the tip. It quotes what it is allowed to quote and the server owns every number that gets charged.</p>
+      </div>
+      <div class="card rv">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.5 2.8.6a2 2 0 0 1 1.7 2.1Z"/><line x1="2" y1="2" x2="22" y2="22"/></svg></div>
+        <h3 data-t="f2h">It catches the calls you miss</h3>
+        <p data-t="f2p">A call that rings out during the dinner rush is an order that went to somebody else. Jasell texts the caller back automatically, in their language, and picks the order up from there.</p>
+      </div>
+      <div class="card rv">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M3 3h18v13H3z"/><path d="M8 21h8M12 16v5"/></svg></div>
+        <h3 data-t="f3h">Your kitchen sees it immediately</h3>
+        <p data-t="f3p">A live kitchen screen, an orders board, and a dashboard for the owner. Orders can require your approval before they start, or run automatically once you trust it.</p>
+      </div>
+      <div class="card rv">
+        <div class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20Z"/></svg></div>
+        <h3 data-t="f4h">It speaks to your customers, not at them</h3>
+        <p data-t="f4p">Each customer is served in their own language, and their choice sticks for next time. Menus, prices and receipts follow the same rule.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2 class="rv" data-t="h2_how">Live in days, not months</h2>
+    <p class="lede rv" data-t="lede_how">You do not change your phone service, print new menus or retrain anyone.</p>
+    <div class="steps">
+      <div class="step rv"><h3 data-t="p1h">We text-enable your number</h3><p data-t="p1p">You sign one authorization form. Your voice service, your carrier and your number all stay exactly as they are — texting is simply added on top.</p></div>
+      <div class="step rv"><h3 data-t="p2h">We build your menu with you</h3><p data-t="p2p">Categories, dishes, toppings, delivery zones and fees, hours, and the tax rate for your address.</p></div>
+      <div class="step rv"><h3 data-t="p3h">You watch the first orders</h3><p data-t="p3p">Start with every order needing your approval. Turn that off when it has earned it.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="contact">
+  <div class="wrap">
+    <div class="final rv">
+      <h2 data-t="h2_cta">Stop paying a commission on people who already know you</h2>
+      <p data-t="p_cta">Tell us your restaurant's number and we will show you what your own ordering line looks like.</p>
+      <a class="btn btn-lg" href="mailto:hello@jasell.com?subject=Jasell%20for%20my%20restaurant" data-t="cta_final">Talk to us</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-in">
+    <span>© <span id="yr">2026</span> Jasell</span>
+    <span class="nav-sp"></span>
+    <a href="/login" data-t="nav_login">Log in</a>
+  </div>
+  <div class="wrap srcs" style="margin-top:14px">
+    <span data-t="src_label">Rate sources:</span>
+    <a href="https://rezku.com/blog/third-party-delivery-fees-in-2026-what-doordash-uber-eats-grubhub-really-cost-restaurants/" target="_blank" rel="noopener">Rezku 2026</a> ·
+    <a href="https://www.trykitchenhub.com/post/what-marketplaces-arent-telling-you-how-commission-models-are-quietly-changing" target="_blank" rel="noopener">KitchenHub 2026</a> ·
+    <a href="https://ustechautomations.com/resources/blog/doordash-vs-uber-eats-for-restaurants-2026" target="_blank" rel="noopener">US Tech Automations 2026</a>
+  </div>
+</footer>
+
+<script>
+/* ── Copy for the three languages this page is offered in. ───────────────────
+   This is the LANDING page's own dictionary, deliberately separate from the
+   dashboard's: these are marketing strings, and a visitor with no tenant has no
+   language default to inherit. English is the default here because the page is
+   aimed at US restaurants.
+   NOTE: the Spanish copy below is a first pass and should be reviewed by a
+   native speaker before this page is advertised. */
+const COPY = {
+  en:{},  /* the markup itself is English */
+  es:{
+    nav_login:'Iniciar sesión', eyebrow:'Responde en segundos, a toda hora',
+    h1:'Cada pedido atendido. Nadie al teléfono.',
+    sub:'Jasell es un asistente de pedidos con IA que funciona en el número de su propio restaurante. Toma el pedido completo — menú, ingredientes, dirección, costo de envío, impuesto y propina — y lo envía directo a su cocina. Usted conserva al cliente y conserva el margen.',
+    cta_main:'Comenzar', cta_alt:'Ver cómo funciona',
+    note:'Funciona con su número actual. Su servicio telefónico se queda donde está.',
+    s1:'Horas al día que responde — los 7 días', s2:'Comisión por pedido. Ni una parte de nada.',
+    s3n:'Segundos', s3:'Para responder, sea un pedido o veinte a la vez',
+    s4n:'Su número', s4:'No uno nuevo que sus clientes deban aprender',
+    h2_cost:'Las plataformas le cobran por sus propios clientes',
+    lede_cost:'Las plataformas de reparto se llevan una parte de cada pedido, y la tarifa anunciada no es lo que la mayoría termina pagando. Jasell cobra una cuota de instalación y una suscripción. Lo que le paga un cliente es lo que usted se queda.',
+    effective:'Costo efectivo',
+    srcs:'Tarifas publicadas en 2026; el costo efectivo incluye comisiones de procesamiento, promociones obligatorias y reembolsos sobre la comisión base. Fuentes al pie de esta página.',
+    h2_what:'Lo que realmente hace',
+    lede_what:'No es un widget de chat. Es una línea de pedidos que trabaja como su mejor persona al teléfono en su mejor día.',
+    f1h:'Toma el pedido completo', f1p:'Preguntas del menú, ingredientes por mitad o cuarto, la dirección, la zona y el costo de envío, el impuesto y la propina. Cotiza solo lo que puede cotizar, y el servidor es dueño de cada cifra que se cobra.',
+    f2h:'Recupera las llamadas perdidas', f2p:'Una llamada que suena sin respuesta en plena hora pico es un pedido que se fue a otro lado. Jasell le escribe de vuelta automáticamente, en su idioma, y retoma el pedido desde ahí.',
+    f3h:'Su cocina lo ve de inmediato', f3p:'Una pantalla de cocina en vivo, un tablero de pedidos y un panel para el dueño. Los pedidos pueden requerir su aprobación antes de empezar, o correr solos cuando ya confíe.',
+    f4h:'Habla con sus clientes, no hacia ellos', f4p:'Cada cliente es atendido en su propio idioma, y su elección se mantiene para la próxima. Menús, precios y recibos siguen la misma regla.',
+    h2_how:'En funcionamiento en días, no meses',
+    lede_how:'No cambia su servicio telefónico, no imprime menús nuevos ni reentrena a nadie.',
+    p1h:'Habilitamos mensajes en su número', p1p:'Usted firma una autorización. Su servicio de voz, su operador y su número se quedan igual — solo se añade la mensajería encima.',
+    p2h:'Construimos su menú con usted', p2p:'Categorías, platos, ingredientes, zonas y costos de envío, horarios, y la tasa de impuesto de su dirección.',
+    p3h:'Usted mira los primeros pedidos', p3p:'Empiece exigiendo su aprobación en cada pedido. Quítela cuando se la haya ganado.',
+    h2_cta:'Deje de pagar comisión por gente que ya lo conoce',
+    p_cta:'Díganos el número de su restaurante y le mostramos cómo se ve su propia línea de pedidos.',
+    cta_final:'Hablemos', src_label:'Fuentes de tarifas:',
+  },
+  he:{
+    nav_login:'כניסה', eyebrow:'עונה תוך שניות, מסביב לשעון',
+    h1:'כל הזמנה נענית. אף אחד לא על הטלפון.',
+    sub:'ג׳סל הוא עוזר הזמנות מבוסס בינה מלאכותית שרץ על המספר של המסעדה שלך. הוא לוקח את ההזמנה מתחילתה ועד סופה — תפריט, תוספות, כתובת, דמי משלוח, מס וטיפ — ושולח אותה ישר למטבח. הלקוח נשאר שלך, וגם הרווח.',
+    cta_main:'בואו נתחיל', cta_alt:'איך זה עובד',
+    note:'עובד על המספר הקיים שלך. שירות הטלפון שלך נשאר בדיוק במקומו.',
+    s1:'שעות ביממה שהוא עונה — כל ימות השבוע', s2:'עמלה להזמנה. לא נתח משום דבר.',
+    s3n:'שניות', s3:'לתגובה, בין אם זו הזמנה אחת או עשרים במקביל',
+    s4n:'המספר שלך', s4:'לא מספר חדש שהלקוחות צריכים ללמוד',
+    h2_cost:'הפלטפורמות גובות ממך על הלקוחות שלך',
+    lede_cost:'אפליקציות המשלוחים לוקחות נתח מכל הזמנה, והתעריף המפורסם אינו מה שרוב בעלי העסקים משלמים בפועל. ג׳סל גובה דמי הקמה ומנוי. מה שהלקוח משלם לך הוא מה שנשאר אצלך.',
+    effective:'עלות בפועל',
+    srcs:'תעריפים שפורסמו ב-2026; העלות בפועל כוללת עמלות סליקה, מבצעים נדרשים והחזרים מעל העמלה הבסיסית. המקורות בתחתית העמוד.',
+    h2_what:'מה הוא באמת עושה',
+    lede_what:'לא ווידג׳ט צ׳אט. קו הזמנות עובד שמתנהג כמו האדם הכי טוב שלך על הטלפון, ביום הכי טוב שלו.',
+    f1h:'הוא לוקח את כל ההזמנה', f1p:'שאלות על התפריט, תוספות בחצי או ברבע, הכתובת, אזור המשלוח והתעריף, המס והטיפ. הוא נוקב רק במה שמותר לו, והשרת הוא הבעלים של כל סכום שנגבה.',
+    f2h:'הוא תופס את השיחות שפספסת', f2p:'שיחה שמצלצלת לריק בשעת עומס היא הזמנה שהלכה למישהו אחר. ג׳סל שולח למתקשר הודעה חוזרת אוטומטית, בשפה שלו, וממשיך את ההזמנה משם.',
+    f3h:'המטבח שלך רואה מיד', f3p:'מסך מטבח חי, לוח הזמנות, ודשבורד לבעלים. אפשר שכל הזמנה תדרוש את אישורך לפני שהיא מתחילה, או שתרוץ לבד כשתסמוך עליה.',
+    f4h:'הוא מדבר עם הלקוחות, לא אליהם', f4p:'כל לקוח מקבל שירות בשפה שלו, והבחירה נשמרת לפעם הבאה. תפריטים, מחירים וקבלות הולכים לפי אותו כלל.',
+    h2_how:'באוויר תוך ימים, לא חודשים',
+    lede_how:'אתה לא מחליף ספק טלפוניה, לא מדפיס תפריטים חדשים ולא מכשיר אף אחד מחדש.',
+    p1h:'אנחנו מאפשרים הודעות על המספר שלך', p1p:'אתה חותם על טופס הרשאה אחד. שירות השיחות, הספק והמספר נשארים כפי שהם — ההודעות פשוט מתווספות מעליהם.',
+    p2h:'בונים איתך את התפריט', p2p:'קטגוריות, מנות, תוספות, אזורי משלוח ותעריפים, שעות פעילות, ושיעור המס לפי הכתובת שלך.',
+    p3h:'אתה מסתכל על ההזמנות הראשונות', p3p:'תתחיל כשכל הזמנה דורשת את אישורך. תכבה את זה כשהוא הרוויח את זה.',
+    h2_cta:'תפסיק לשלם עמלה על אנשים שכבר מכירים אותך',
+    p_cta:'תגיד לנו את המספר של המסעדה ונראה לך איך קו ההזמנות שלך נראה.',
+    cta_final:'דברו איתנו', src_label:'מקורות התעריפים:',
+  },
+};
+
+const EN = {};
+document.querySelectorAll('[data-t]').forEach(el => { EN[el.dataset.t] = el.innerHTML; });
+COPY.en = EN;
+
+function applyLang(lang){
+  const d = COPY[lang] || COPY.en;
+  document.querySelectorAll('[data-t]').forEach(el => {
+    const v = d[el.dataset.t] ?? COPY.en[el.dataset.t];
+    if (v != null) el.innerHTML = v;
+  });
+  document.documentElement.lang = lang;
+  document.documentElement.dir  = lang === 'he' ? 'rtl' : 'ltr';
+  document.querySelectorAll('.langsel button').forEach(b =>
+    b.setAttribute('aria-pressed', String(b.dataset.lang === lang)));
+  try { localStorage.setItem('site_lang', lang); } catch {}
+}
+
+document.querySelectorAll('.langsel button').forEach(b =>
+  b.addEventListener('click', () => applyLang(b.dataset.lang)));
+
+/* A visitor has no tenant, so there is no lang_default to inherit. English is
+   the default; a previous explicit choice on this page wins. */
+(function initLang(){
+  let saved = null;
+  try { saved = localStorage.getItem('site_lang'); } catch {}
+  applyLang(['en','es','he'].includes(saved) ? saved : 'en');
+})();
+
+document.getElementById('yr').textContent = new Date().getFullYear();
+
+/* ── reveal + count-up + bars, all gated on prefers-reduced-motion ───────── */
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function countUp(el){
+  const target = Number(el.dataset.count);
+  if (reduce || !target) { el.textContent = String(target); return; }
+  const t0 = performance.now(), dur = 900;
+  (function tick(now){
+    const p = Math.min(1, (now - t0) / dur);
+    el.textContent = String(Math.round(target * (1 - Math.pow(1 - p, 3))));
+    if (p < 1) requestAnimationFrame(tick);
+  })(t0);
+}
+
+const io = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (!e.isIntersecting) continue;
+    e.target.classList.add('in');
+    e.target.querySelectorAll('[data-count]').forEach(countUp);
+    if (e.target.id === 'chart') {
+      e.target.querySelectorAll('.fill').forEach((f, i) => {
+        const w = Number(f.dataset.w);
+        setTimeout(() => { f.style.width = Math.max(w, 2) + '%'; }, reduce ? 0 : i * 130);
+      });
+    }
+    io.unobserve(e.target);
+  }
+}, { threshold: 0.18, rootMargin: '0px 0px -40px' });
+
+document.querySelectorAll('.rv').forEach(el => io.observe(el));
+</script>
+</body>
+</html>

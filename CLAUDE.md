@@ -182,7 +182,9 @@ pizza-bot/
 ### URL Routing
 
 ```
-GET  /                    → login page (vendor→/admin, kitchen→/kitchen, admin|manager→/dashboard.html)
+GET  /                    → landing page (public marketing, EN default + ES/HE selector);
+                            a visitor holding a token is bounced pre-paint to their own surface
+GET  /login               → login page (vendor→/admin, kitchen→/kitchen, admin|manager→/dashboard.html)
 GET  /dashboard.html      → business SPA
 GET  /admin               → vendor portal
 GET  /kitchen             → kitchen SPA

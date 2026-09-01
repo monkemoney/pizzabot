@@ -292,3 +292,22 @@ describe('unauthenticated payloads are rejected', () => {
     expect(mockHandleMessage).not.toHaveBeenCalled();
   });
 });
+
+// ── The root is the landing page now; login moved to /login ─────────────────
+// The root used to serve the login form, so this is a behaviour change for
+// every existing bookmark. landing.html carries a pre-paint redirect for anyone
+// holding a token; these assert the routes themselves resolve.
+describe('GET / and /login', () => {
+  test('the root serves the landing page', async () => {
+    const res = await request(app).get('/').expect(200);
+    expect(res.text).toMatch(/<title>Jasell — Your restaurant/);
+    expect(res.text).toMatch(/data-lang="es"/);          // the language selector is there
+    expect(res.text).toMatch(/localStorage\.getItem\('token'\)/); // and the session bounce
+  });
+
+  test('/login still serves the login page', async () => {
+    const res = await request(app).get('/login').expect(200);
+    expect(res.text).toMatch(/Jasell — כניסה/);
+  });
+});
+

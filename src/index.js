@@ -88,6 +88,17 @@ app.get('/menu.html', async (req, res) => {
 });
 
 // ─── Static dashboard ─────────────────────────────────────────────────────────
+// ─── Landing page at the root, login moved to /login ─────────────────────────
+// The root used to serve the login form. Anonymous visitors now get the
+// marketing page; anyone holding a token is bounced to their own surface by a
+// pre-paint script inside landing.html, so an existing bookmark still works.
+// Registered BEFORE express.static, which would otherwise serve index.html.
+app.get('/', (_req, res) =>
+  res.sendFile(path.join(__dirname, '..', 'public', 'landing.html')));
+
+app.get('/login', (_req, res) =>
+  res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
+
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // ─── Health ───────────────────────────────────────────────────────────────────
