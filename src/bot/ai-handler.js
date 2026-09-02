@@ -2,6 +2,7 @@
 
 const { callClaude }              = require('../services/claude');
 const { buildSystemPrompt }       = require('./prompts');
+const { say }                     = require('./messages');
 const { sendMessage } = require('../services/greenapi');
 const { getSession, updateSession, savePendingPayment, saveOrder,
         getLastOrderByPhone, saveCustomerProfile, getCustomerProfile,
@@ -158,7 +159,7 @@ async function priceOrder(payload, tid, where, phone) {
 
 // ─── Item dispute response handler ───────────────────────────────────────────
 
-async function handleDisputeResponse(phone, userMessage, session, tenantId) {
+async function handleDisputeResponse(phone, userMessage, session, tenantId, lang) {
   const dispute = session.pending_dispute;
   const msg     = userMessage.trim();
 
@@ -168,7 +169,7 @@ async function handleDisputeResponse(phone, userMessage, session, tenantId) {
 
   const totalRefund = missingItems.reduce((s, d) => s + (d.price || 0) * (d.qty || 1), 0);
   const isSingle    = missingItems.length === 1;
-  const namesStr    = isSingle ? `*${missingItems[0].name}*` : 'הפריטים החסרים';
+  const namesStr    = isSingle ? `*${missingItems[0].name}*` : say('dispute_missing_items', lang);
   const refundStr   = totalRefund > 0 ? ` (זיכוי של ₪${totalRefund.toFixed(0)})` : '';
 
   const choice = msg.replace(/\s+/g, '');
@@ -177,12 +178,12 @@ async function handleDisputeResponse(phone, userMessage, session, tenantId) {
     const order = await getOrderById(dispute.order_id);
     if (!order || ['cancelled', 'done'].includes(order.status)) {
       await updateSession(phone, { pending_dispute: null }, tenantId);
-      await reply(phone, 'ההזמנה כבר אינה פעילה.', tenantId);
+      await reply(phone, say('dispute_order_inactive', lang), tenantId);
       return;
     }
     await updateOrder(order.id, { dispute_status: 'resolved', dispute_resolution: 'replaced' });
     await updateSession(phone, { pending_dispute: null }, tenantId);
-    await reply(phone, `מעולה! בודקים אפשרות להחלפה — ${msg}. נחזור אליך מיד.`, tenantId);
+    await reply(phone, say('dispute_checking_replacement', lang, msg), tenantId);
     // NOTE: must call the INNER handler — we're already inside this phone's
     // serialized slot; going through the queued wrapper would deadlock.
     await handleMessageInner(phone, `רוצה לשנות ${missingItems.map(d=>d.name).join(' ו')} ל: ${msg}`, tenantId);
@@ -198,7 +199,7 @@ async function handleDisputeResponse(phone, userMessage, session, tenantId) {
   const order = await getOrderById(dispute.order_id);
   if (!order || ['cancelled', 'done'].includes(order.status)) {
     await updateSession(phone, { pending_dispute: null }, tenantId);
-    await reply(phone, 'ההזמנה כבר אינה פעילה. תודה!', tenantId);
+    await reply(phone, say('dispute_order_inactive_thanks', lang), tenantId);
     return;
   }
 
@@ -217,8 +218,8 @@ async function handleDisputeResponse(phone, userMessage, session, tenantId) {
     }).catch((err) => console.error('[dispute] cancel error:', err.message));
     await updateSession(phone, { pending_dispute: null, conversation_history: [], pending_order: {} }, tenantId);
     const refundNote = order.payment_method === 'credit'
-      ? '\nהתשלום יזוכה לכרטיסך תוך 3-5 ימי עסקים.' : '';
-    await reply(phone, `הזמנה מספר *${dispute.order_number}* בוטלה.${refundNote}\n\nמצטערים על אי הנוחות`, tenantId);
+      ? say('dispute_refund_note', lang) : '';
+    await reply(phone, say('dispute_cancelled', lang, dispute.order_number, refundNote), tenantId);
     return;
   }
 
@@ -262,7 +263,7 @@ async function handleDisputeResponse(phone, userMessage, session, tenantId) {
 
   // ── 3: Replace with something else ──
   await updateSession(phone, { pending_dispute: { ...dispute, awaiting_replacement: true } }, tenantId);
-  await reply(phone, `מה תרצה במקום ${namesStr}?\n\nכתוב מה תרצה להחליף ואנחנו נבדוק שיש לנו.`, tenantId);
+  await reply(phone, say('dispute_what_instead', lang, namesStr), tenantId);
 }
 
 // ─── Main handler ────────────────────────────────────────────────────────────
@@ -314,22 +315,35 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
   const tid = tenantId || settings.DEFAULT_TENANT_ID;
   const session = await getSession(phone, tid);
 
+  // The customer's language is resolved ONCE per message, so every branch — and
+  // every later dashboard action, which reads sessions.language through
+  // order-state — speaks the same language. Deciding it per branch is what let
+  // the after-hours reply disagree with the rest.
+  //
+  // It is resolved HERE, above the opt-out and dispute branches, rather than
+  // further down where it used to sit. Those branches return before ever
+  // reaching the old line, which is precisely why an unsubscribe confirmation
+  // and every dispute reply came back in Hebrew no matter who was reading.
+  // resolveLang is pure — rememberLang is the half that persists — so moving it
+  // earlier costs nothing and changes no answer.
+  const lang = resolveLang(userMessage, session.conversation_history, session);
+
   if (_matchesWord(userMessage, OPT_OUT_WORDS)) {
     const { setOptedOut } = require('../services/supabase');
     await setOptedOut(phone, true, tid);
     console.log(`[opt-out] ${phone} unsubscribed from marketing (tenant ${tid})`);
-    await reply(phone, 'הוסרת מרשימת הדיוור ולא נשלח אליך יותר תוכן שיווקי. עדכונים על הזמנות שביצעת ימשיכו להישלח.\nלחזרה שלח *הצטרף*.', tid);
+    await reply(phone, say('optout_confirmed', lang, say('optin_keyword', lang)), tid);
     return;
   }
   if (session.opted_out && _matchesWord(userMessage, OPT_IN_WORDS)) {
     const { setOptedOut } = require('../services/supabase');
     await setOptedOut(phone, false, tid);
-    await reply(phone, 'חזרת לרשימת הדיוור 🎉', tid);
+    await reply(phone, say('optin_confirmed', lang), tid);
     return;
   }
 
   if (session.pending_dispute) {
-    return handleDisputeResponse(phone, userMessage, session, tid);
+    return handleDisputeResponse(phone, userMessage, session, tid, lang);
   }
 
   // A pending 1-5 rating. Deliberately AFTER the dispute check: while a dispute
@@ -356,11 +370,7 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
   // small gap — their conversation already surfaced via earlier messages).
   await recordInboundForInbox(phone, userMessage, session, tid);
 
-  // The customer's language is resolved ONCE per message and persisted here, so
-  // every branch below — and every later dashboard action, which reads
-  // sessions.language through order-state — speaks the same language. Deciding
-  // it per branch is what let the after-hours reply disagree with the rest.
-  const lang = resolveLang(userMessage, session.conversation_history, session);
+
   rememberLang(phone, lang, session, tid);
 
   const open = await settings.isOpen(tid);
@@ -539,7 +549,7 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
   } catch (err) {
     console.error('[ai-handler] Claude error:', err.message);
     require('../services/vendor-alerts').alerts.botError(phone, err).catch(() => {});
-    await reply(phone, 'מצטערים, אירעה שגיאה זמנית. אנא נסה שוב.', tid);
+    await reply(phone, say('error_temporary', lang), tid);
     return;
   }
 
@@ -633,7 +643,7 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
         if (minFromNow < lead) {
           const earliest = new Date(nowIL.getTime() + lead * 60000);
           const earliestStr = earliest.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false });
-          await reply(phone, `לא ניתן לתזמן הזמנה בפחות מ-${lead} דקות מראש.\nהשעה המוקדמת ביותר שניתן לתזמן כרגע: *${earliestStr}*.`, tid);
+          await reply(phone, say('schedule_too_soon', lang, lead, earliestStr), tid);
           await updateSession(phone, { conversation_history: updatedHistory }, tid);
           return;
         }
@@ -730,7 +740,7 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
       await updateSession(phone, { conversation_history: [], pending_order: {} }, tid);
     } catch (err) {
       console.error('[ai-handler] saveOrder error:', err.message);
-      await reply(phone, 'אירעה שגיאה בשמירת ההזמנה. אנא נסה שוב.', tid);
+      await reply(phone, say('error_saving_order', lang), tid);
       await updateSession(phone, { conversation_history: updatedHistory }, tid);
     }
     return;

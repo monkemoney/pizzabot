@@ -70,6 +70,80 @@ const MESSAGES = {
     he: (n) => `📝 הזמנה מספר *${n}* התקבלה!\nאנחנו מאמתים את התשלום מול חברת האשראי ונעדכן אותך מיד כשיאושר.`,
     en: (n) => `📝 Order *${n}* received!\nWe are verifying the payment with your card issuer and will update you as soon as it clears.`,
   },
+
+  // ── Disputes (ai-handler's handleDisputeResponse) ──────────────────────────
+  dispute_order_inactive: {
+    he: 'ההזמנה כבר אינה פעילה.',
+    en: 'That order is no longer active.',
+  },
+  dispute_order_inactive_thanks: {
+    he: 'ההזמנה כבר אינה פעילה. תודה!',
+    en: 'That order is no longer active. Thank you!',
+  },
+  dispute_checking_replacement: {
+    he: (what) => `מעולה! בודקים אפשרות להחלפה — ${what}. נחזור אליך מיד.`,
+    en: (what) => `Great — we're checking whether we can swap that: ${what}. We'll come back to you right away.`,
+  },
+  dispute_cancelled: {
+    he: (n, refundNote) => `הזמנה מספר *${n}* בוטלה.${refundNote}\n\nמצטערים על אי הנוחות`,
+    en: (n, refundNote) => `Order *${n}* has been cancelled.${refundNote}\n\nSorry for the trouble.`,
+  },
+  dispute_what_instead: {
+    he: (names) => `מה תרצה במקום ${names}?\n\nכתוב מה תרצה להחליף ואנחנו נבדוק שיש לנו.`,
+    en: (names) => `What would you like instead of ${names}?\n\nTell us what to swap it for and we'll check we have it.`,
+  },
+  /** Interpolated INTO dispute_cancelled — its own key because it is a sentence,
+   *  not a value, and it was Hebrew inside an otherwise translated message. */
+  dispute_refund_note: {
+    he: '\nהתשלום יזוכה לכרטיסך תוך 3-5 ימי עסקים.',
+    en: '\nYour card will be refunded within 3-5 business days.',
+  },
+  /** Used where the customer named no single item. */
+  dispute_missing_items: {
+    he: 'הפריטים החסרים',
+    en: 'the missing items',
+  },
+
+  // ── Marketing opt-out ──────────────────────────────────────────────────────
+  /** The keyword is NOT translated freely: it is interpolated from the word the
+   *  matcher actually accepts, or the instruction sends the customer to type
+   *  something the bot will not recognise. */
+  optout_confirmed: {
+    he: (word) => `הוסרת מרשימת הדיוור ולא נשלח אליך יותר תוכן שיווקי. עדכונים על הזמנות שביצעת ימשיכו להישלח.\nלחזרה שלח *${word}*.`,
+    en: (word) => `You've been removed from our marketing list and won't get promotional messages. Updates about orders you place will still reach you.\nTo rejoin, send *${word}*.`,
+  },
+  optin_confirmed: {
+    he: 'חזרת לרשימת הדיוור 🎉',
+    en: "You're back on the list 🎉",
+  },
+  /** The word to send to rejoin — must be one of OPT_IN_WORDS in ai-handler. */
+  optin_keyword: { he: 'הצטרף', en: 'START' },
+
+  // ── Errors and limits ──────────────────────────────────────────────────────
+  error_temporary: {
+    he: 'מצטערים, אירעה שגיאה זמנית. אנא נסה שוב.',
+    en: 'Sorry, something went wrong for a moment. Please try again.',
+  },
+  error_saving_order: {
+    he: 'אירעה שגיאה בשמירת ההזמנה. אנא נסה שוב.',
+    en: "We couldn't save that order. Please try again.",
+  },
+  schedule_too_soon: {
+    he: (lead, earliest) => `לא ניתן לתזמן הזמנה בפחות מ-${lead} דקות מראש.\nהשעה המוקדמת ביותר שניתן לתזמן כרגע: *${earliest}*.`,
+    en: (lead, earliest) => `Orders need at least ${lead} minutes' notice.\nThe earliest we can schedule right now is *${earliest}*.`,
+  },
+
+  // ── Payment confirmed (order-state's confirmPayment) ───────────────────────
+  method_bit:  { he: 'Bit', en: 'Bit' },
+  method_cash: { he: 'מזומן', en: 'cash' },
+  pay_confirmed_pending: {
+    he: (n, m) => `✅ קיבלנו את התשלום ב${m}! (הזמנה מספר *${n}*)\nההזמנה ממתינה לאישור המסעדה — נעדכן אותך ברגע שתאושר.`,
+    en: (n, m) => `✅ Payment received by ${m}! (Order *${n}*)\nYour order is waiting for the restaurant to approve it — we'll update you the moment it does.`,
+  },
+  pay_confirmed_preparing: {
+    he: (n, m) => `✅ קיבלנו את התשלום ב${m}! (הזמנה מספר *${n}*)\nההזמנה בהכנה 🍕`,
+    en: (n, m) => `✅ Payment received by ${m}! (Order *${n}*)\nYour order is being prepared 🍕`,
+  },
 };
 
 /**
