@@ -26,35 +26,10 @@ const router = express.Router();
 // whichever path arrives first creates the row, and a later verified webhook
 // upgrades it to paid instead of creating a second one.
 
-// Customer-facing payment messages, in the same {he,en} shape status-notifier
-// uses, resolved through order-state's single customerLang().
-//
-// This file had no language branch at all: every customer, American included,
-// was told in Hebrew that their card was declined. status-notifier had carried
-// both languages all along — the payment route simply never asked which one.
-const PAY_MSG = {
-  declined: {
-    he: '❌ התשלום לא אושר על ידי חברת האשראי. אפשר לנסות שוב או לבחור אמצעי תשלום אחר.',
-    en: '❌ Your card issuer did not approve the payment. You can try again or choose another payment method.',
-  },
-  paidManual: {
-    he: (n) => `✅ התשלום התקבל! הזמנה מספר *${n}* נשלחה למסעדה לאישור 🍕\nנעדכן אותך ברגע שההזמנה תאושר ותיכנס להכנה.`,
-    en: (n) => `✅ Payment received! Order *${n}* has been sent to the restaurant for approval 🍕\nWe'll let you know the moment it is approved and goes into preparation.`,
-  },
-  paidAuto: {
-    he: (n) => `✅ התשלום התקבל! (הזמנה מספר *${n}*)`,
-    en: (n) => `✅ Payment received! (Order *${n}*)`,
-  },
-  recorded: {
-    he: (n) => `📝 הזמנה מספר *${n}* התקבלה!\nאנחנו מאמתים את התשלום מול חברת האשראי ונעדכן אותך מיד כשיאושר.`,
-    en: (n) => `📝 Order *${n}* received!\nWe are verifying the payment with your card issuer and will update you as soon as it clears.`,
-  },
-};
-
-function payText(key, lang, orderNumber) {
-  const m = PAY_MSG[key][lang] || PAY_MSG[key].he;
-  return typeof m === 'function' ? m(orderNumber) : m;
-}
+// Customer-facing payment messages live in the bot's message catalogue with
+// every other string a customer reads — see src/bot/messages.js for why they
+// are not four separate maps.
+const { say } = require('../bot/messages');
 
 function orderPayloadFrom(pending, { verified, dealNumber }) {
   const orderData = pending.order_data || {};
@@ -102,7 +77,7 @@ async function confirmPending(pending, source = 'webhook', outcome = null) {
   if (outcome && outcome.hasCode && !outcome.success) {
     console.warn(`[payment:${source}] declined (code=${outcome.responseCode} ${outcome.description}) for ${pending.cardcom_code}`);
     await deletePendingPayment(pending.id).catch(() => {});
-    await sendMessage(pending.phone, payText('declined', lang), tenantId).catch(() => {});
+    await sendMessage(pending.phone, say('pay_declined', lang), tenantId).catch(() => {});
     return false;
   }
 
@@ -147,12 +122,12 @@ async function confirmPending(pending, source = 'webhook', outcome = null) {
       // Acceptance flow: auto → afterCreate accepts and sends the approval/ETA
       // message itself; manual → tell the customer it awaits approval.
       const mode = await orderState.afterCreate(savedOrder, { notifyAdmins: true }).catch(() => 'manual');
-      msg = payText(mode === 'manual' ? 'paidManual' : 'paidAuto', lang, orderNumber);
+      msg = say(mode === 'manual' ? 'pay_paid_manual' : 'pay_paid_auto', lang, orderNumber);
     } else {
       // Unverified: the order is recorded so nothing is lost, but it is not
       // paid until Cardcom confirms — the business sees it as awaiting payment.
       await orderState.notifyAdminsNewOrder(savedOrder).catch(() => {});
-      msg = payText('recorded', lang, orderNumber);
+      msg = say('pay_recorded', lang, orderNumber);
     }
 
     await sendMessage(pending.phone, msg, tenantId).catch((err) =>

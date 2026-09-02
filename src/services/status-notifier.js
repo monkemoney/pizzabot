@@ -4,28 +4,8 @@ const { sendMessage } = require('./greenapi');
 const settings        = require('./settings');
 const DEFAULT_TENANT_ID = process.env.TENANT_ID || 'aaaaaaaa-0000-0000-0000-000000000001';
 
-const STATUS_MESSAGES = {
-  preparing: {
-    he: '⏳ ההזמנה שלך בהכנה! נעדכן אותך כשתצא למשלוח.',
-    en: "⏳ Your order is being prepared! We'll update you when it's on its way.",
-  },
-  ready: {
-    he: '✅ ההזמנה שלך מוכנה! אפשר לאסוף 🏍️',
-    en: '✅ Your order is ready for pickup! 🏍️',
-  },
-  out_for_delivery: {
-    he: '🛵 ההזמנה שלך יצאה למשלוח! זמן הגעה משוער: 30-45 דקות.',
-    en: '🛵 Your order is on its way! Estimated arrival: 30-45 minutes.',
-  },
-  delivered: {
-    he: '✅ ההזמנה נמסרה! תיהנו 🍕',
-    en: '✅ Your order has been delivered! Enjoy 🍕',
-  },
-  cancelled: {
-    he: '❌ ההזמנה שלך בוטלה. לשאלות צרו קשר.',
-    en: '❌ Your order has been cancelled. Please contact us for questions.',
-  },
-};
+const { MESSAGES, say } = require('../bot/messages');
+
 
 /**
  * Notify customer of status change.
@@ -40,14 +20,12 @@ async function notifyStatusChange(phone, status, lang = 'he', orderNumber, order
   const tid = order?.tenant_id || tenantId;
 
   // ── Customer notification ──────────────────────────────────────────────────
-  const msgs = STATUS_MESSAGES[status];
+  const key = `status_${status}`;
   // 'ready' notification only for pickup orders
   const skipNotify = status === 'ready' && order?.delivery_method !== 'pickup';
-  if (msgs && !skipNotify) {
-    const text   = msgs[lang] || msgs.he;
-    const prefix = lang === 'en'
-      ? `*Order #${orderNumber}*\n`
-      : `*הזמנה מספר ${orderNumber}*\n`;
+  if (MESSAGES[key] && !skipNotify) {
+    const text   = say(key, lang);
+    const prefix = say('status_prefix', lang, orderNumber);
     await sendMessage(phone, prefix + text, tid).catch(err =>
       console.error(`[notifier] Customer notify failed ${phone}:`, err.message)
     );

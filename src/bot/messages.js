@@ -1,304 +1,92 @@
 'use strict';
 
-const { MENU, calcItemPrice, calcCartTotal } = require('./menu');
+/**
+ * Every string the bot says to a CUSTOMER, in one catalogue.
+ *
+ * This codebase keeps a dictionary per SURFACE on purpose — the public menu has
+ * MENU_HE2EN, the wizard has OB_HE2EN, the tour has its own. The bot's messages
+ * looked like four surfaces and are one: the WhatsApp conversation. Split across
+ * status-notifier, payment.js, ai-handler and order-state, adding a language
+ * meant four edits in four styles, and nothing could check that a language was
+ * complete. That is how the payment route ended up with no language branch at
+ * all while status-notifier had carried he/en since the localisation work.
+ *
+ * Values are a string, or a function when the message interpolates. Resolution
+ * runs lang -> en -> he: a string nobody has translated yet should reach an
+ * American customer in English rather than Hebrew, and the coverage test is
+ * what stops it being missing in the first place.
+ *
+ * The language of a conversation comes from order-state's customerLang(), which
+ * reads the customer's own session. Do not add a `lang = 'he'` default to a
+ * caller here — a default that call sites forget is failure class 6, and it is
+ * exactly how every dashboard-triggered status update once reached English
+ * customers in Hebrew.
+ */
 
-// ---------------------------------------------------------------------------
-// Message templates — every key has both `he` and `en` variants.
-// Variable interpolation: use {{varName}} placeholders.
-// ---------------------------------------------------------------------------
 const MESSAGES = {
-  welcome: {
-    he: '👋 ברוכים הבאים לפיצרייה שלנו!\n\nלבחירת שפה / To choose language:\n1️⃣ עברית\n2️⃣ English',
-    en: '👋 Welcome to our Pizzeria!\n\nTo choose language / לבחירת שפה:\n1️⃣ עברית\n2️⃣ English',
+  // ── Order status (moved verbatim from status-notifier.js) ──────────────────
+  status_preparing: {
+    he: '⏳ ההזמנה שלך בהכנה! נעדכן אותך כשתצא למשלוח.',
+    en: "⏳ Your order is being prepared! We'll update you when it's on its way.",
+  },
+  status_ready: {
+    he: '✅ ההזמנה שלך מוכנה! אפשר לאסוף 🏍️',
+    en: '✅ Your order is ready for pickup! 🏍️',
+  },
+  status_out_for_delivery: {
+    he: '🛵 ההזמנה שלך יצאה למשלוח! זמן הגעה משוער: 30-45 דקות.',
+    en: '🛵 Your order is on its way! Estimated arrival: 30-45 minutes.',
+  },
+  status_delivered: {
+    he: '✅ ההזמנה נמסרה! תיהנו 🍕',
+    en: '✅ Your order has been delivered! Enjoy 🍕',
+  },
+  status_cancelled: {
+    he: '❌ ההזמנה שלך בוטלה. לשאלות צרו קשר.',
+    en: '❌ Your order has been cancelled. Please contact us for questions.',
   },
 
-  mainMenu: {
-    he: '🍕 *תפריט ראשי*\n\n1️⃣ הזמן פיצה\n2️⃣ צפה בתפריט\n3️⃣ צור קשר\n\nבחר אפשרות:',
-    en: '🍕 *Main Menu*\n\n1️⃣ Place an order\n2️⃣ View menu\n3️⃣ Contact us\n\nChoose an option:',
+  /** Heading above a status message. Was `lang === 'en' ? … : …` inline — the
+   *  same two-valued shape that put Spanish on the Hebrew side everywhere else. */
+  status_prefix: {
+    he: (n) => `*הזמנה מספר ${n}*\n`,
+    en: (n) => `*Order #${n}*\n`,
   },
 
-  fullMenu: {
-    he:
-      '📋 *התפריט שלנו*\n\n' +
-      '*🍕 פיצות:*\n' +
-      MENU.pizzas.map((p, i) => `${i + 1}. ${p.he} — ₪${p.price}`).join('\n') +
-      '\n\n*📐 גדלים (תוספת):*\n' +
-      MENU.sizes.map((s) => `• ${s.he}${s.extra > 0 ? ` (+₪${s.extra})` : ''}`).join('\n') +
-      '\n\n*🧀 תוספות:*\n' +
-      MENU.toppings.map((t) => `• ${t.he} — ₪${t.price}`).join('\n') +
-      '\n\n*🥗 תוספות לצד:*\n' +
-      MENU.sides.map((s) => `• ${s.he} — ₪${s.price}`).join('\n') +
-      '\n\n*🥤 שתייה:*\n' +
-      MENU.drinks.map((d) => `• ${d.he} — ₪${d.price}`).join('\n') +
-      `\n\n*🚗 דמי משלוח:* ₪${MENU.delivery.price}`,
-    en:
-      '📋 *Our Menu*\n\n' +
-      '*🍕 Pizzas:*\n' +
-      MENU.pizzas.map((p, i) => `${i + 1}. ${p.en} — ₪${p.price}`).join('\n') +
-      '\n\n*📐 Sizes (extra charge):*\n' +
-      MENU.sizes.map((s) => `• ${s.en}${s.extra > 0 ? ` (+₪${s.extra})` : ''}`).join('\n') +
-      '\n\n*🧀 Toppings:*\n' +
-      MENU.toppings.map((t) => `• ${t.en} — ₪${t.price}`).join('\n') +
-      '\n\n*🥗 Sides:*\n' +
-      MENU.sides.map((s) => `• ${s.en} — ₪${s.price}`).join('\n') +
-      '\n\n*🥤 Drinks:*\n' +
-      MENU.drinks.map((d) => `• ${d.en} — ₪${d.price}`).join('\n') +
-      `\n\n*🚗 Delivery fee:* ₪${MENU.delivery.price}`,
+  // ── Payment (moved verbatim from payment.js's PAY_MSG) ─────────────────────
+  pay_declined: {
+    he: '❌ התשלום לא אושר על ידי חברת האשראי. אפשר לנסות שוב או לבחור אמצעי תשלום אחר.',
+    en: '❌ Your card issuer did not approve the payment. You can try again or choose another payment method.',
   },
-
-  contactUs: {
-    he: '📞 *צור קשר*\n\nטלפון: 03-1234567\nאימייל: pizza@example.com\nשעות פעילות: א-ה 11:00–23:00, ו-ש 12:00–00:00',
-    en: '📞 *Contact Us*\n\nPhone: 03-1234567\nEmail: pizza@example.com\nHours: Sun–Thu 11:00–23:00, Fri–Sat 12:00–00:00',
+  pay_paid_manual: {
+    he: (n) => `✅ התשלום התקבל! הזמנה מספר *${n}* נשלחה למסעדה לאישור 🍕\nנעדכן אותך ברגע שההזמנה תאושר ותיכנס להכנה.`,
+    en: (n) => `✅ Payment received! Order *${n}* has been sent to the restaurant for approval 🍕\nWe'll let you know the moment it is approved and goes into preparation.`,
   },
-
-  pizzaMenu: {
-    he:
-      '🍕 *בחר פיצה:*\n\n' +
-      MENU.pizzas.map((p, i) => `${i + 1}. ${p.he} — ₪${p.price}`).join('\n'),
-    en:
-      '🍕 *Choose your pizza:*\n\n' +
-      MENU.pizzas.map((p, i) => `${i + 1}. ${p.en} — ₪${p.price}`).join('\n'),
+  pay_paid_auto: {
+    he: (n) => `✅ התשלום התקבל! (הזמנה מספר *${n}*)`,
+    en: (n) => `✅ Payment received! (Order *${n}*)`,
   },
-
-  sizeSelect: {
-    he:
-      '📐 *בחר גודל:*\n\n' +
-      MENU.sizes.map((s, i) => `${i + 1}. ${s.he}${s.extra > 0 ? ` (+₪${s.extra})` : ''}`).join('\n'),
-    en:
-      '📐 *Choose a size:*\n\n' +
-      MENU.sizes.map((s, i) => `${i + 1}. ${s.en}${s.extra > 0 ? ` (+₪${s.extra})` : ''}`).join('\n'),
-  },
-
-  toppingsSelect: {
-    he: '🧀 *בחר תוספות* (שלח מספר להוספה/הסרה, 0 לסיום):',
-    en: '🧀 *Choose toppings* (send number to add/remove, 0 when done):',
-  },
-
-  toppingsAdded: {
-    he: '✅ עודכן! שלח עוד מספרים להוספה/הסרה, או 0 לסיום.',
-    en: '✅ Updated! Send more numbers to add/remove, or 0 when done.',
-  },
-
-  sidesMenu: {
-    he:
-      '🥗 *תוספות לצד* (שלח מספר, ניתן לבחור כמה — 0 לדילוג):*\n\n' +
-      MENU.sides.map((s, i) => `${i + 1}. ${s.he} — ₪${s.price}`).join('\n') +
-      '\n\n0. דלג',
-    en:
-      '🥗 *Sides* (send number, multiple allowed — 0 to skip):*\n\n' +
-      MENU.sides.map((s, i) => `${i + 1}. ${s.en} — ₪${s.price}`).join('\n') +
-      '\n\n0. Skip',
-  },
-
-  drinksMenu: {
-    he:
-      '🥤 *שתייה* (שלח מספר, ניתן לבחור כמה — 0 לדילוג):*\n\n' +
-      MENU.drinks.map((d, i) => `${i + 1}. ${d.he} — ₪${d.price}`).join('\n') +
-      '\n\n0. דלג',
-    en:
-      '🥤 *Drinks* (send number, multiple allowed — 0 to skip):*\n\n' +
-      MENU.drinks.map((d, i) => `${i + 1}. ${d.en} — ₪${d.price}`).join('\n') +
-      '\n\n0. Skip',
-  },
-
-  deliveryMethod: {
-    he: '🚗 *שיטת קבלה:*\n\n1️⃣ איסוף עצמי\n2️⃣ משלוח לבית (+₪15)',
-    en: '🚗 *Delivery method:*\n\n1️⃣ Pickup\n2️⃣ Delivery (+₪15)',
-  },
-
-  addressPrompt: {
-    he: '🏠 שלח את כתובת המשלוח שלך:',
-    en: '🏠 Please send your delivery address:',
-  },
-
-  notesPrompt: {
-    he: '📝 יש הערות להזמנה? (כתוב הערה או שלח 0 לדילוג)',
-    en: '📝 Any notes for your order? (type a note or send 0 to skip)',
-  },
-
-  paymentSelect: {
-    he: '💳 *שיטת תשלום:*\n\n1️⃣ מזומן\n2️⃣ אשראי',
-    en: '💳 *Payment method:*\n\n1️⃣ Cash\n2️⃣ Credit card',
-  },
-
-  confirmPrompt: {
-    he: '{{summary}}\n\n1️⃣ אשר הזמנה ✅\n2️⃣ בטל הזמנה ❌',
-    en: '{{summary}}\n\n1️⃣ Confirm order ✅\n2️⃣ Cancel order ❌',
-  },
-
-  orderConfirmed: {
-    he: '🎉 *הזמנה אושרה!*\n\nמספר הזמנה: *{{orderId}}*\n\nתודה רבה! ההזמנה שלך בדרך. 🍕',
-    en: '🎉 *Order confirmed!*\n\nOrder ID: *{{orderId}}*\n\nThank you! Your order is on its way. 🍕',
-  },
-
-  orderCancelled: {
-    he: '❌ ההזמנה בוטלה.\n\nנשמח לשרת אותך שוב! שלח כל הודעה להתחיל מחדש.',
-    en: '❌ Order cancelled.\n\nWe hope to serve you again! Send any message to start over.',
-  },
-
-  addMoreItems: {
-    he: '✅ הפיצה נוספה לסל!\n\n1️⃣ הוסף פיצה נוספת\n2️⃣ המשך לתוספות / שתייה',
-    en: '✅ Pizza added to cart!\n\n1️⃣ Add another pizza\n2️⃣ Continue to sides / drinks',
-  },
-
-  invalidInput: {
-    he: '⚠️ קלט לא תקין. אנא בחר אפשרות מהרשימה.',
-    en: '⚠️ Invalid input. Please choose one of the listed options.',
-  },
-
-  goodbye: {
-    he: '👋 להתראות! אנחנו מצפים לראותך שוב. שלח כל הודעה להזמין שוב.',
-    en: '👋 Goodbye! We hope to see you again. Send any message to order again.',
+  pay_recorded: {
+    he: (n) => `📝 הזמנה מספר *${n}* התקבלה!\nאנחנו מאמתים את התשלום מול חברת האשראי ונעדכן אותך מיד כשיאושר.`,
+    en: (n) => `📝 Order *${n}* received!\nWe are verifying the payment with your card issuer and will update you as soon as it clears.`,
   },
 };
 
-// ---------------------------------------------------------------------------
-// Translation helper
-// ---------------------------------------------------------------------------
-
 /**
- * Get the message string for `key` in the given language, with optional
- * variable interpolation.  Variables are expressed as {{varName}} in templates.
+ * Resolve one message for a language.
  *
- * @param {string} key       — key in MESSAGES
- * @param {string} lang      — 'he' | 'en'
- * @param {Object} [vars={}] — map of variable name → value
- * @returns {string}
+ * Throws on an unknown key rather than returning empty: a message the bot
+ * silently fails to send is indistinguishable from one the customer ignored,
+ * and this is the layer that talks to people who are paying.
  */
-function t(key, lang, vars = {}) {
+function say(key, lang, ...args) {
   const entry = MESSAGES[key];
-  if (!entry) {
-    console.warn(`[messages] Unknown message key: ${key}`);
-    return '';
-  }
-  const safeLang = lang === 'en' ? 'en' : 'he';
-  let text = entry[safeLang] || entry['he'] || '';
-
-  // Interpolate {{varName}} placeholders
-  for (const [name, value] of Object.entries(vars)) {
-    text = text.replace(new RegExp(`\\{\\{${name}\\}\\}`, 'g'), String(value));
-  }
-  return text;
+  if (!entry) throw new Error(`[messages] unknown key: ${key}`);
+  const v = entry[lang] || entry.en || entry.he;
+  return typeof v === 'function' ? v(...args) : v;
 }
 
-// ---------------------------------------------------------------------------
-// Order summary builder
-// ---------------------------------------------------------------------------
+/** Languages a message may be written in. Extend with the catalogue, not before. */
+const LANGS = ['he', 'en'];
 
-/**
- * Build a human-readable order summary string.
- *
- * @param {Object} params
- * @param {Array}  params.cart            — pizza items
- * @param {Array}  params.sides           — side items
- * @param {Array}  params.drinks          — drink items
- * @param {string} params.deliveryMethod  — 'pickup' | 'delivery'
- * @param {string} params.address         — delivery address (optional)
- * @param {string} params.notes           — order notes (optional)
- * @param {string} params.paymentMethod   — 'cash' | 'credit'
- * @param {string} params.lang            — 'he' | 'en'
- * @returns {string}
- */
-function buildOrderSummary({ cart, sides, drinks, deliveryMethod, address, notes, paymentMethod, lang }) {
-  const isHe = lang !== 'en';
-  const lines = [];
-
-  if (isHe) {
-    lines.push('📋 *סיכום הזמנה:*\n');
-    lines.push('🍕 *פיצות:*');
-    cart.forEach((item, idx) => {
-      const pizzaName  = item.pizza[isHe ? 'he' : 'en'];
-      const sizeName   = item.size[isHe ? 'he' : 'en'];
-      const price      = calcItemPrice(item);
-      const toppingStr = item.toppings && item.toppings.length > 0
-        ? item.toppings.map((tp) => tp[isHe ? 'he' : 'en']).join(', ')
-        : 'ללא תוספות';
-      lines.push(`  ${idx + 1}. ${pizzaName} (${sizeName})`);
-      lines.push(`     תוספות: ${toppingStr}`);
-      lines.push(`     מחיר: ₪${price}`);
-    });
-
-    if (sides && sides.length > 0) {
-      lines.push('\n🥗 *תוספות לצד:*');
-      sides.forEach((s) => lines.push(`  • ${s.he} — ₪${s.price}`));
-    }
-
-    if (drinks && drinks.length > 0) {
-      lines.push('\n🥤 *שתייה:*');
-      drinks.forEach((d) => lines.push(`  • ${d.he} — ₪${d.price}`));
-    }
-
-    const total = calcCartTotal(cart, sides, drinks, deliveryMethod);
-    const subtotal = total - (deliveryMethod === 'delivery' ? MENU.delivery.price : 0);
-
-    lines.push(`\n💰 סכום ביניים: ₪${subtotal}`);
-    if (deliveryMethod === 'delivery') lines.push(`🚗 דמי משלוח: ₪${MENU.delivery.price}`);
-    lines.push(`💳 *סה"כ לתשלום: ₪${total}*`);
-
-    lines.push(`\n📦 שיטת קבלה: ${deliveryMethod === 'delivery' ? 'משלוח' : 'איסוף עצמי'}`);
-    if (deliveryMethod === 'delivery' && address) lines.push(`🏠 כתובת: ${address}`);
-    lines.push(`💳 תשלום: ${paymentMethod === 'cash' ? 'מזומן' : 'אשראי'}`);
-    if (notes) lines.push(`📝 הערות: ${notes}`);
-  } else {
-    lines.push('📋 *Order Summary:*\n');
-    lines.push('🍕 *Pizzas:*');
-    cart.forEach((item, idx) => {
-      const pizzaName  = item.pizza.en;
-      const sizeName   = item.size.en;
-      const price      = calcItemPrice(item);
-      const toppingStr = item.toppings && item.toppings.length > 0
-        ? item.toppings.map((tp) => tp.en).join(', ')
-        : 'No toppings';
-      lines.push(`  ${idx + 1}. ${pizzaName} (${sizeName})`);
-      lines.push(`     Toppings: ${toppingStr}`);
-      lines.push(`     Price: ₪${price}`);
-    });
-
-    if (sides && sides.length > 0) {
-      lines.push('\n🥗 *Sides:*');
-      sides.forEach((s) => lines.push(`  • ${s.en} — ₪${s.price}`));
-    }
-
-    if (drinks && drinks.length > 0) {
-      lines.push('\n🥤 *Drinks:*');
-      drinks.forEach((d) => lines.push(`  • ${d.en} — ₪${d.price}`));
-    }
-
-    const total = calcCartTotal(cart, sides, drinks, deliveryMethod);
-    const subtotal = total - (deliveryMethod === 'delivery' ? MENU.delivery.price : 0);
-
-    lines.push(`\n💰 Subtotal: ₪${subtotal}`);
-    if (deliveryMethod === 'delivery') lines.push(`🚗 Delivery fee: ₪${MENU.delivery.price}`);
-    lines.push(`💳 *Total: ₪${total}*`);
-
-    lines.push(`\n📦 Delivery method: ${deliveryMethod === 'delivery' ? 'Delivery' : 'Pickup'}`);
-    if (deliveryMethod === 'delivery' && address) lines.push(`🏠 Address: ${address}`);
-    lines.push(`💳 Payment: ${paymentMethod === 'cash' ? 'Cash' : 'Credit card'}`);
-    if (notes) lines.push(`📝 Notes: ${notes}`);
-  }
-
-  return lines.join('\n');
-}
-
-/**
- * Build the toppings selection menu with checkmarks on selected items.
- * @param {Array}  selectedToppings  — array of topping objects currently in current_item
- * @param {string} lang
- * @returns {string}
- */
-function buildToppingsMenu(selectedToppings, lang) {
-  const isHe  = lang !== 'en';
-  const header = isHe ? '🧀 *בחר תוספות* (שלח מספר להוספה/הסרה, 0 לסיום):\n' : '🧀 *Choose toppings* (send number to add/remove, 0 when done):\n';
-  const selectedIds = new Set((selectedToppings || []).map((t) => t.id));
-
-  const rows = MENU.toppings.map((tp, idx) => {
-    const checked = selectedIds.has(tp.id) ? '✅ ' : '   ';
-    const name    = isHe ? tp.he : tp.en;
-    return `${checked}${idx + 1}. ${name} — ₪${tp.price}`;
-  });
-
-  const footer = isHe ? '\n0. סיים תוספות' : '\n0. Done with toppings';
-  return header + rows.join('\n') + footer;
-}
-
-module.exports = { MESSAGES, t, buildOrderSummary, buildToppingsMenu };
+module.exports = { MESSAGES, say, LANGS };
