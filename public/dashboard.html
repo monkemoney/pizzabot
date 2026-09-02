@@ -758,6 +758,21 @@ input[type=time] { direction: ltr; }
     <div class="page-header"><div class="page-title" data-i18n="title_settings">הגדרות</div></div>
     <div id="settingsForm" style="display:flex;flex-direction:column;gap:18px"></div>
 
+    <!-- Replay the first-run tour. A tour you can only see once is a tour
+         nobody can show a new employee. -->
+    <div class="card" style="margin-top:18px">
+      <div style="display:flex;align-items:center;gap:12px;padding:18px 24px">
+        <div style="width:36px;height:36px;border-radius:var(--radius-md);background:var(--color-bg);display:flex;align-items:center;justify-content:center;color:var(--text-muted);flex-shrink:0">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12" y2="17"/></svg>
+        </div>
+        <div style="min-width:0;flex:1">
+          <div style="font-size:.95rem;font-weight:700;color:var(--text)" data-tr>סיור במערכת</div>
+          <div style="font-size:.78rem;color:var(--text-muted);margin-top:2px" data-tr>ההסבר הקצר על המסכים, מההתחלה</div>
+        </div>
+        <button onclick="startTour()" class="btn btn-outline btn-sm" data-tr>הצג שוב</button>
+      </div>
+    </div>
+
     <!-- Admin users section -->
     <div class="card" style="margin-top:18px">
       <div style="display:flex;align-items:center;gap:12px;padding:18px 24px;border-bottom:1px solid var(--border)">
@@ -1301,5 +1316,7 @@ input[type=time] { direction: ltr; }
 </nav>
 
 <script src="/app.js"></script>
+<!-- First-run tour. After app.js, because it anchors to nav buttons app.js un-hides by role. -->
+<script src="/tour.js"></script>
 </body>
 </html>

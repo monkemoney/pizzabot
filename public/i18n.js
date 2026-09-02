@@ -57,6 +57,12 @@ const I18N = {
 // tr('עברית') returns the English translation in EN mode, the input otherwise.
 // Missing entries fall back to the Hebrew input — safe to add strings gradually.
 const HE2EN = {
+  // First-run tour (tour.js keeps its own copy for the steps themselves; these
+  // three are dashboard chrome and belong here).
+  'סיור במערכת': 'System tour',
+  'ההסבר הקצר על המסכים, מההתחלה': 'The short walkthrough of the screens, from the top',
+  'הצג שוב': 'Show again',
+
   // Order acceptance (incoming zone + settings)
   'ממתינות לאישור': 'Awaiting approval',
   'הזמנות ממתינות': 'Orders waiting',
