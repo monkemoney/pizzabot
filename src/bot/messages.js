@@ -144,6 +144,27 @@ const MESSAGES = {
     he: (n, m) => `✅ קיבלנו את התשלום ב${m}! (הזמנה מספר *${n}*)\nההזמנה בהכנה 🍕`,
     en: (n, m) => `✅ Payment received by ${m}! (Order *${n}*)\nYour order is being prepared 🍕`,
   },
+
+  // ── Dispute resolution: items removed from a live order ────────────────────
+  dispute_topping_prefix: { he: 'תוספת', en: 'topping' },
+  dispute_refund_amount: {
+    he: (money) => `\nהחזר של ${money} יזוכה לכרטיסך.`,
+    en: (money) => `\n${money} will be refunded to your card.`,
+  },
+  dispute_order_updated: {
+    he: (removed, total, refundNote) => `ההזמנה עודכנה — הוסרו: *${removed}*.\nסכום מעודכן: ${total}.${refundNote}\nתודה על ההבנה!`,
+    en: (removed, total, refundNote) => `Your order has been updated — removed: *${removed}*.\nNew total: ${total}.${refundNote}\nThank you for understanding!`,
+  },
+
+  // ── Already bilingual inline; moved here so a third language is not Hebrew ──
+  closed_now: {
+    he: 'מצטערים, אנחנו כרגע סגורים. אנא נסה שוב בשעות הפתיחה',
+    en: "Sorry, we're currently closed. Please try again during business hours",
+  },
+  payment_link_failed: {
+    he: 'מצטערים, לא הצלחנו ליצור קישור תשלום. אנא נסה שוב.',
+    en: 'Sorry, could not generate a payment link. Please try again.',
+  },
 };
 
 /**

@@ -260,8 +260,8 @@ function hardcodedCurrency() {
     // menu rendering still quote ₪ directly. Those follow the TENANT's language
     // rather than the dashboard's, and are migrated with the bot's localisation
     // (plan item C5) — not by money(), which formats for the dashboard reader.
-    'src/index.js': 3, 'src/bot/admin-handler.js': 8, 'src/bot/ai-handler.js': 5,
-    'src/bot/menu.js': 22, 'src/bot/messages.js': 35, 'src/bot/prompts.js': 7,
+    'src/index.js': 3, 'src/bot/admin-handler.js': 8, 'src/bot/ai-handler.js': 3,
+    'src/bot/menu.js': 22, 'src/bot/messages.js': 0, 'src/bot/prompts.js': 7,
     'src/routes/dashboard-api.js': 3, 'src/services/delivery-fee.js': 1,
     'src/services/greenapi.js': 2, 'src/services/menu-service.js': 2,
     'src/services/meta-whatsapp.js': 1, 'src/services/order-state.js': 4,

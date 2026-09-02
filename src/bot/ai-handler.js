@@ -248,14 +248,17 @@ async function handleDisputeResponse(phone, userMessage, session, tenantId, lang
     });
     await updateSession(phone, { pending_dispute: null }, tenantId);
 
+    const { formatMoney, forTenant } = require('../services/locale');
+    const loc   = await forTenant(tenantId).catch(() => null);
+    const money = (v) => formatMoney(v, loc);
+
     const removedList = missingItems.map(d =>
-      d.type === 'topping' ? `תוספת ${d.name}` : d.name).join(', ');
+      d.type === 'topping' ? `${say('dispute_topping_prefix', lang)} ${d.name}` : d.name).join(', ');
     const refundNote = order.payment_method === 'credit' && removed > 0
-      ? `\nהחזר של ₪${removed.toFixed(0)} יזוכה לכרטיסך.` : '';
+      ? say('dispute_refund_amount', lang, money(removed)) : '';
 
     await reply(phone,
-      `ההזמנה עודכנה — הוסרו: *${removedList}*.\n` +
-      `סכום מעודכן: ₪${newTotal.toFixed(0)}.${refundNote}\nתודה על ההבנה!`,
+      say('dispute_order_updated', lang, removedList, money(newTotal), refundNote),
       tenantId
     );
     return;
@@ -375,9 +378,7 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
 
   const open = await settings.isOpen(tid);
   if (!open) {
-    await reply(phone, lang === 'en'
-      ? "Sorry, we're currently closed. Please try again during business hours"
-      : 'מצטערים, אנחנו כרגע סגורים. אנא נסה שוב בשעות הפתיחה', tid);
+    await reply(phone, say('closed_now', lang), tid);
     return;
   }
 
@@ -803,9 +804,7 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
       await reply(phone, linkMsg, tid);
     } catch (err) {
       console.error('[ai-handler] createPaymentPage error:', err.message);
-      await reply(phone, lang === 'en'
-        ? 'Sorry, could not generate a payment link. Please try again.'
-        : 'מצטערים, לא הצלחנו ליצור קישור תשלום. אנא נסה שוב.', tid);
+      await reply(phone, say('payment_link_failed', lang), tid);
     }
     return;
   }

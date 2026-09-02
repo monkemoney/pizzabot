@@ -1,5 +1,7 @@
 'use strict';
 
+const { say } = require('../bot/messages');
+
 /**
  * Central order state machine — the single path for every order status change.
  *
@@ -272,14 +274,15 @@ async function confirmPayment(orderId, { by = 'dashboard' } = {}) {
 
   const mode = await afterCreate(order).catch(() => 'manual');
 
-  const method  = order.payment_method === 'bit' ? 'Bit' : 'מזומן';
+  // The customer's own language — the same resolver every status change uses.
+  const lang    = await customerLang(order.phone, tenantId);
+  const method  = say(order.payment_method === 'bit' ? 'method_bit' : 'method_cash', lang);
   const pending = ['new', 'scheduled'].includes(order.status) && !order.accepted_at && mode === 'manual';
-  const tail    = pending
-    ? 'ההזמנה ממתינה לאישור המסעדה — נעדכן אותך ברגע שתאושר.'
-    : 'ההזמנה בהכנה 🍕';
 
   const { sendMessage } = require('./greenapi');
-  await sendMessage(order.phone, `✅ קיבלנו את התשלום ב${method}! (הזמנה מספר *${order.order_number}*)\n${tail}`, tenantId)
+  await sendMessage(order.phone,
+    say(pending ? 'pay_confirmed_pending' : 'pay_confirmed_preparing', lang, order.order_number, method),
+    tenantId)
     .catch((err) => console.error('[order-state] confirmPayment notify error:', err.message));
 
   console.log(`[order-state] #${order.order_number} payment confirmed (${method}, by ${by})`);
