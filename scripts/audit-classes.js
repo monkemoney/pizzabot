@@ -157,7 +157,11 @@ function he2enKeys() {
   const keys = new Set();
   const seen = new Map();          // key → first translation seen
   const conflicts = [];
-  const pair = /(?:^|,|\{|\n)\s*(?:\/\/[^\n]*\n\s*)*(['"])((?:[^\\]|\\.)*?)\1\s*:\s*(?:\n\s*)?(['"])((?:[^\\]|\\.)*?)\3/g;
+  // Values are per-language objects since the trilingual migration:
+  //   'הזמנות': { en: 'Orders' }        (es joins them in the translation pass)
+  // Coverage is still checked against the KEY; `en` is read only to detect two
+  // definitions of one key that disagree.
+  const pair = /(?:^|,|\{|\n)\s*(?:\/\/[^\n]*\n\s*)*(['"])((?:[^\\]|\\.)*?)\1\s*:\s*\{\s*en\s*:\s*(['"])((?:[^\\]|\\.)*?)\3/g;
   let m;
   while ((m = pair.exec(body))) {
     const k = m[2].replace(/\\(['"])/g, '$1');

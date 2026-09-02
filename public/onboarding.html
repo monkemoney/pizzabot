@@ -361,91 +361,99 @@ textarea#menuNotes:focus { outline: none; border-color: var(--color-brand); }
 const OLANG = window.__OB_LANG__ === 'en' ? 'en' : 'he';
 
 const OB_HE2EN = {
-  'הגדרת העסק שלך': 'Set up your business',
-  'מלא את הפרטים כדי שנוכל להכין את המערכת עבורך': 'Fill in your details so we can get your system ready',
-  'טוען...': 'Loading...',
-  'לינק לא תקין': 'Invalid link',
-  'הלינק שקיבלת אינו תקין. פנה ל-Jasell לקבלת לינק חדש.': 'This link is not valid. Contact Jasell for a new one.',
-  'הלינק פג תוקף': 'Link expired',
-  'הלינק תקף ל-30 יום. פנה ל-Jasell לקבלת לינק חדש.': 'Links are valid for 30 days. Contact Jasell for a new one.',
-  'העסק שלך באוויר!': "You're live!",
+  'הגדרת העסק שלך': { en: 'Set up your business' },
+  'מלא את הפרטים כדי שנוכל להכין את המערכת עבורך': { en: 'Fill in your details so we can get your system ready' },
+  'טוען...': { en: 'Loading...' },
+  'לינק לא תקין': { en: 'Invalid link' },
+  'הלינק שקיבלת אינו תקין. פנה ל-Jasell לקבלת לינק חדש.': { en: 'This link is not valid. Contact Jasell for a new one.' },
+  'הלינק פג תוקף': { en: 'Link expired' },
+  'הלינק תקף ל-30 יום. פנה ל-Jasell לקבלת לינק חדש.': { en: 'Links are valid for 30 days. Contact Jasell for a new one.' },
+  'העסק שלך באוויר!': { en: "You're live!" },
   'הבוט פעיל ומוכן לקבל הזמנות. פרטי הכניסה נשלחו אליך ב-WhatsApp.':
-    'Your bot is running and ready to take orders. Your login details were sent to you on WhatsApp.',
-  'הקישורים שלך': 'Your links',
-  'דשבורד ניהול': 'Management dashboard',
-  'התפריט הציבורי שלך': 'Your public menu',
-  'פתח ←': 'Open →',
-  '3 צעדים ראשונים': 'First three steps',
+    { en: 'Your bot is running and ready to take orders. Your login details were sent to you on WhatsApp.' },
+  'הקישורים שלך': { en: 'Your links' },
+  'דשבורד ניהול': { en: 'Management dashboard' },
+  'התפריט הציבורי שלך': { en: 'Your public menu' },
+  'פתח ←': { en: 'Open →' },
+  '3 צעדים ראשונים': { en: 'First three steps' },
   'היכנסו לדשבורד ועברו על התפריט — ודאו שהמנות והמחירים נכונים':
-    'Open the dashboard and review your menu — check that the items and prices are right',
+    { en: 'Open the dashboard and review your menu — check that the items and prices are right' },
   'שלחו הודעת ניסיון למספר הוואטסאפ של הבוט והזמינו משהו — כך תראו בדיוק מה הלקוחות חווים':
-    "Send a test message to your bot's WhatsApp number and order something — you'll see exactly what your customers see",
+    { en: "Send a test message to your bot's WhatsApp number and order something — you'll see exactly what your customers see" },
   'שתפו את קישור התפריט בסטורי / בביו של העסק — משם הלקוחות מזמינים':
-    'Share your menu link in your story or bio — that is where customers order from',
-  'הפרטים התקבלו!': 'Details received!',
-  'צוות Jasell יסיים את ההגדרה וייצור איתך קשר בקרוב.': 'The Jasell team will finish setting things up and be in touch shortly.',
-  'פרטי העסק': 'Business details',
-  'שם העסק *': 'Business name *',
-  'מספר WhatsApp של הבוט *': "Bot's WhatsApp number *",
-  'המספר שממנו הלקוחות יקבלו הודעות — ללא + או רווחים': 'The number customers receive messages from — no + or spaces',
-  'כתובת הסניף': 'Business address',
-  'כתובת לאיסוף עצמי': 'Pickup address',
-  'סוגי הזמנה': 'Order types',
-  'משלוח': 'Delivery',
-  'הלקוח מקבל את ההזמנה לבית': 'The customer gets the order at home',
-  'איסוף עצמי': 'Pickup',
-  'הלקוח אוסף מהסניף': 'The customer collects from you',
-  'שיטות תשלום': 'Payment methods',
-  'מזומן': 'Cash',
-  'אשראי (Cardcom)': 'Card (Cardcom)',
-  'הירשם ל-Cardcom ↗': 'Sign up for Cardcom ↗',
+    { en: 'Share your menu link in your story or bio — that is where customers order from' },
+  'הפרטים התקבלו!': { en: 'Details received!' },
+  'צוות Jasell יסיים את ההגדרה וייצור איתך קשר בקרוב.': { en: 'The Jasell team will finish setting things up and be in touch shortly.' },
+  'פרטי העסק': { en: 'Business details' },
+  'שם העסק *': { en: 'Business name *' },
+  'מספר WhatsApp של הבוט *': { en: "Bot's WhatsApp number *" },
+  'המספר שממנו הלקוחות יקבלו הודעות — ללא + או רווחים': { en: 'The number customers receive messages from — no + or spaces' },
+  'כתובת הסניף': { en: 'Business address' },
+  'כתובת לאיסוף עצמי': { en: 'Pickup address' },
+  'סוגי הזמנה': { en: 'Order types' },
+  'משלוח': { en: 'Delivery' },
+  'הלקוח מקבל את ההזמנה לבית': { en: 'The customer gets the order at home' },
+  'איסוף עצמי': { en: 'Pickup' },
+  'הלקוח אוסף מהסניף': { en: 'The customer collects from you' },
+  'שיטות תשלום': { en: 'Payment methods' },
+  'מזומן': { en: 'Cash' },
+  'אשראי (Cardcom)': { en: 'Card (Cardcom)' },
+  'הירשם ל-Cardcom ↗': { en: 'Sign up for Cardcom ↗' },
   '— לאחר ההרשמה נציג Cardcom ישלח ל-Jasell את מספר הטרמינל והסוד':
-    '— after signing up, a Cardcom rep sends Jasell your terminal number and API name',
-  'שעות פעילות': 'Opening hours',
-  'החל את שעות יום ראשון על כל הימים': 'Apply Sunday’s hours to every day',
-  'אזורי משלוח': 'Delivery areas',
+    { en: '— after signing up, a Cardcom rep sends Jasell your terminal number and API name' },
+  'שעות פעילות': { en: 'Opening hours' },
+  'החל את שעות יום ראשון על כל הימים': { en: 'Apply Sunday’s hours to every day' },
+  'אזורי משלוח': { en: 'Delivery areas' },
   'הגדר לכל עיר / אזור את מחיר המשלוח, מינימום הזמנה וזמן משוער להגעה.':
-    'Set the delivery fee, order minimum and estimated arrival time for each city or area.',
-  '+ הוסף אזור משלוח': '+ Add delivery area',
-  'התפריט שלך': 'Your menu',
+    { en: 'Set the delivery fee, order minimum and estimated arrival time for each city or area.' },
+  '+ הוסף אזור משלוח': { en: '+ Add delivery area' },
+  'התפריט שלך': { en: 'Your menu' },
   'ספרו לנו מה אתם מוכרים — מנות, מחירים, תוספות. אפשר להעתיק תפריט קיים או לכתוב בקצרה. צוות Jasell יקים את התפריט במערכת עבורכם.':
-    'Tell us what you sell — items, prices, toppings. Paste an existing menu or just write a short version. The Jasell team will build it into the system for you.',
-  'מנהלי WhatsApp': 'WhatsApp admins',
+    { en: 'Tell us what you sell — items, prices, toppings. Paste an existing menu or just write a short version. The Jasell team will build it into the system for you.' },
+  'מנהלי WhatsApp': { en: 'WhatsApp admins' },
   'מספרים שיוכלו לנהל את הבוט דרך WhatsApp — לשנות זמינות מוצרים, לעדכן סטטוס הזמנות וכד׳':
-    'Numbers that can manage the bot over WhatsApp — mark items out of stock, update order status and so on',
-  '+ הוסף מנהל': '+ Add admin',
-  'חזרה': 'Back', 'המשך': 'Continue', 'שלח פרטים': 'Submit details',
-  'עד': 'to', 'סגור': 'Closed',
-  'עיר / מיקום *': 'City / area *',
-  'שם האזור (אופציונלי)': 'Area name (optional)',
-  'הסר אזור': 'Remove area', 'הסר': 'Remove', 'שם': 'Name',
-  'ראשון': 'Sunday', 'שני': 'Monday', 'שלישי': 'Tuesday', 'רביעי': 'Wednesday',
-  'חמישי': 'Thursday', 'שישי': 'Friday', 'שבת': 'Saturday',
-  'ברוכים הבאים ל-Jasell': 'Welcome to Jasell',
-  'אספקה ותשלום': 'Fulfilment & payment',
-  'שעות ואזורי משלוח': 'Hours & delivery areas',
-  'תפריט ומנהלים': 'Menu & admins',
-  'שם עסק ומספר WhatsApp הם שדות חובה': 'Business name and WhatsApp number are required',
-  'שולח...': 'Sending...', 'שגיאה': 'Error',
+    { en: 'Numbers that can manage the bot over WhatsApp — mark items out of stock, update order status and so on' },
+  '+ הוסף מנהל': { en: '+ Add admin' },
+  'חזרה': { en: 'Back' }, 'המשך': { en: 'Continue' }, 'שלח פרטים': { en: 'Submit details' },
+  'עד': { en: 'to' }, 'סגור': { en: 'Closed' },
+  'עיר / מיקום *': { en: 'City / area *' },
+  'שם האזור (אופציונלי)': { en: 'Area name (optional)' },
+  'הסר אזור': { en: 'Remove area' }, 'הסר': { en: 'Remove' }, 'שם': { en: 'Name' },
+  'ראשון': { en: 'Sunday' }, 'שני': { en: 'Monday' }, 'שלישי': { en: 'Tuesday' }, 'רביעי': { en: 'Wednesday' },
+  'חמישי': { en: 'Thursday' }, 'שישי': { en: 'Friday' }, 'שבת': { en: 'Saturday' },
+  'ברוכים הבאים ל-Jasell': { en: 'Welcome to Jasell' },
+  'אספקה ותשלום': { en: 'Fulfilment & payment' },
+  'שעות ואזורי משלוח': { en: 'Hours & delivery areas' },
+  'תפריט ומנהלים': { en: 'Menu & admins' },
+  'שם עסק ומספר WhatsApp הם שדות חובה': { en: 'Business name and WhatsApp number are required' },
+  'שולח...': { en: 'Sending...' }, 'שגיאה': { en: 'Error' },
   // Region-dependent examples — a client in Los Angeles should not be shown a
   // Tel Aviv street or a shekel price as the model to follow.
-  'פיצה דליבריס': "Tony's Pizza",
-  'רחוב הרצל 1, תל אביב': '123 Main St, Los Angeles, CA 90012',
-  'כמו כתובת הסניף (אם שונה)': 'Same as the business address (if different)',
-  'תל אביב': 'Santa Monica',
-  'מרכז העיר': 'Downtown',
-  'מחיר משלוח (₪)': 'Delivery fee ($)',
-  'מיקודים (אופציונלי)': 'ZIP codes (optional)',
-  'מינימום הזמנה (₪)': 'Order minimum ($)',
-  'זמן משוער (דק׳)': 'Est. time (min)',
+  'פיצה דליבריס': { en: "Tony's Pizza" },
+  'רחוב הרצל 1, תל אביב': { en: '123 Main St, Los Angeles, CA 90012' },
+  'כמו כתובת הסניף (אם שונה)': { en: 'Same as the business address (if different)' },
+  'תל אביב': { en: 'Santa Monica' },
+  'מרכז העיר': { en: 'Downtown' },
+  'מחיר משלוח (₪)': { en: 'Delivery fee ($)' },
+  'מיקודים (אופציונלי)': { en: 'ZIP codes (optional)' },
+  'מינימום הזמנה (₪)': { en: 'Order minimum ($)' },
+  'זמן משוער (דק׳)': { en: 'Est. time (min)' },
   'לדוגמה:\nפיצה משפחתית — 60₪ (תוספות: זיתים, בצל, פטריות — 5₪ כל אחת)\nפיצה אישית — 35₪\nשתייה: קולה / ספרייט — 12₪':
-    'For example:\nLarge pizza — $18 (toppings: olives, onion, mushrooms — $1.50 each)\nPersonal pizza — $11\nDrinks: Coke / Sprite — $3',
+    { en: 'For example:\nLarge pizza — $18 (toppings: olives, onion, mushrooms — $1.50 each)\nPersonal pizza — $11\nDrinks: Coke / Sprite — $3' },
 };
 
 /** A client-facing string in the language of this onboarding link. */
+/** One dictionary entry, resolved for the active language. Falls back
+ *  OLANG -> en -> the Hebrew key, so an untranslated string shows English
+ *  rather than Hebrew to a client who reads neither. */
+function opick(entry, heKey) {
+  if (!entry) return heKey;
+  return entry[OLANG] || entry.en || heKey;
+}
+
 function O(he) {
-  if (OLANG !== 'en') return he;
-  return OB_HE2EN[he] ?? he;
+  if (OLANG === 'he') return he;
+  return opick(OB_HE2EN[he], he);
 }
 
 /**
@@ -457,7 +465,7 @@ function O(he) {
  * dashboard. Unknown text is left exactly as it is.
  */
 function translateStatic(root) {
-  if (OLANG !== 'en') return;
+  if (OLANG === 'he') return;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
@@ -465,14 +473,16 @@ function translateStatic(root) {
     const raw = n.nodeValue;
     const t = raw.trim();
     if (!t || !/[֐-׿]/.test(t)) continue;
-    const hit = OB_HE2EN[t];
-    if (hit) n.nodeValue = raw.replace(t, hit);
+    const hit = opick(OB_HE2EN[t], t);
+    if (hit !== t) n.nodeValue = raw.replace(t, hit);
   }
   for (const attr of ['placeholder', 'title', 'aria-label']) {
     root.querySelectorAll(`[${attr}]`).forEach((el) => {
       const v = el.getAttribute(attr);
       const t = (v || '').trim();
-      if (t && OB_HE2EN[t]) el.setAttribute(attr, OB_HE2EN[t]);
+      if (!t) return;
+      const hit = opick(OB_HE2EN[t], t);
+      if (hit !== t) el.setAttribute(attr, hit);
     });
   }
 }

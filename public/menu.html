@@ -762,52 +762,60 @@ const MLANG = window.__MENU_LANG__ === 'en' ? 'en' : 'he';
 
 const MENU_HE2EN = {
   // Tips
-  'טיפ': 'Tip', 'להוסיף טיפ?': 'Add a tip?', 'סכום אחר': 'Other amount',
-  'ללא טיפ': 'No tip', 'סכום הטיפ': 'Tip amount',
-  'טוענים את התפריט...': 'Loading the menu...',
-  'טוענים תפריט...': 'Loading menu...',
-  'שגיאה בטעינת התפריט. נסו לרענן את הדף.': "Couldn't load the menu. Please refresh the page.",
-  'דברו איתנו ב-WhatsApp': 'Chat with us on WhatsApp',
-  'צפייה בהזמנה': 'View order',
-  'ההזמנה שלי': 'My order',
-  'אזורי משלוח': 'Delivery areas',
-  'סגירה': 'Close', 'הפחתה': 'Decrease', 'הוספה': 'Add',
-  'הוספה להזמנה': 'Add to order',
-  'שליחת ההזמנה ב-WhatsApp': 'Send the order on WhatsApp',
-  'מה תרצו להזמין היום?': 'What would you like today?',
-  'אנחנו כרגע סגורים': "We're currently closed",
-  'משלוח לפי אזור': 'Delivery by area',
-  'משלוח': 'Delivery', 'משלוחים': 'Delivery',
-  'איסוף עצמי חינם': 'Free pickup',
-  'פתוח עכשיו': 'Open now', 'סגור': 'Closed',
-  'לאיסוף עצמי': 'Pickup at',
-  'לפי אזור': 'by area', 'החל מ־': 'from ',
-  'עד': 'up to', 'דק׳': 'min',
-  'אפשר להתאים אישית': 'Customisable',
-  'תוספות': 'toppings',
-  'נוסף להזמנה': 'added to your order',
-  'תוספות לבחירה — אפשר גם על חצי או רבע': 'Choose toppings — half or quarter portions welcome',
-  'שלם': 'Whole', 'חצי': 'Half', 'רבע': 'Quarter',
-  'ימין': 'Right', 'שמאל': 'Left',
-  'ההזמנה ריקה — הוסיפו פריטים מהתפריט 🍕': 'Your order is empty — add something from the menu 🍕',
-  'הסרה': 'Remove',
-  'סה"כ משוער': 'Estimated total',
-  'לא כולל דמי משלוח': 'Delivery not included',
-  'הסכום הסופי ייסגר בשיחה עם הבוט בוואטסאפ.': 'The final amount is confirmed in the WhatsApp chat.',
-  'היי! אני רוצה להזמין:': 'Hi! I would like to order:',
-  'ההזמנה נפתחה בוואטסאפ — שלחו את ההודעה 🚀': 'Your order is ready in WhatsApp — just hit send 🚀',
-  'אזור': 'Area', 'מינימום': 'Minimum', 'זמן הגעה': 'ETA',
+  'טיפ': { en: 'Tip' }, 'להוסיף טיפ?': { en: 'Add a tip?' }, 'סכום אחר': { en: 'Other amount' },
+  'ללא טיפ': { en: 'No tip' }, 'סכום הטיפ': { en: 'Tip amount' },
+  'טוענים את התפריט...': { en: 'Loading the menu...' },
+  'טוענים תפריט...': { en: 'Loading menu...' },
+  'שגיאה בטעינת התפריט. נסו לרענן את הדף.': { en: "Couldn't load the menu. Please refresh the page." },
+  'דברו איתנו ב-WhatsApp': { en: 'Chat with us on WhatsApp' },
+  'צפייה בהזמנה': { en: 'View order' },
+  'ההזמנה שלי': { en: 'My order' },
+  'אזורי משלוח': { en: 'Delivery areas' },
+  'סגירה': { en: 'Close' }, 'הפחתה': { en: 'Decrease' }, 'הוספה': { en: 'Add' },
+  'הוספה להזמנה': { en: 'Add to order' },
+  'שליחת ההזמנה ב-WhatsApp': { en: 'Send the order on WhatsApp' },
+  'מה תרצו להזמין היום?': { en: 'What would you like today?' },
+  'אנחנו כרגע סגורים': { en: "We're currently closed" },
+  'משלוח לפי אזור': { en: 'Delivery by area' },
+  'משלוח': { en: 'Delivery' }, 'משלוחים': { en: 'Delivery' },
+  'איסוף עצמי חינם': { en: 'Free pickup' },
+  'פתוח עכשיו': { en: 'Open now' }, 'סגור': { en: 'Closed' },
+  'לאיסוף עצמי': { en: 'Pickup at' },
+  'לפי אזור': { en: 'by area' }, 'החל מ־': { en: 'from ' },
+  'עד': { en: 'up to' }, 'דק׳': { en: 'min' },
+  'אפשר להתאים אישית': { en: 'Customisable' },
+  'תוספות': { en: 'toppings' },
+  'נוסף להזמנה': { en: 'added to your order' },
+  'תוספות לבחירה — אפשר גם על חצי או רבע': { en: 'Choose toppings — half or quarter portions welcome' },
+  'שלם': { en: 'Whole' }, 'חצי': { en: 'Half' }, 'רבע': { en: 'Quarter' },
+  'ימין': { en: 'Right' }, 'שמאל': { en: 'Left' },
+  'ההזמנה ריקה — הוסיפו פריטים מהתפריט 🍕': { en: 'Your order is empty — add something from the menu 🍕' },
+  'הסרה': { en: 'Remove' },
+  'סה"כ משוער': { en: 'Estimated total' },
+  'לא כולל דמי משלוח': { en: 'Delivery not included' },
+  'הסכום הסופי ייסגר בשיחה עם הבוט בוואטסאפ.': { en: 'The final amount is confirmed in the WhatsApp chat.' },
+  'היי! אני רוצה להזמין:': { en: 'Hi! I would like to order:' },
+  'ההזמנה נפתחה בוואטסאפ — שלחו את ההודעה 🚀': { en: 'Your order is ready in WhatsApp — just hit send 🚀' },
+  'אזור': { en: 'Area' }, 'מינימום': { en: 'Minimum' }, 'זמן הגעה': { en: 'ETA' },
   'אנחנו סגורים היום. אפשר לשלוח הזמנה ונחזור אליכם כשנפתח.':
-    "We're closed today. Send your order and we'll get back to you when we open.",
-  'אנחנו סגורים כרגע — שעות הפעילות היום:': "We're closed right now — today's hours:",
-  'אפשר לשלוח הזמנה ונחזור אליכם כשנפתח.': "Send your order and we'll get back to you when we open.",
-  'לא כולל מס': 'excl. tax',
+    { en: "We're closed today. Send your order and we'll get back to you when we open." },
+  'אנחנו סגורים כרגע — שעות הפעילות היום:': { en: "We're closed right now — today's hours:" },
+  'אפשר לשלוח הזמנה ונחזור אליכם כשנפתח.': { en: "Send your order and we'll get back to you when we open." },
+  'לא כולל מס': { en: 'excl. tax' },
 };
 
 /** Customer-facing string in the tenant's language. */
+/** One dictionary entry, resolved for the active language. Falls back
+ *  LANG -> en -> the Hebrew key, so an untranslated string shows English
+ *  rather than Hebrew to an operator who reads neither. */
+function mpick(entry, heKey) {
+  if (!entry) return heKey;
+  return entry[MLANG] || entry.en || heKey;
+}
+
 function M(he) {
-  if (MLANG !== 'en') return he;
-  return MENU_HE2EN[he] ?? he;
+  if (MLANG === 'he') return he;
+  return mpick(MENU_HE2EN[he], he);
 }
 
 /** A menu row's name in the tenant's language; name_en is '' when never set. */
