@@ -272,8 +272,11 @@ async function handleDisputeResponse(phone, userMessage, session, tenantId) {
 // Handled deterministically: an unsubscribe request is not something to leave
 // to the model's judgement.
 const OPT_OUT_WORDS = ['הסר', 'הסירו', 'הסירי', 'להסיר', 'תסירו', 'הפסיקו לשלוח', 'אל תשלחו',
-                       'stop', 'unsubscribe', 'remove me'];
-const OPT_IN_WORDS  = ['הצטרף', 'הצטרפי', 'חזרו לשלוח', 'הרשם', 'הירשם', 'start', 'subscribe'];
+                       'stop', 'unsubscribe', 'remove me',
+                       // Spanish: Los Angeles is the target market, and a customer
+                       // who writes PARE and stays subscribed was not heard.
+                       'pare', 'alto', 'parar', 'cancelar', 'baja', 'no enviar'];
+const OPT_IN_WORDS  = ['הצטרף', 'הצטרפי', 'חזרו לשלוח', 'הרשם', 'הירשם', 'start', 'subscribe', 'empezar', 'suscribir'];
 
 function _matchesWord(text, words) {
   const t = (text || '').trim().toLowerCase();

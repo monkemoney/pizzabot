@@ -20,7 +20,10 @@ if (!token || role !== 'vendor') {
  * dashboard language — not any tenant's region. One definition; a literal
  * repeated at each call site is how the four drifted apart in the first place.
  */
-const VLOCALE = (typeof LANG !== 'undefined' && LANG === 'en') ? 'en-US' : 'he-IL';
+// The vendor portal is the platform's own surface and lists every tenant, so it
+// has no single region to follow — it tracks its operator's language. Keyed on
+// Hebrew rather than English so a third language is not silently Israeli.
+const VLOCALE = (typeof LANG !== 'undefined' && LANG === 'he') ? 'he-IL' : 'en-US';
 
 function logout() {
   localStorage.clear();

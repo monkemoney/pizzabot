@@ -53,7 +53,7 @@ describe('dirFor', () => {
   });
 });
 
-describe('the direction rule is stated the same way everywhere', () => {
+describe('no language decision is keyed on English', () => {
   const FILES = [
     'src/index.js',
     'public/i18n.js',
@@ -62,13 +62,23 @@ describe('the direction rule is stated the same way everywhere', () => {
     'public/onboarding.html',
     'public/dashboard.html',
     'public/admin.html',
+    // The two files the locale instance actually lived in. Absent from this
+    // list, the guard passed while the defect was present — a checklist that
+    // does not cover the place the bug was found is not a guard.
+    'public/app.js',
+    'public/admin.js',
   ];
 
-  // A line that decides direction must key on Hebrew. Keying on English is the
-  // exact defect this file exists for: it silently mirrors every language that
-  // is neither.
-  const DECIDES = /\?\s*'(?:rtl|ltr)'|'(?:rtl|ltr)'\s*:/;
-  const KEYS_ON_EN = /===\s*'en'\s*\?\s*'ltr'|!==\s*'he'\s*\?\s*'ltr'/;
+  // Direction was the first instance; the date locale was the second, written
+  // `LANG === 'en' ? 'en-US' : 'he-IL'` so Spanish would have been formatted as
+  // Israeli. The defect is the SHAPE, not the values: a two-valued decision
+  // keyed on English silently lumps every third language in with Hebrew. Keyed
+  // on Hebrew instead, the same line degrades the safe way.
+  const DECIDES    = /\?\s*'(?:rtl|ltr|[a-z]{2}-[A-Z]{2})'|'(?:rtl|ltr|[a-z]{2}-[A-Z]{2})'\s*:/;
+  // Closing parens are allowed between the comparison and the `?`: the real
+  // instance read `(typeof LANG !== 'undefined' && LANG === 'en') ? …`, and a
+  // pattern demanding them adjacent watched the mutation walk straight past.
+  const KEYS_ON_EN = /(?:===|!==)\s*'en'[\s)]*\?/;
 
   test.each(FILES)('%s keys on Hebrew, never on English', (rel) => {
     const offenders = read(rel)

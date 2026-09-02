@@ -150,7 +150,17 @@ function topLabel(t) {
 // while currency follows the TENANT (whose money it is) — see money() below.
 // en-US, not en-GB: 12/08 means December 8th to the audience this was localised
 // for, and a delivery ETA read off the wrong month is a real support call.
-let LOCALE = (typeof LANG !== 'undefined' && LANG === 'en') ? 'en-US' : 'he-IL';
+// Dates and the clock follow the tenant's REGION, not the reader's language.
+// An Israeli operator running a Los Angeles restaurant needs 12/25 and 7:15 PM:
+// those are the hours that kitchen works and the dates its customers speak. The
+// chrome around them stays in whichever language they read. Written the other
+// way it also broke on a third language — 'es' is not 'en', so Spanish would
+// have been given Israeli date order.
+const REGION_LOCALE = { IL: 'he-IL', US: 'en-US' };
+
+// Before /business-config lands the region is unknown, so the reader's language
+// is the best guess available; loadBusinessConfig() corrects it.
+let LOCALE = (typeof LANG !== 'undefined' && LANG !== 'he') ? 'en-US' : 'he-IL';
 
 function formatDate(iso) {
   if (!iso) return '';
@@ -177,7 +187,7 @@ function statusBadge(status, order) {
     done: 'badge-done', cancelled: 'badge-cancelled',
   }[status] || 'badge-done';
   const extra = status === 'scheduled' && order?.scheduled_for
-    ? ' ' + new Date(order.scheduled_for).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit', hour12: false })
+    ? ' ' + new Date(order.scheduled_for).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })
     : '';
   return `<span class="badge ${cls}">${STATUS_LABELS[status] || status}${extra}</span>`;
 }
@@ -219,6 +229,7 @@ const ex = () => EXAMPLES[_bizConfig.region] || EXAMPLES.IL;
 
 async function loadBusinessConfig() {
   try { _bizConfig = await api('GET', '/business-config'); } catch { /* keep defaults */ }
+  LOCALE = REGION_LOCALE[_bizConfig.region] || REGION_LOCALE.IL;
   // Static markup cannot know the tenant's currency; the price labels in the
   // product/topping modals carry a placeholder that is filled once, here.
   document.querySelectorAll('.cur-symbol').forEach((el) => {
@@ -952,7 +963,7 @@ function _incomingAge(o) {
 
 function _schedLabel(o) {
   if (!o.scheduled_for) return '';
-  return new Date(o.scheduled_for).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit', hour12: false });
+  return new Date(o.scheduled_for).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
 }
 
 function _unavailableTag(name) {
@@ -3901,7 +3912,7 @@ function renderInboxList() {
     const unread = s.unread_count > 0;
     const initial = (profile.name || '#').trim().charAt(0);
     const ts = s.last_message_at || s.updated_at;
-    const timeStr = ts ? new Date(ts).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem', hour12: false }) : '';
+    const timeStr = ts ? new Date(ts).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' }) : '';
     const agentDot = s.is_bot_active ? '' : `<span title="${TR('בטיפול נציג')}" style="width:8px;height:8px;border-radius:50%;background:var(--color-warning);display:inline-block;flex-shrink:0"></span>`;
     return `<div onclick="inboxSelectSession('${s.phone}')" style="display:flex;gap:10px;align-items:center;padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--color-border);background:${active ? 'var(--color-brand-soft)' : 'transparent'};transition:background .15s">
       <span style="width:38px;height:38px;border-radius:50%;background:${s.is_bot_active ? 'var(--color-brand-soft)' : '#fff4e0'};color:${s.is_bot_active ? 'var(--color-brand)' : 'var(--color-warning)'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex-shrink:0">${initial}</span>

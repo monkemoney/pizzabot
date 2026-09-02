@@ -358,7 +358,9 @@ textarea#menuNotes:focus { outline: none; border-color: var(--color-brand); }
    Static text is translated by walking TEXT NODES rather than by tagging every
    element: this page is ~90% static prose, and marking each string by hand is
    exactly the manual step that left ten of them behind on the dashboard. */
-const OLANG = window.__OB_LANG__ === 'en' ? 'en' : 'he';
+// Keyed on Hebrew, not on English, so a third language does not fall through to
+// Hebrew the way it would have in the dashboard.
+const OLANG = (!window.__OB_LANG__ || window.__OB_LANG__ === 'he') ? 'he' : window.__OB_LANG__;
 
 const OB_HE2EN = {
   'הגדרת העסק שלך': { en: 'Set up your business' },
