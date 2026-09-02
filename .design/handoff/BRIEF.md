@@ -1,7 +1,8 @@
 # Landing page — design handoff brief
 
 **Send `landing-standalone.html` together with this file.** The HTML renders on
-its own: open it in any browser, no server, no build step. Anything that comes
+its own: open it in any browser, no server, no build step. It pulls two fonts
+from Google Fonts and nothing else. Anything that comes
 back must still open the same way.
 
 ---
@@ -107,7 +108,9 @@ and inventing it is not on the table.
 >   The logo and copyright stay `dir="ltr"`.
 > - Keep every animation gated behind `prefers-reduced-motion`.
 > - Keep the brand colours and the file self-contained — one HTML file, no
->   external CSS, no CDN, no build step.
+>   build step. The only external reference is the Google Fonts link for
+>   Poppins and Heebo; that one may stay, and Heebo is what makes Hebrew
+>   legible, so do not drop it.
 >
 > Do not rewrite the copy or add testimonials, customer logos or statistics.
 >
@@ -132,7 +135,7 @@ goes back.
    reload, and confirm nothing animates and nothing is stuck invisible.
 
 A quick way to check 2 and 4 without clicking: search the returned file for
-`data-t=` (should be ~36 occurrences) and for `15–30%`.
+`data-t=` (41 occurrences in the version I am sending) and for `15–30%`.
 
 ---
 
