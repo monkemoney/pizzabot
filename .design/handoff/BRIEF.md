@@ -123,8 +123,8 @@ and inventing it is not on the table.
 Open the returned file in a browser and run these five. Any failure means it
 goes back.
 
-1. **It opens standalone** — no missing styles, no console errors, no request
-   to a CDN or a local path.
+1. **It opens standalone** — no missing styles, no console errors, and no
+   request to a local path. The Google Fonts request is the one exception.
 2. **All three languages switch** — click EN, ES and עב in the header. Every
    visible string changes. Nothing falls back to English mid-page.
 3. **Hebrew is genuinely RTL** — the nav mirrors, text aligns right, and the
