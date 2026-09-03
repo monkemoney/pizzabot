@@ -732,6 +732,9 @@ async function handleMessageInner(phone, userMessage, tenantId = null) {
         const { getAdminUsers } = require('../services/supabase');
         const admins = await getAdminUsers(tid).catch(() => []);
         for (const admin of admins) {
+          // i18n-exempt: goes to the restaurant's own admins, not a customer.
+          // The admin surface is Hebrew-only by design (plan item B7) and this
+          // moves with it, not with the customer catalogue.
           await sendMessage(admin.phone,
             `⚠️ *הזמנה #${orderNumber} נקלטה אך הלקוח לא קיבל אישור*\n${payload.customer_name || ''} ${payload.customer_phone || phone}\nשליחת ההודעה בוואטסאפ נכשלה — שווה ליצור קשר טלפוני.`,
             tid).catch(() => {});
