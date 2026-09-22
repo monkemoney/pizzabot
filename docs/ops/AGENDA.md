@@ -36,22 +36,12 @@
 | 16 | **גריל** — 90 שניות + 12 מספרים + 20 שאלות עוינות, איתי | ☐ | לפני 14 ו-15 |
 | 17 | **Ops session** — לפתוח, לאשר קונקטורים, להכניס אילוצים | ☐ | ״Jasell · Ops״ |
 
-## תבנית השבוע → בקלנדר (22.9)
-בלוקים שבועיים + אבני דרך נוצרו ב-Google Calendar. הסשן היומי מעדכן אותם.
+## הקלנדר (22.9)
+**מקור האמת: `docs/ops/CALENDAR.md`** — יום-יום עד 11.10, יעדי שבוע עד 31.12, סבב שאלות השולחן. Google Calendar משקף אותו. הבלוקים המעורפלים (Westside/Downtown/ניתוח/כתיבה) נמחקו — כל אירוע עם מה בדיוק · יוצא.
 
 ## שיחות הסינון — 6 שאלות
 1. On which POS do you run? 2. How many locations, which delivery platforms? 3. Who looks at the numbers today, how often? 4. Can you send a 90-day export from every channel? 5. Who's authorized to approve data access? 6. **Who decides delivery settings — and will they be in the room?**
 
-## תבנית השבוע (LA)
-
-| יום | בלוק |
-|---|---|
-| **ב׳** | 08–10 צינור: 5 שיחות · 10–12 סקירה שבועית + STRATEGY.md |
-| **ג׳** | פגישות Westside |
-| **ד׳** | ניתוח — בלי פגישות |
-| **ה׳** | פגישות Downtown/Eastside/Valley |
-| **ו׳** | 08–12 כתיבה · ערב: שולחן — שאלת השבוע מוכנה |
-| **א׳** | כלום |
 
 ## מחכה לתשובה
 - חברה ישראלית בע״מ 12 חודשים+? · ימים בארה״ב 2024–25 · IP על שמי? · אזרחות שנייה / בן-בת זוג? · עוגן יתרה

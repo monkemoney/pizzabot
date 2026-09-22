@@ -26,7 +26,8 @@
 ```
 
 ## כללים לסשן היומי
-- קורא: `docs/STRATEGY.md` (סעיפים 11–13), `docs/ops/AGENDA.md`, `docs/ops/PIPELINE.md`, `docs/ops/CASH.md`, `docs/ops/EXPERIMENTS.md`, הקובץ היומי הקודם. Google Calendar/Gmail — אם מחוברים (ToolSearch).
+- קורא: `docs/STRATEGY.md` (סעיפים 11–13), `docs/ops/AGENDA.md`, **`docs/ops/CALENDAR.md`**, `docs/ops/PIPELINE.md`, `docs/ops/CASH.md`, `docs/ops/EXPERIMENTS.md`, הקובץ היומי הקודם. Google Calendar/Gmail — אם מחוברים (ToolSearch).
+- **קלנדר:** CALENDAR.md הוא מקור האמת. שינוי בקלנדר = שינוי בקובץ באותה ריצה, ולהפך. בסקירה השבועית (ב׳ 10:00) הסשן מפרק את ״יעד השבוע״ הבא ליום-יום — אירועים עם שעה · מה בדיוק · יוצא — ומכניס לשניהם.
 - **בוקר** (07:00 LA): 3 הדברים של היום מהקובץ של אמש + AGENDA; אירועי קלנדר; שאלת השולחן אם שישי. **הודעה קצרה לטלפון.** לא כותב קבצים חוץ מ-AGENDA (סטטוסים).
 - **ערב** (21:00 LA): מציג את רשימת היום, **שואל** מה נעשה. עם התשובה — כותב את הקובץ היומי, מעדכן AGENDA/PIPELINE/CASH/EXPERIMENTS, בונה את מחר. בלי תשובה — כותב ״אין דיווח״ ובונה מחר מהתוכנית.
 - **קומיט + push** לענף `claude/landing-page-deploy-ai67y4` בסוף כל ריצה. הודעת קומיט: `ops: daily YYYY-MM-DD`.
