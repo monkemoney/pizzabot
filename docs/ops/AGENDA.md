@@ -27,6 +27,18 @@
 | 11 | Reporting API — DoorDash + Uber | ☐ | טופס כפי שהוא |
 | 12 | Foresite — לקבוע + הכנה | ☐ | 3 שאלות, 90 שניות, 2 ביקושים |
 
+## נוסף 22.9
+| # | פעולה | סטטוס | הערה |
+|---|---|---|---|
+| 13 | **לספר לגרג** שאני מציג לשון-נאז את התוכנית — לפני ההצגה | ☐ | הוא פתח לי את הרשת; לא שילמד מכלי שני |
+| 14 | **שון-נאז — לקבוע הצגה** (ג׳קוזי, שיחה) | ☐ | אחרי גריל. עמוד אחד בתיק. מסגרת: ״לא עסקה — התוכנית שלי, העיניים שלך, שתי דלתות״ |
+| 15 | **שון-שרון — לקבוע ישיבה** (הרעיון + עו״ד ויזה) | ☐ | אותו עמוד. הבקשה: שם עו״ד E-2 |
+| 16 | **גריל** — 90 שניות + 12 מספרים + 20 שאלות עוינות, איתי | ☐ | לפני 14 ו-15 |
+| 17 | **Ops session** — לפתוח, לאשר קונקטורים, להכניס אילוצים | ☐ | ״Jasell · Ops״ |
+
+## תבנית השבוע → בקלנדר (22.9)
+בלוקים שבועיים + אבני דרך נוצרו ב-Google Calendar. הסשן היומי מעדכן אותם.
+
 ## שיחות הסינון — 6 שאלות
 1. On which POS do you run? 2. How many locations, which delivery platforms? 3. Who looks at the numbers today, how often? 4. Can you send a 90-day export from every channel? 5. Who's authorized to approve data access? 6. **Who decides delivery settings — and will they be in the room?**
 
