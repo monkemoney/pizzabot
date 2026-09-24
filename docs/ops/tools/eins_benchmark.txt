@@ -1,0 +1,21 @@
+# מקבילות — הצלה + טיפול, LA
+954776451   # The Gentle Barn
+464050562   # Kindred Spirits Care Farm (Chatsworth)
+831021900   # Sanctuary Animal Assisted Therapy (Canyon Country)
+953165603   # AHEAD With Horses (Shadow Hills)
+954465783   # Ride On Therapeutic Horsemanship (Chatsworth)
+262162310   # Wolf Connection / Spring of Evolution (Acton)
+830548967   # Compton Junior Equestrians
+263464770   # Forget Me Not Farm (Santa Rosa)
+# חוות/טבע יהודיות
+471570910   # Coastal Roots Farm (Encinitas)
+274349643   # Urban Adamah (Berkeley)
+841652923   # Shalom Institute (Malibu)
+# חיילים / נובה
+811569698   # Belev Echad (NY)
+272037965   # Heroes to Heroes (closing)
+223951652   # Israeli-American Council
+# הקרנות (Schedule I = מי מקבל מהן) — להריץ גם `grants` עליהן
+956111928   # Jewish Community Foundation of Los Angeles
+# החווה עצמה — לבדוק אם קיים 990-N
+923007627   # Jewish Sanctuary Kfar Saba Urban Farm
