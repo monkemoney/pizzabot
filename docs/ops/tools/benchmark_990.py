@@ -14,8 +14,8 @@ USAGE
   python3 benchmark_990.py search "urban farm" --state CA --ntee 4 --out found.csv      # ntee 4 = Human Services... (see NTEE_MAJOR)
 
   # 3) grants MADE by a funder (990 Schedule I / 990-PF Part XV) -> CSV of recipients
-  #    a) from a filing XML you downloaded (ProPublica org page -> filing -> "XML"), or
-  #    b) best-effort auto-download by object_id when the API exposes it
+  #    Reads ProPublica's RENDERED filing (see the grants section below) — no manual download needed.
+  #    --max N = how many filing years back (default 1, newest first), --year YYYY = one specific year.
   python3 benchmark_990.py grants 956111928 --out jcf_grants.csv
   python3 benchmark_990.py grants --xml 202343189349300000_public.xml --out grants.csv
 
@@ -27,8 +27,13 @@ NOTES
   - Religious orgs may have no filings at all (Kfar Saba: expect empty).
   - Field names differ between 990 and 990-PF; unknown fields are left blank. Use `raw` to inspect.
   - Be polite: ~2 requests/second max (SLEEP).
+  - `grants` does NOT use the API: it has no object_id field, and /nonprofits/download-xml is behind a
+    JS bot check (403 for any script). It scrapes the org page for object_ids and parses the rendered
+    filing, whose <span id> attributes carry each value's XML XPath — so rows come from the document
+    structure, not column positions. Verified against JCF FY2024: 1063 rows = the count the filing
+    itself declares on Schedule I Part II line 2. `--xml` still parses a hand-downloaded XML.
 """
-import argparse, csv, json, sys, time, urllib.parse, urllib.request, xml.etree.ElementTree as ET
+import argparse, collections, csv, gzip, html as htmlmod, io, json, re, sys, time, urllib.parse, urllib.request, xml.etree.ElementTree as ET
 
 BASE = "https://projects.propublica.org/nonprofits/api/v2"
 SLEEP = 0.5
@@ -59,11 +64,28 @@ def get_json(url):
 def get_bytes(url):
     req = urllib.request.Request(url, headers=UA)
     with urllib.request.urlopen(req, timeout=60) as r:
-        return r.read()
+        data = r.read()
+        enc = (r.headers.get("Content-Encoding") or "").lower()
+    if enc == "gzip" or data[:2] == b"\x1f\x8b":          # S3 stores the rendered filings gzipped
+        data = gzip.GzipFile(fileobj=io.BytesIO(data)).read()
+    return data
+
+
+def get_text(url):
+    return get_bytes(url).decode("utf-8", "replace")
+
+
+def norm_ein(raw):
+    """EIN as 9 digits. Tolerates inline '# comment', dashes, spaces. '' if no EIN found."""
+    head = str(raw).split("#", 1)[0]
+    digits = re.sub(r"\D", "", head)
+    return digits
 
 
 def fetch_org(ein):
-    ein = str(ein).replace("-", "").strip()
+    ein = norm_ein(ein)
+    if not ein:
+        raise ValueError("no EIN digits found")
     return get_json(f"{BASE}/organizations/{ein}.json")
 
 
@@ -77,9 +99,11 @@ def pick(f, key):
 
 
 def cmd_orgs(args):
-    eins = list(args.eins or [])
+    eins = [norm_ein(e) for e in (args.eins or []) if norm_ein(e)]
     if args.file:
-        eins += [l.strip() for l in open(args.file) if l.strip() and not l.startswith("#")]
+        for l in open(args.file):
+            e = norm_ein(l)
+            if e: eins.append(e)
     rows = []
     for ein in eins:
         try:
@@ -164,34 +188,132 @@ def parse_grants_xml(data, source=""):
     return out
 
 
+# --- grants via ProPublica's RENDERED filings -------------------------------------------------
+# The API exposes no object_id, and /nonprofits/download-xml sits behind a JS bot check (403 for any
+# script, browser headers included). The rendered filing does work, and it is not a downgrade: the IRS
+# stylesheet stamps every value's XML XPath into a <span id>, so rows are rebuilt from the document
+# STRUCTURE (field names, not column positions) — the same field names parse_grants_xml() uses.
+ORG_PAGE = "https://projects.propublica.org/nonprofits/organizations"
+GRANT_FORMS = ("IRS990ScheduleI", "IRS990PF")     # 990 Schedule I; 990-PF Part XV
+GRANT_GROUPS = ("RecipientTable", "GrantOrContributionPdDurYrGrp", "GrantsToOrganizationsGrp")
+SPAN_RE = re.compile(r'<span[^>]*\bid="([^"]+)"[^>]*>(.*?)</span>', re.S)
+
+
+def _clean(frag):
+    return re.sub(r"\s+", " ", htmlmod.unescape(re.sub(r"(?s)<[^>]+>", "", frag))).strip()
+
+
+def _first(d, *names):
+    for n in names:
+        if d.get(n):
+            return d[n]
+    return ""
+
+
+def _num(v):
+    v = str(v).replace(",", "").replace("$", "").strip()
+    return v if re.fullmatch(r"-?\d+(\.\d+)?", v) else v
+
+
+def org_filings(ein):
+    """[{year, object_id}] newest first, scraped from the org page (the API has no object_id)."""
+    page = get_text(f"{ORG_PAGE}/{norm_ein(ein)}")
+    out, starts = [], [m.start() for m in re.finditer(r'class="single-filing-period', page)]
+    for a, b in zip(starts, starts[1:] + [len(page)]):
+        blk = page[a:b]
+        yr = re.search(r"id='filing(\d{4})'", blk)
+        for oid in dict.fromkeys(re.findall(r"object_id=(\d+)", blk)):
+            out.append({"year": yr.group(1) if yr else "", "object_id": oid})
+    return out
+
+
+def filing_forms(ein, object_id):
+    """Rendered-form URLs this filing actually has, read off its own 'full filing' page.
+
+    Read rather than guessed: a 990-T carries no Schedule I, and the page lists every rendered part —
+    so a schedule split across several files is fetched whole instead of truncated at the first.
+    """
+    page = get_text(f"{ORG_PAGE}/{norm_ein(ein)}/{object_id}/full")
+    urls = re.findall(r'src=[\'"](https://[^\'"]*?/full_text/%s/(\w+))[\'"]' % object_id, page)
+    return [u for u, form in dict.fromkeys(urls) if form in GRANT_FORMS]
+
+
+def parse_grants_html(page, source="", funder="", year=""):
+    """Rebuild grant rows from a rendered filing via the XPath in each value's <span id>."""
+    groups = collections.defaultdict(dict)
+    for xp, frag in SPAN_RE.findall(page):
+        val = _clean(frag)
+        if not val:
+            continue
+        g = re.search(r"/(%s)\[(\d+)\]/(.*)$" % "|".join(GRANT_GROUPS), xp)
+        if not g:
+            continue
+        leaf = re.sub(r"\[\d+\]$", "", g.group(3).split("/")[-1])
+        groups[(g.group(1), int(g.group(2)))].setdefault(leaf, val)
+    rows = []
+    for (grp, _i), f in sorted(groups.items(), key=lambda kv: kv[0][1]):
+        rows.append({
+            "funder": funder, "tax_year": year,
+            "schedule": "990-SchI" if grp == "RecipientTable" else "990-PF-XV",
+            "recipient": _first(f, "BusinessNameLine1Txt", "RecipientPersonNm"),
+            "recipient_ein": _first(f, "RecipientEIN", "EIN"),
+            "city": f.get("CityNm", ""), "state": f.get("StateAbbreviationCd", ""),
+            "amount": _num(_first(f, "CashGrantAmt", "Amt", "TotalGrantAmt")),
+            "purpose": _first(f, "PurposeOfGrantTxt", "GrantOrContributionPurposeTxt"),
+            "source": source,
+        })
+    return rows
+
+
 def cmd_grants(args):
     rows = []
     if args.xml:
-        for p in args.xml:
-            rows += parse_grants_xml(open(p, "rb").read(), source=p)
+        for path in args.xml:
+            rows += parse_grants_xml(open(path, "rb").read(), source=path)
     else:
-        d = fetch_org(args.ein)
-        filings = sorted(d.get("filings_with_data", []) or [], key=lambda x: x.get("tax_prd_yr", 0), reverse=True)
-        if args.year: filings = [f for f in filings if str(f.get("tax_prd_yr")) == str(args.year)]
-        got = False
-        for f in filings[: args.max]:
-            oid = f.get("object_id") or f.get("objectid")
-            if not oid:
-                print(f"-- {f.get('tax_prd_yr')}: no object_id in API; open the filing on ProPublica and download the XML, then run with --xml", file=sys.stderr)
-                continue
-            url = f"https://projects.propublica.org/nonprofits/download-xml?object_id={oid}"
+        funder = ""
+        try:
+            funder = fetch_org(args.ein).get("organization", {}).get("name", "")
+        except Exception as e:
+            print(f"-- could not read org name: {e}", file=sys.stderr)
+        filings = org_filings(args.ein)
+        if args.year:
+            filings = [f for f in filings if f["year"] == str(args.year)]
+        if not filings:
+            print("No filings found on the org page.", file=sys.stderr)
+        years_done = 0
+        for f in filings:
+            if years_done >= args.max:
+                break
             try:
-                rows += parse_grants_xml(get_bytes(url), source=url); got = True
-                print(f"ok {f.get('tax_prd_yr')}: {len(rows)} grant rows so far", file=sys.stderr)
+                urls = filing_forms(args.ein, f["object_id"])
             except Exception as e:
-                print(f"!! {f.get('tax_prd_yr')}: {e}", file=sys.stderr)
+                print(f"!! {f['year']} {f['object_id']}: {e}", file=sys.stderr)
+                continue
+            if not urls:
+                # normal: a 990-T filing in the same year carries no grant schedule
+                time.sleep(SLEEP)
+                continue
+            before = len(rows)
+            for url in urls:
+                try:
+                    rows += parse_grants_html(get_text(url), source=url, funder=funder, year=f["year"])
+                except Exception as e:
+                    print(f"!! {f['year']} {url}: {e}", file=sys.stderr)
+                time.sleep(SLEEP)
+            got = len(rows) - before
+            print(f"ok {f['year']} ({f['object_id']}): {got} grant rows", file=sys.stderr)
+            if got:
+                years_done += 1
             time.sleep(SLEEP)
-        if not got and not rows:
-            print("No grants extracted. Fallback: download the filing XML manually and use --xml.", file=sys.stderr)
-    # sort by amount desc where numeric
+        if not rows:
+            print("No grants extracted. Fallback: download the filing XML by hand and use --xml.", file=sys.stderr)
+
     def amt(r):
-        try: return -float(r["amount"])
-        except: return 0
+        try:
+            return (0, -float(r["amount"]))
+        except (TypeError, ValueError):
+            return (1, 0)          # rows with no amount sort last, not in the middle
     rows.sort(key=amt)
     write_csv(rows, ["funder", "tax_year", "schedule", "recipient", "recipient_ein", "city", "state", "amount", "purpose", "source"], args.out)
 
