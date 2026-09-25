@@ -27,6 +27,11 @@ NOTES
   - Religious orgs may have no filings at all (Kfar Saba: expect empty).
   - Field names differ between 990 and 990-PF; unknown fields are left blank. Use `raw` to inspect.
   - Be polite: ~2 requests/second max (SLEEP).
+  - `amount` is the CASH grant. In-kind giving is separate (`amount_noncash` + `noncash_desc`): Petco
+    Love FY2025 gave $18.2M cash AND $3.0M of vaccines/product, and one recipient's cash grant is $0
+    against $12,520 of goods — reading `amount` alone would call that grant nothing.
+  - A filer's own declared recipient count can be off by one (Petco Love declares 783, the table holds
+    784 contiguous entries). Trust the table; the counts on lines 2-3 are hand-entered.
   - `grants` does NOT use the API: it has no object_id field, and /nonprofits/download-xml is behind a
     JS bot check (403 for any script). It scrapes the org page for object_ids and parses the rendered
     filing, whose <span id> attributes carry each value's XML XPath — so rows come from the document
@@ -182,6 +187,8 @@ def parse_grants_xml(data, source=""):
                 "recipient_ein": text_of(el, "RecipientEIN", "EIN"),
                 "city": text_of(el, "CityNm"), "state": text_of(el, "StateAbbreviationCd"),
                 "amount": text_of(el, "CashGrantAmt", "Amt", "TotalGrantAmt"),
+                "amount_noncash": text_of(el, "NonCashAssistanceAmt"),
+                "noncash_desc": text_of(el, "NonCashAssistanceDesc"),
                 "purpose": text_of(el, "PurposeOfGrantTxt", "GrantOrContributionPurposeTxt"),
                 "source": source,
             })
@@ -259,6 +266,9 @@ def parse_grants_html(page, source="", funder="", year=""):
             "recipient_ein": _first(f, "RecipientEIN", "EIN"),
             "city": f.get("CityNm", ""), "state": f.get("StateAbbreviationCd", ""),
             "amount": _num(_first(f, "CashGrantAmt", "Amt", "TotalGrantAmt")),
+            # goods, not money: a cash-only "amount" reads $0 for a recipient that got $12,520 of product
+            "amount_noncash": _num(f.get("NonCashAssistanceAmt", "")),
+            "noncash_desc": f.get("NonCashAssistanceDesc", ""),
             "purpose": _first(f, "PurposeOfGrantTxt", "GrantOrContributionPurposeTxt"),
             "source": source,
         })
@@ -315,7 +325,8 @@ def cmd_grants(args):
         except (TypeError, ValueError):
             return (1, 0)          # rows with no amount sort last, not in the middle
     rows.sort(key=amt)
-    write_csv(rows, ["funder", "tax_year", "schedule", "recipient", "recipient_ein", "city", "state", "amount", "purpose", "source"], args.out)
+    write_csv(rows, ["funder", "tax_year", "schedule", "recipient", "recipient_ein", "city", "state",
+                     "amount", "amount_noncash", "noncash_desc", "purpose", "source"], args.out)
 
 
 def cmd_raw(args):
