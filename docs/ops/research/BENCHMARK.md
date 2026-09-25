@@ -1,5 +1,5 @@
 # BENCHMARK — 990 · מקבילות לחווה · JCF LA FY2024
-> נתונים: `bench.csv` (ProPublica API, 16 ארגונים, כל שנות ה-990) · `jcf_grants.csv` (Schedule I של JCF LA, FY2024, 1,063 מענקים, $142.2M — מאומת מול הסכום המוצהר). הופק ב-`tools/benchmark_990.py`. עודכן 24.9.2026.
+> נתונים: `bench.csv` (ProPublica API, 16 ארגונים, כל שנות ה-990) · `jcf_grants.csv` (Schedule I של JCF LA, FY2024, 1,063 מענקים, $142.2M — מאומת מול הסכום המוצהר). הופק ב-`tools/benchmark_990.py`. עודכן 25.9.2026.
 
 ## 1. המקבילות — איפה כל אחד, ואיך הגיע לשם
 
@@ -32,6 +32,21 @@
 - **וואלי:** ETTA $128K, Cornerstone $89K (צרכים מיוחדים, North Hollywood) · Valley Beth Shalom $543K · Hebrew High $360K · IAC. **הקהילה בוואלי נותנת דרך JCF.**
 - **$25,250 ל-MOXI סנטה ברברה** — מוזיאון ילדים. תורמי JCF נותנים גם למקומות ״לא יהודיים״ שהם אוהבים.
 
+## 2b. שש קרנות נוספות — FY2024 (כל מענק חולץ ואומת מול הסכום המוצהר)
+
+| קרן | טופס | מענקים | סה״כ | חציון | נתנו לארגונים כמו החווה | הנתיב לחווה |
+|---|---|---|---|---|---|---|
+| **Jewish Federation of Greater LA** (95-1643388) | Sch I | 144 | $33.1M | **$50K** | **ETTA Israel Center, North Hollywood $441K** · JFS $3.7M · מלגות מחנות | Healing · שותפות צרכים מיוחדים בוואלי |
+| **Annenberg Foundation** (23-6257083) | 990-PF | 543 | $53.3M | **$25K** | **Animal Wellness Foundation $2.2M** · Kitten Rescue $50K · Alma Backyard Farm $75K · LA County Animal Care $40K · Maple Counseling $125K | **Rescue — קרן בעלי החיים של העיר** |
+| **Ahmanson Foundation** (95-6089998) | 990-PF | 442 | $65.5M | **$50K** | **Ride On LA $400K — גג לזירה בצ׳טסוורת׳** · Special Needs Network $105K · Descanso Gardens $150K · ציוד ומבנים | **הון: צל, חדר טיפול, רכב** |
+| **Petco Love** (33-0845930) | Sch I | 784 | $18.2M + **$3.0M בעין** | **$11K** | LA Animal Services $150K · מקלטים והצלות ארצי · חיסונים ומוצרים | Rescue — מזומן + ציוד וטרינרי |
+| **Ralph M. Parsons** (95-6085895) | 990-PF | 403 | $18.2M | $30K | מרכזי ייעוץ · Hope of the Valley $50K · דיור ותיקים $50K | Healing — שנה 2, אחרי מדדים |
+| **Weingart Foundation** (95-6054814) | 990-PF | 540 | $38.1M | $10K | מרכזי ייעוץ $150–200K ללא הגבלה · פוקוס שוויון/מהגרים | חלש. לא יעד לפיילוט |
+
+**מה זה משנה:** לכל אחת משלוש התוכניות יש קרן **בשם** שכבר נותנת לסוגה: Rescue → Annenberg + Petco Love · Healing → Federation (ETTA) + JCF (DAF) · הון → Ahmanson (Ride On במרחק 3 ק״מ). Parsons/Weingart — לא בשנה 1.
+**990-PF לא מדווח EIN של נמענים** → הצלבה בין קרנות לפי שם, לא EIN.
+**סה״כ בסיס הנתונים:** 3,919 מענקים, 7 קרנות, `docs/ops/research/*_grants.csv` (סכמה אחת, כולל `amount_noncash`).
+
 ## 3. מה זה עושה ליעד ולאסטרטגיה
 
 | | |
@@ -43,6 +58,7 @@
 | **הפרוספקטים הראשונים (חמים)** | ETTA · Clubhouse · Cornerstone (צרכים מיוחדים, וואלי) — **שותפים**, לא מתחרים: הם צריכים מקום כמו החווה למשתתפים שלהם, ויש להם תורמים. Israel Emergency Alliance · IAC Woodland Hills · Valley Beth Shalom (קהילה בוואלי) |
 
 ## 4. הבא
-- `grants` על: **Jewish Federation of Greater LA** (95-1643388?) · **Petco Love** · **Annenberg Fnd** (LA, בע״ח+מוגבלויות, 990-PF) · **Ahmanson** (LA, 990-PF) · **Ralph M. Parsons** (LA) · **Weingart** (LA). 990-PF = Part XV — לוודא שהפרסר תופס.
+- ✅ שש הקרנות חולצו (2b).
+- **הבנצ׳מרק האמיתי** — אחרי איסוף הנתונים של החווה (`farm/DATA-COLLECTION.md`): עלות למשתתף · תמהיל הכנסות · מול Kindred/Sanctuary/Ride On.
 - ספירת הרקורדים של החווה → מספר משתתפים → **עלות למשתתף** = הבקשה.
 - **990 מרצון** — ההחלטה שפותחת את הטבלה הזאת.
