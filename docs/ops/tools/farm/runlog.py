@@ -243,7 +243,7 @@ def render_report(log, manifest):
         lines.append("| **%s** | | **%s** | | | |" % (sec, SECTION_NAMES[sec]))
         for sid, title, st in per_sec[sec]:
             if st is None:
-                lines.append("| %s | %s | %s | | | not run |" % (marks[" "], sid, title))
+                lines.append("| %s | %s | %s | | | not run |" % (marks["never started"], sid, title))
                 continue
             total_min += st["minutes"] or 0
             d = st["done"] or {}
