@@ -97,6 +97,9 @@ PayPal/Venmo/Zelle/Square ─┼──▶ ledger.py ── איחוד + dedupe �
 ## 7. הכלים שנבנים (ops, `docs/ops/tools/farm/`)
 `timeline.py` **(נבנה 28.9 — scrub · cluster · demo)** · `ledger.py` **(נבנה 28.9 — ingest · reconcile · summary · demo; מזהה PayPal/Venmo/Square/Stripe/Eventbrite/GoFundMe/BofA/Chase/Wells/כללי)** · `mail_ledger.py` **(נבנה 28.9 — scan · summary · demo)** · `mail_index.py` — Python, stdlib בלבד (+osxphotos כתלות חיצונית למסלול המק). כולם: **קלט מקומי → CSV נגזר בלי שמות/גוף.** נבדקים על דוגמה סינתטית לפני שנוגעים בדאטה אמיתי.
 
+## 7ב. שכבת הלמידה והחוזה
+`runlog.py` רושם כל צעד (start/done/סטטוס/תיקון), מייצר `manifest.json` (חוזה: קבצים · שורות · עמודות · hash · גרסות) ו-`RUNREPORT.md` (הדוח שחוזר לכאן). [`PROTOCOL.md`](PROTOCOL.md) = הלופ · [`SCHEMA.md`](SCHEMA.md) = חוזה הנתונים למערכת הניטור · [`LESSONS.md`](LESSONS.md) = מה נלמד.
+
 ## 8. הסכמה ותיעוד
 - עמוד אחד חתום ע״י לימור וטירן: מה מעובד, איפה (המחשב שלהם), מה יוצא (מצרפים), מי רואה (הם + אני), מחיקה של קבצי ביניים בסוף. זה גם מה שקרן תשאל.
 - לוג עיבוד: תאריך · מקור · סקריפט · שורות · מי הריץ.

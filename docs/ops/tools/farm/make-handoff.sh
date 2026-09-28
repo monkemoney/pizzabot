@@ -6,13 +6,13 @@ HERE="$(cd "$(dirname "$0")" && pwd)"            # docs/ops/tools/farm
 REPO="$(cd "$HERE/../../../.." && pwd)"
 OUT="${1:-$HOME/Desktop/farm-data}"
 rm -rf "$OUT"; mkdir -p "$OUT/docs" "$OUT/raw/participation" "$OUT/raw/checks" "$OUT/ics" "$OUT/local"
-cp "$HERE"/{timeline,contacts,cal_events,ledger,mail_ledger}.py "$OUT/"
+cp "$HERE"/{timeline,contacts,cal_events,ledger,mail_ledger,runlog}.py "$OUT/"
 cp "$HERE/HANDOFF-CLAUDE.md" "$OUT/CLAUDE.md"
-for f in CHECKLIST-TONIGHT DAY1-PHOTOS DAY2-MONEY FACTS EXTRACTION DATA-COLLECTION; do
+for f in CHECKLIST-TONIGHT DAY1-PHOTOS DAY2-MONEY FACTS EXTRACTION DATA-COLLECTION PROTOCOL SCHEMA LESSONS; do
   cp "$REPO/docs/ops/farm/$f.md" "$OUT/docs/"
 done
 # self-test every tool in the bundle so a broken copy is caught here, not on her Mac
-( cd "$OUT" && for t in timeline contacts cal_events ledger mail_ledger; do python3 "$t.py" demo >/dev/null 2>&1 && echo "  $t.py demo OK" || { echo "  $t.py demo FAILED"; exit 1; }; done )
+( cd "$OUT" && for t in timeline contacts cal_events ledger mail_ledger runlog; do python3 "$t.py" demo >/dev/null 2>&1 && echo "  $t.py demo OK" || { echo "  $t.py demo FAILED"; exit 1; }; done )
 rm -rf "$OUT/__pycache__"
 echo "bundle ready: $OUT"
 echo "AirDrop this folder to Limor's Mac → move to ~/farm-data → Terminal: cd ~/farm-data && claude"

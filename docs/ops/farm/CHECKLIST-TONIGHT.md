@@ -5,6 +5,9 @@
 > **ידיים של לימור — שלוש פעמים, לא שמונה:** (1) בהתחלה: לפתוח את המק, Touch ID ל-Full Disk Access, ולענות על השאלות בזמן שההתקנה רצה; (2) כשצעד 7 רץ: Wix בדפדפן, Instagram בטלפון, 10 דק׳ על רשימת המילים ואישור החווה; (3) בסוף: Touch ID להסרת ההרשאה, ומבט משותף בתוצאה. להגיד לה זאת בהתחלה.
 > **אם משהו נתקע יותר מ-10 דקות — חוץ מצעדים 4 ו-7 —** לעבור לצעד הבא ולכתוב לי מה קרה.
 
+## שכבת הלמידה — שתי שניות לצעד
+כל צעד נרשם: `python3.13 runlog.py start 7` בהתחלה, `python3.13 runlog.py done 7 --status ok` בסוף (או `fail` / `skip` / `workaround --fix "מה עשינו"`). ה-Claude Code המקומי עושה זאת לבד; ידנית — לפחות לצעדים שנכשלו/עקפו. תשובות לימור: `runlog.py answer 4 --text "..."`. בסוף: `runlog.py manifest && runlog.py report` → **`RUNREPORT.md` הוא מה שמדביקים לי**, יחד עם קבצי ה-share. הכלי מסרב להערה שנראית כמו טלפון/מייל/נתיב. הלופ המלא: [`PROTOCOL.md`](PROTOCOL.md).
+
 ## כללי פרטיות לערב — קצר
 - הסקריפטים רצים על המק שלה; החוצה יוצאים רק **קבצי `_share` וספירות**. שום קובץ גולמי, שום `*_local.csv`.
 - **להעתיק לצ׳אט רק שורות פלט.** אף שורה עם הפרומפט (`שם@מחשב %`), אף צילום מסך של הטרמינל, אף נתיב מלא (`/Users/<שם>`). בתחילת הסשן: `PROMPT='%% '`.
@@ -130,12 +133,17 @@
     ```
     להראות ללימור את ה-`ls`: אין `photos_meta.json`, אין `Contacts.abbu`. `processing_log.csv` — להסתכל, **לא להעתיק** (יש בו שם משתמש).
 20. System Settings → Privacy & Security → **Full Disk Access → Terminal → כבוי**; ואם הופיע — **Contacts → Terminal → כבוי**. **להשאיר** uv/osxphotos לריצה החודשית (אחרת בלוק ה-residue ב-DAY1 §6).
+21. **דוח הריצה:**
+    ```bash
+    python3.13 runlog.py manifest && python3.13 runlog.py report
+    ```
+    לקרוא את `RUNREPORT.md` פעם אחת על המסך (אין בו שם? אין נתיב?) → זה מה שמדביקים לי. `runlog.jsonl` ו-`manifest.json` נשארים בתיקייה.
 
 ## מה נוסע, מה נשאר, מה עוד חסר
 
 | מגיע אליי (בלי שמות) | נשאר על המק שלה | נמחק הערב |
 |---|---|---|
-| `events_seed_share.csv` · `calendar_events.csv` · `contacts_counts.csv` · `contacts_timeline.csv` · `tags.txt` · `raw/checks/wix_payments_summary.csv` · שורת כותרת של wix_payments · שורות scrub/cluster/סיכום-שנים/scan/count (בלי נתיבים, בלי קואורדינטות) | `events_seed.csv` · `albums_local.csv` · `photos_meta.csv` · `vocab_local.csv` · `contacts_groups_local.csv` · `calendar_local.csv` · `ics/` · `raw/wix_payments.csv` · `processing_log.csv` | `photos_meta.json` · `Contacts.abbu` · `all.vcf` · תיקיות demo |
+| **`RUNREPORT.md`** · `events_seed_share.csv` · `calendar_events.csv` · `contacts_counts.csv` · `contacts_timeline.csv` · `tags.txt` · `raw/checks/wix_payments_summary.csv` · שורת כותרת של wix_payments · שורות scrub/cluster/סיכום-שנים/scan/count (בלי נתיבים, בלי קואורדינטות) | `events_seed.csv` · `albums_local.csv` · `photos_meta.csv` · `vocab_local.csv` · `contacts_groups_local.csv` · `calendar_local.csv` · `ics/` · `raw/wix_payments.csv` · `processing_log.csv` | `photos_meta.json` · `Contacts.abbu` · `all.vcf` · תיקיות demo |
 
 **מה עוד חסר אחרי הערב ומי מביא:** הכנסות ותורמים → טירן, ימים 2–3 (Chase CSV 24 חודשים + PDF למרץ 2023–ינואר 2024, Wix מלא, Venmo). משתתפים → לימור 3×1 שעה תיוג + ספירות Bookings (R). חיות → לימור הערב (S) → קבלות וטרינר (R) ביום 3.
 
@@ -151,4 +159,4 @@
 7. הסכמה לכיתובי אינסטגרם בקובץ (צעד 18): כן/לא.
 
 ## סיימנו הערב כש…
-(1) אצלי בצ׳אט: `events_seed_share.csv` · `calendar_events.csv` · `contacts_counts.csv` · `contacts_timeline.csv` · `tags.txt` · `wix_payments_summary.csv` · שורות הסיכום · כותרת wix_payments; (2) `ls ~/farm-data` בלי `photos_meta.json` ובלי `Contacts.abbu`; (3) Terminal לא ברשימת Full Disk Access — לימור ראתה; (4) לימור ענתה על 1–7; (5) ייצוא Instagram הופעל או נדחה במפורש. **לביקור 2:** `--instagram`, ואם ב׳ נדחה — הגלריה אחרי סנכרון iCloud.
+(1) אצלי בצ׳אט: **`RUNREPORT.md`** · `events_seed_share.csv` · `calendar_events.csv` · `contacts_counts.csv` · `contacts_timeline.csv` · `tags.txt` · `wix_payments_summary.csv` · שורות הסיכום · כותרת wix_payments; (2) `ls ~/farm-data` בלי `photos_meta.json` ובלי `Contacts.abbu`; (3) Terminal לא ברשימת Full Disk Access — לימור ראתה; (4) לימור ענתה על 1–7; (5) ייצוא Instagram הופעל או נדחה במפורש. **לביקור 2:** `--instagram`, ואם ב׳ נדחה — הגלריה אחרי סנכרון iCloud.
