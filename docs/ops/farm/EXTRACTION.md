@@ -100,3 +100,22 @@ PayPal/Venmo/Zelle/Square ─┼──▶ ledger.py ── איחוד + dedupe �
 2. **פלטפורמת האתר:** Wix / Squarespace / אחר — ומי מנהל.
 3. **ערוצי תשלום בשימוש:** PayPal · Venmo · Zelle · Square · Eventbrite · GoFundMe · מזומן — מה מהם.
 4. **בנק העמותה** — ומי מחזיק גישה לייצוא.
+
+## 9. מפת מקורות — לפי סוג תוכן × איפה זה יכול לחיות
+
+| סוג תוכן | איפה זה חי (אפשרויות) | פורמט ייצוא | דרגה | רגישות |
+|---|---|---|---|---|
+| **אירועים — מתי, איפה, מה** | גלריית הטלפון (EXIF) · iCloud/Google Photos · Instagram פוסטים+סטוריז+רילז (738) · Facebook פוסטים/אירועים · TikTok · Threads · YouTube · WhatsApp קבוצות · Google/Apple Calendar · Eventbrite · מיילי תיאום · Yelp/Google reviews (תאריך ביקור) · Wayback Machine של האתר (עמודי אירועים ישנים) | CSV מטא-דאטה · JSON (IG/FB download) · ICS · טקסט | E (תמונה/פוסט) · R (מייל/יומן/waiver) | נמוכה במטא-דאטה; גבוהה בתמונות עצמן |
+| **משתתפים — כמה, מי (אוכלוסייה)** | waivers חתומים (נייר/דיגיטלי) · רשימות נוכחות · הודעות ״מגיעים 40״ · טפסי הרשמה באתר · Eventbrite attendees · פנים בתמונות (ספירה) · מיילים מ-Orot/שותפים עם רשימות | ספירה לתאריך — **בלי שמות** | R (רשימה/waiver) · E (ספירת פנים) · S (זיכרון) | **גבוהה מאוד** — חיילים, שורדים, ילדים. רק ספירות |
+| **כסף נכנס** | חשבון בנק העמותה · PayPal (Activity) · PayPal Giving Fund · Venmo (Statement) · Zelle (בבנק) · Square/Stripe · Eventbrite payouts · GoFundMe · Wix Payments · מזומן (קבלות ידניות/צילומים) · צ׳קים (צילומי הפקדה) | CSV מכל פלטפורמה | R | בינונית — שמות תורמים → שם פרטי בלבד |
+| **כסף יוצא** | בנק/כרטיס · Chewy/Amazon (הזמנות) · חנות מזון/חווה · וטרינר (חשבוניות במייל/נייר) · ביטוח · עיריה/LADBS · אתר (Wix/דומיין) · Google Workspace · דלק/רכב · קבלנים · **מהכיס הפרטי של המייסדים** (חשבון פרטי — מסומן בנפרד) | CSV בנק · PDF חשבוניות ממייל · צילומי קבלות | R | נמוכה |
+| **תורמים ומציעים** | פלטפורמות תשלום · מיילים ״I'd like to help״ · DM ב-Instagram/Facebook · WhatsApp · Change.org חותמים (1,500 יעד — **רשימה ציבורית של תומכים!**) · Eventbrite קונים · GoFundMe תורמים · זיכרון | CSV · רשימות | R · S | בינונית — שם פרטי + סכום |
+| **שותפים ומוסדות** | מיילים (Orot, נובה, בתי ספר, IAC, פדרציה, Adult Skills Center) · תיוגים ב-IG · Eventbrite co-hosts · Jewish Journal · WhatsApp | mail_index · רשימה | R | נמוכה |
+| **תקשורת וכתבות** | Voyage LA · CanvasRebel · Jewish Journal · Medium (Frish) · Meetup · Yelp/Wanderlog · Google Alerts · מיילים מעיתונאים · Instagram mentions · ynet/ישראל? | קישורים + PDF | R | אפס |
+| **נכסים — תמונות/וידאו/סיפורים** | גלריה · IG/FB/TikTok/YouTube · Google Drive/iCloud · צלמים חיצוניים · הודעות תודה (מייל/WhatsApp/IG DM) · ביקורות Yelp/Google (ציטוטים ציבוריים) | קבצים + רשימת Assets עם **הסכמה** | — | גבוהה בפנים/שמות → הסכמה לכל נכס |
+| **בעלי חיים** | רשומות וטרינר (מרפאה) · חשבוניות · IG (הצלות מתועדות, ״Alpaca Summer״) · טופסי הצלה/אימוץ · רישום עירוני | ספירה + סכומים | R | נמוכה |
+| **ישות וממשל** | IRS determination letter · תקנון · פרוטוקולים · CA AG Registry (CT#) · Secretary of State (bizfile) · מיילים עם איש ה-IRS · GuideStar | PDF | R | נמוכה |
+| **אתר, היתרים, ביטוח** | LADBS portal (תיק לפי כתובת) · מכתבים · פוליסת ביטוח (סוכן) · היתרי החזקת בע״ח · Change.org (ההיסטוריה של התיק) | PDF | R | נמוכה |
+| **פניות והזמנות (המשפך)** | Instagram DM · Facebook Messenger · WhatsApp Business · Yelp messages · Google Business messages · טפסי Wix · טלפון · מייל | ספירה לחודש לפי ערוץ | E | בינונית |
+
+**עקרון סדר:** מתחילים במה שיש לו **תאריך אוטומטי** (גלריה, IG, בנק, פלטפורמות) — זה השלד. אחר כך מה שדורש קריאה (מיילים, WhatsApp). בסוף — מה שדורש זיכרון (S), ורק כדי לסמן מה חסר.
