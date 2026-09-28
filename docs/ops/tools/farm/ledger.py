@@ -19,8 +19,9 @@ Pipeline
   ledger.py demo                                                  (self-test on synthetic exports)
 
 Formats are detected from the header row: PayPal activity, Venmo statement, Square
-transactions, Stripe payments, Eventbrite orders, GoFundMe donations, Bank of America,
-Chase, Wells Fargo, and any generic "date / description / amount" CSV.
+transactions, Stripe payments, Eventbrite orders, Wix Payments transactions, donation
+exports (Wix Donations / GoFundMe / Givebutter / Donorbox), Bank of America, Chase,
+Wells Fargo, and any generic "date / description / amount" CSV.
 Sign convention: + money in, − money out. Python 3.9+, standard library only.
 """
 import argparse
@@ -40,12 +41,15 @@ LEDGER_FIELDS = [
     "dup_of", "receipt_ref",
 ]
 
-PLATFORMS = ("paypal", "venmo", "square", "stripe", "eventbrite", "gofundme", "zelle",
+PLATFORMS = ("paypal", "venmo", "square", "stripe", "eventbrite", "gofundme", "zelle", "wix",
              "cash app", "givebutter", "donorbox", "facebook pay", "meta pay")
 
 # category -> keywords matched against the description/counterparty (lowercase).
 # Same table lives in mail_ledger.py; keep them identical.
 CATEGORIES = [
+    # transfer first: a payout from a platform that is also a vendor (Wix) is a transfer, not a web bill
+    ("transfer",   ("transfer", "online banking", "xfer", "cashout", "cash out", "payout", "withdrawal", "bank deposit")),
+    ("fees",       ("fee", "service charge", "monthly maintenance", "chargeback")),
     ("vet",        ("vet", "veterinar", "animal hospital", "animal clinic", "farrier", "equine")),
     ("feed",       ("chewy", "tractor supply", "feed", "hay", "petco", "petsmart", "grain", "alfalfa")),
     ("insurance",  ("insurance", "state farm", "farmers", "hiscox", "philadelphia ins", "liability")),
@@ -54,8 +58,6 @@ CATEGORIES = [
     ("utilities",  ("ladwp", "socalgas", "so cal gas", "spectrum", "at&t", "t-mobile", "verizon", "water")),
     ("supplies",   ("home depot", "lowe's", "lowes", "amazon", "costco", "target", "walmart", "smart & final")),
     ("fuel",       ("shell", "chevron", "arco", "76 ", "mobil", "gas station", "fuel")),
-    ("fees",       ("fee", "service charge", "monthly maintenance", "chargeback")),
-    ("transfer",   ("transfer", "online banking", "xfer", "cashout", "cash out", "payout", "withdrawal", "bank deposit")),
     ("government", ("irs", "franchise tax", "ftb", "secretary of state", "ladbs", "city of los angeles", "county of los angeles")),
     ("professional", ("cpa", "accounting", "attorney", "law office", "legal", "bookkeep")),
 ]
@@ -147,7 +149,7 @@ def categorize(text, direction, source, kind=""):
             return "zelle_in"   # donation or a paid visit — Tiran decides; the bank cannot tell
         if source in ("eventbrite", "square", "stripe") or any(k in t for k in ("ticket", "booking", "class", "tour", "visit", "workshop")):
             return "program_revenue"
-        if source in ("gofundme", "paypal", "venmo", "zelle") or any(k in t for k in ("donation", "gift", "contribution", "tzedakah", "תרומה")):
+        if source in ("gofundme", "donations", "wix", "paypal", "venmo", "zelle") or any(k in t for k in ("donation", "gift", "contribution", "tzedakah", "תרומה")):
             return "donation"
         return "income_other"
     return "other"
@@ -188,7 +190,7 @@ def col(row, *names):
 
 def detect(header):
     h = set(header)
-    if {"gross", "net", "from email address"} & h and "type" in h:
+    if "from email address" in h or ({"gross", "net"} <= h and "type" in h):
         return "paypal"
     if "datetime" in h and ("amount (total)" in h or "funding source" in h):
         return "venmo"
@@ -198,8 +200,10 @@ def detect(header):
         return "stripe"
     if "order #" in h or ("event name" in h and "total paid" in h):
         return "eventbrite"
-    if "donation amount" in h or ("donor name" in h) or ("donation date" in h):
-        return "gofundme"
+    if "donation amount" in h or ("donor name" in h) or ("donation date" in h) or ("donor" in h and "amount" in h):
+        return "donations"      # GoFundMe, Wix Donations, Givebutter, Donorbox — same shape
+    if ("payment method" in h or "payout id" in h or "payout" in h) and ("net" in h or "fee" in h or "fees" in h):
+        return "wix"            # Wix Payments transactions export
     if "running bal." in h or "running balance" in h:
         return "bofa"
     if "posting date" in h and "details" in h:
@@ -299,15 +303,42 @@ def adapt(fmt, rows, fname):
             out.append(dict(date=d, amount=abs(a), currency="USD", description=desc, counterparty=cp,
                             kind="ticket", external_id=xid, source="eventbrite"))
             continue
-        if fmt == "gofundme":
-            d = parse_date(col(r, "donation date", "date"))
-            a = money(col(r, "donation amount", "amount"))
+        if fmt == "donations":
+            d = parse_date(col(r, "donation date", "date", "created"))
+            a = money(col(r, "donation amount", "amount", "total"))
             if not d or a is None:
                 continue
-            cp = col(r, "donor name", "name") or "Anonymous"
-            out.append(dict(date=d, amount=abs(a), currency="USD", description="GoFundMe donation",
-                            counterparty=cp, kind="donation", external_id=col(r, "donation id", "id"),
-                            source="gofundme"))
+            cp = col(r, "donor name", "donor", "name", "full name") or "Anonymous"
+            src = next((k for k in ("wix", "gofundme", "givebutter", "donorbox") if k in fname.lower()), "donations")
+            out.append(dict(date=d, amount=abs(a), currency=col(r, "currency") or "USD",
+                            description=col(r, "campaign", "fund", "designation") or "donation",
+                            counterparty=cp, kind=col(r, "frequency", "type") or "donation",
+                            external_id=col(r, "donation id", "id", "transaction id"), source=src))
+            continue
+        if fmt == "wix":
+            d = parse_date(col(r, "date", "transaction date", "created", "payment date"))
+            kind = col(r, "type", "transaction type") or "payment"
+            status = norm(col(r, "status"))
+            if status and status not in ("succeeded", "approved", "completed", "paid", "settled", ""):
+                continue
+            a = money(col(r, "amount", "gross", "total"))
+            fee = money(col(r, "fee", "fees", "processing fee"))
+            xid = col(r, "transaction id", "payment id", "id")
+            if not d or a is None:
+                continue
+            if "payout" in kind.lower() or "withdrawal" in kind.lower():
+                out.append(dict(date=d, amount=-abs(a), currency="USD", description=kind, counterparty="Wix",
+                                kind=kind, external_id=xid, source="wix"))
+                continue
+            if "refund" in kind.lower():
+                a = -abs(a)
+            cp = col(r, "customer name", "customer", "name", "payer") or "Wix customer"
+            desc = col(r, "description", "order", "order number", "item", "product") or kind
+            out.append(dict(date=d, amount=a, currency="USD", description=desc, counterparty=cp,
+                            kind=kind, external_id=xid, source="wix"))
+            if fee:
+                out.append(dict(date=d, amount=-abs(fee), currency="USD", description="Wix fee",
+                                counterparty="Wix", kind="fee", external_id=xid + ":fee", source="wix"))
             continue
         # banks
         if fmt == "bofa":
@@ -563,6 +594,16 @@ def synthetic_exports(tmp):
         "9001,01/27/2024,Attending,Dana,Example,d@example.com,Farm Tour Sunday,2,General,40.00",
         "9002,01/27/2024,Attending,Eli,Example,e@example.com,Farm Tour Sunday,4,General,80.00",
     ])
+    files["wix_payments.csv"] = "\n".join([
+        "Date,Transaction ID,Type,Status,Payment method,Customer name,Amount,Fee,Net,Currency",
+        "02/15/2024,WX1,Payment,Approved,Credit card,Tamar Example,60.00,2.04,57.96,USD",
+        "02/16/2024,WX2,Payment,Approved,Credit card,Ori Example,120.00,3.78,116.22,USD",
+        "02/20/2024,WX3,Payout,Approved,,,174.18,0.00,174.18,USD",
+    ])
+    files["wix_donations.csv"] = "\n".join([
+        "Donation ID,Date,Donor name,Email,Amount,Currency,Frequency,Campaign",
+        "D1,02/18/2024,Shira Example,s@example.com,36.00,USD,One-time,Feed the alpacas",
+    ])
     files["gofundme.csv"] = "\n".join([
         "Donor Name,Donation Amount,Donation Date,Comment",
         "Anonymous,50.00,2024-02-10,",
@@ -583,12 +624,13 @@ def cmd_demo(_args):
     ledger, cps, report = ingest(paths, "demo")
     fmts = {name: fmt for name, fmt, _ in report}
     assert fmts == {"bofa_2024.csv": "bofa", "paypal.csv": "paypal", "venmo.csv": "venmo",
-                    "eventbrite.csv": "eventbrite", "gofundme.csv": "gofundme"}, fmts
+                    "eventbrite.csv": "eventbrite", "gofundme.csv": "donations",
+                    "wix_payments.csv": "wix", "wix_donations.csv": "donations"}, fmts
     out = os.path.join(tmp, "ledger.csv")
     write_csv(out, LEDGER_FIELDS, ledger)
     text = open(out, encoding="utf-8").read()
     # 1. no names, no notes in the shareable file
-    for bad in ("Example", "example", "goats", "alpaca visit", "Kol hakavod", "Sarah", "DAVID"):
+    for bad in ("Example", "example", "goats", "alpaca visit", "Kol hakavod", "Sarah", "DAVID", "Feed the alpacas"):
         assert bad not in text, "ledger leaked: %s" % bad
     # 2. platform payouts in the bank are not counted twice; internal transfer not counted
     by_id = {r["row_id"]: r for r in ledger}
@@ -601,9 +643,13 @@ def cmd_demo(_args):
     assert sum(1 for r in ledger if r["dup_of"] == "exact") == 2, "TX2 + its fee"  # row and fee row
     # 4. totals: in = 250 zelle + 500 + 700 paypal + 100 + 200 venmo + 40 + 80 eventbrite + 50 + 150 gofundme
     tot_in = sum(float(r["amount"]) for r in ledger if r["counted"] and r["direction"] == "in")
-    assert abs(tot_in - 2070.0) < 0.01, tot_in
+    # + wix 60 + 120 payments + 36 donation = 2286
+    assert abs(tot_in - 2286.0) < 0.01, tot_in
     tot_out = sum(float(r["amount"]) for r in ledger if r["counted"] and r["direction"] == "out")
-    assert abs(tot_out - (186.40 + 420 + 16 + 210 + 15 + 20)) < 0.01, tot_out
+    assert abs(tot_out - (186.40 + 420 + 16 + 210 + 15 + 20 + 2.04 + 3.78)) < 0.01, tot_out
+    wix = [r for r in ledger if r["source"] == "wix"]
+    assert any(r["kind"] == "Payout" and r["counted"] == 0 and r["category"] == "transfer" for r in wix), wix
+    assert {r["source"] for r in ledger if r["category"] == "donation" and r["counted"]} >= {"paypal", "venmo", "wix", "gofundme"}
     # 5. categories
     cats = {(r["category"], r["direction"]) for r in ledger if r["counted"]}
     for need in (("vet", "out"), ("feed", "out"), ("insurance", "out"), ("fees", "out"), ("donation", "in"), ("program_revenue", "in"), ("zelle_in", "in")):
@@ -624,7 +670,7 @@ def cmd_demo(_args):
     assert len(un_rows) == 3, [(r["category"], r["amount"]) for r in un_rows]  # feed, insurance, zelle-in
     # 8. summary has no names and sums match
     s = summarize(ledger)
-    assert abs(sum(float(r["total"]) for r in s if r["direction"] == "in") - 2070.0) < 0.01
+    assert abs(sum(float(r["total"]) for r in s if r["direction"] == "in") - 2286.0) < 0.01
     print("demo OK: %d exports -> %d ledger rows (%d counted) · in %.2f out %.2f · %d counterparties (local) · reconcile matched vet invoice, 1 open receipt, %d open rows"
           % (len(paths), len(ledger), sum(1 for r in ledger if r["counted"]), tot_in, tot_out, len(cps), len(un_rows)))
     print("files:", tmp)

@@ -39,6 +39,9 @@ RECEIPT_FIELDS = ["msg_id", "date", "from_domain", "from_kind", "subject", "dire
 
 # Same table as ledger.py CATEGORIES; keep identical.
 CATEGORIES = [
+    # transfer first: a payout from a platform that is also a vendor (Wix) is a transfer, not a web bill
+    ("transfer",   ("transfer", "online banking", "xfer", "cashout", "cash out", "payout", "withdrawal", "bank deposit")),
+    ("fees",       ("fee", "service charge", "monthly maintenance", "chargeback")),
     ("vet",        ("vet", "veterinar", "animal hospital", "animal clinic", "farrier", "equine")),
     ("feed",       ("chewy", "tractor supply", "feed", "hay", "petco", "petsmart", "grain", "alfalfa")),
     ("insurance",  ("insurance", "state farm", "farmers", "hiscox", "philadelphia ins", "liability", "policy")),
@@ -47,8 +50,6 @@ CATEGORIES = [
     ("utilities",  ("ladwp", "socalgas", "so cal gas", "spectrum", "at&t", "t-mobile", "verizon", "water")),
     ("supplies",   ("home depot", "lowe's", "lowes", "amazon", "costco", "target", "walmart", "smart & final")),
     ("fuel",       ("shell", "chevron", "arco", "76 ", "mobil", "gas station", "fuel")),
-    ("fees",       ("fee", "service charge", "monthly maintenance", "chargeback")),
-    ("transfer",   ("transfer", "online banking", "xfer", "cashout", "cash out", "payout", "withdrawal", "bank deposit")),
     ("government", ("irs", "franchise tax", "ftb", "secretary of state", "ladbs", "city of los angeles", "county of los angeles")),
     ("professional", ("cpa", "accounting", "attorney", "law office", "legal", "bookkeep")),
 ]

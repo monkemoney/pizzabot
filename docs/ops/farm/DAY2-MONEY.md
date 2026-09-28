@@ -8,15 +8,19 @@
 
 | ערוץ | איפה | שם קובץ |
 |---|---|---|
-| בנק העמותה | Online banking → Statements/Activity → Download → **CSV** (לא PDF); שנה-שנה אם יש מגבלת טווח | `bank_2023.csv` `bank_2024.csv` `bank_2025.csv` |
+| **Chase — חשבון העמותה** (FACTS #3) | chase.com → Account → Download account activity → **CSV**, Custom date range (מגבלה ~24 חודשים לטווח; לחלק לשניים) | `chase_npo_2024.csv` `chase_npo_2025.csv` |
+| **Chase — החשבון הפרטי, מרץ 2023 → ינואר 2024** | אותו דבר. **זה ה-founders' contribution** — ההוצאות על החווה מהכיס הפרטי לפני שהחשבון של העמותה נפתח. טירן מסמן בגיליון אילו שורות הן חווה (הכלי מסווג לפי ספק: chewy, vet, feed…) | `chase_private_2023.csv` |
 | כרטיס אשראי (אם נפרד) | אותו דבר | `card_2023.csv` … |
-| PayPal | Activity → **Download** → Custom date range → CSV ("Balance affecting" מספיק) | `paypal.csv` |
+| **Wix Payments** (FACTS #4, #5) | Wix Dashboard → Finances → **Payments** → Transactions → Export CSV; וגם **Payouts** | `wix_payments.csv` |
+| **Wix Donations** | Dashboard → Donations (או Apps → Donations) → Export | `wix_donations.csv` |
+| Wix Bookings / Events / Store (אם קיים) | Bookings → Export · Events → Orders export | `wix_bookings.csv` — זה **Events בדרגה R** |
+| PayPal (אם היה) | Activity → **Download** → Custom date range → CSV | `paypal.csv` |
 | Venmo | venmo.com → Statement → חודש-חודש → Download CSV (12 קבצים בשנה, זה בסדר — הכלי מאחד) | `venmo_2024-01.csv` … |
 | Square | Dashboard → Transactions → Export | `square.csv` |
 | Stripe | Payments → Export | `stripe.csv` |
 | Eventbrite | Orders → Export → Attendee/Orders report CSV | `eventbrite.csv` |
 | GoFundMe | Campaign → Donations → Export | `gofundme.csv` |
-| Zelle | אין ייצוא נפרד — מופיע בבנק ("Zelle payment from …") | — |
+| **Zelle** (FACTS #4) | אין ייצוא נפרד — מופיע ב-Chase ("Zelle payment from …"); הכלי מחלץ את השם ל-`counterparties_local.csv` ומסמן `zelle_in` | — |
 
 **Gmail של העמותה — קבלות וחשבוניות:**
 1. בחיפוש, להדביק ולבדוק כמה תוצאות יש. להתאים לספקים האמיתיים שרואים:
@@ -30,7 +34,7 @@
 ## יום 3 — עיבוד (טירן + אני, ~1 שעה)
 ```bash
 cd ~/farm-data
-python3 ledger.py ingest raw/bank_*.csv raw/card_*.csv raw/paypal.csv raw/venmo_*.csv raw/eventbrite.csv raw/gofundme.csv -o ledger.csv
+python3 ledger.py ingest raw/chase_*.csv raw/wix_*.csv raw/venmo_*.csv -o ledger.csv          # + paypal/eventbrite אם קיימים
 #   מדפיס לכל קובץ את הפורמט שזוהה ומס׳ שורות. "UNRECOGNISED" = לשלוח לי את שורת הכותרת (בלי נתונים) — אני מוסיף מתאם.
 python3 mail_ledger.py scan raw/receipts.mbox -o receipts.csv --attachments accountant/ --since 2023-01-01
 python3 ledger.py reconcile ledger.csv receipts.csv -o ledger.csv --questions questions.csv
