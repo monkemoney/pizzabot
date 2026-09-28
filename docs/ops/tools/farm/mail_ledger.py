@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """mail_ledger.py — the receipts and invoices hiding in the farm's Gmail (ops tool, D13).
 
-Runs ON TIRAN'S MAC against a Google Takeout .mbox of the labelled mail
-(Farm/Receipts/2023..2025 — see DAY2-MONEY.md for the saved searches).
+Runs ON TIRAN'S MAC against the Google Takeout .mbox of the labelled mail
+(one label, Farm/Receipts — see DAY2-MONEY.md for the saved search). A Takeout split by
+size arrives as several .mbox files; pass them all, they are scanned in one run.
 Reads each message once, extracts the amount, direction and category, files
 PDF attachments for the accountant, and never writes a message body anywhere.
 
@@ -14,7 +15,7 @@ PDF attachments for the accountant, and never writes a message body anywhere.
   receipts_summary.csv  shareable — month × direction × category × sender kind: n, total.
 
 Pipeline
-  mail_ledger.py scan  takeout.mbox -o receipts.csv --attachments ./attachments [--since 2023-01-01]
+  mail_ledger.py scan  takeout.mbox [takeout-002.mbox ...] -o receipts.csv --attachments ./attachments [--since 2023-01-01]
   mail_ledger.py summary receipts.csv -o receipts_summary.csv
   mail_ledger.py demo
 
@@ -39,8 +40,10 @@ RECEIPT_FIELDS = ["msg_id", "date", "from_domain", "from_kind", "subject", "dire
 
 # Same table as ledger.py CATEGORIES; keep identical.
 CATEGORIES = [
-    # transfer first: a payout from a platform that is also a vendor (Wix) is a transfer, not a web bill
-    ("transfer",   ("transfer", "online banking", "xfer", "cashout", "cash out", "payout", "withdrawal", "bank deposit")),
+    # transfer first: a payout from a platform that is also a vendor (Wix) is a transfer, not a web bill;
+    # a card payment ("Payment Thank You", AUTOPAY, "Chase card ending") is a transfer on both sides
+    ("transfer",   ("transfer", "online banking", "xfer", "cashout", "cash out", "payout", "withdrawal", "bank deposit",
+                    "payment thank you", "automatic payment", "autopay", "chase card ending", "credit crd", "epay")),
     ("fees",       ("fee", "service charge", "monthly maintenance", "chargeback")),
     ("vet",        ("vet", "veterinar", "animal hospital", "animal clinic", "farrier", "equine")),
     ("feed",       ("chewy", "tractor supply", "feed", "hay", "petco", "petsmart", "grain", "alfalfa")),
@@ -49,7 +52,8 @@ CATEGORIES = [
                     "canva", "mailchimp", "namecheap")),
     ("utilities",  ("ladwp", "socalgas", "so cal gas", "spectrum", "at&t", "t-mobile", "verizon", "water")),
     ("supplies",   ("home depot", "lowe's", "lowes", "amazon", "costco", "target", "walmart", "smart & final")),
-    ("fuel",       ("shell", "chevron", "arco", "76 ", "mobil", "gas station", "fuel")),
+    # "mobil " (trailing space) and "exxonmobil", never bare "mobil": 'Payment Thank You-Mobile' is a card payment
+    ("fuel",       ("shell", "chevron", "arco", "76 ", "exxonmobil", "mobil ", "gas station", "fuel")),
     ("government", ("irs", "franchise tax", "ftb", "secretary of state", "ladbs", "city of los angeles", "county of los angeles")),
     ("professional", ("cpa", "accounting", "attorney", "law office", "legal", "bookkeep")),
 ]
@@ -254,11 +258,18 @@ def save_attachments(atts, row, root):
     return saved
 
 
-def scan_mbox(path, since=None, attachments_dir=None):
+def scan_mbox(path, since=None, attachments_dir=None, progress_every=500):
+    # mailbox.mbox builds a table of contents of the WHOLE file before yielding the first message
+    # (~8-10 s per GB of silence) — say so up front, or a multi-GB Takeout reads as a hang.
+    print("indexing %s (%d MB) … first output only after the whole file is indexed"
+          % (path, os.path.getsize(path) // 1_000_000), file=sys.stderr)
     box = mailbox.mbox(path, factory=lambda f: email.message_from_binary_file(f, policy=email.policy.default))
     rows, n_msgs, n_pdf = [], 0, 0
     for msg in box:
         n_msgs += 1
+        if progress_every and n_msgs % progress_every == 0:
+            print("  %s: %d messages scanned, %d money emails so far" % (os.path.basename(path), n_msgs, len(rows)),
+                  file=sys.stderr)
         res = scan_message(msg, since)
         if not res:
             continue
@@ -297,7 +308,12 @@ def log_line(output, step, n_in, n_out):
 
 def cmd_scan(args):
     since = datetime.strptime(args.since, "%Y-%m-%d").date() if args.since else None
-    rows, n_msgs, n_pdf = scan_mbox(args.mbox, since, args.attachments)
+    rows, n_msgs, n_pdf = [], 0, 0
+    for path in args.mbox:   # a size-split Takeout (…-002.mbox) needs no manual cat
+        r, m, p = scan_mbox(path, since, args.attachments)
+        rows.extend(r)
+        n_msgs += m
+        n_pdf += p
     rows.sort(key=lambda r: r["date"])
     write_csv(args.output, RECEIPT_FIELDS, rows)
     by_dir = defaultdict(int)
@@ -416,8 +432,8 @@ def cmd_demo(_args):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("scan", help="Takeout .mbox -> receipts.csv (+ PDFs filed)")
-    s.add_argument("mbox")
+    s = sub.add_parser("scan", help="Takeout .mbox file(s) -> receipts.csv (+ PDFs filed)")
+    s.add_argument("mbox", nargs="+", help="one or more Takeout .mbox files (a size-split export has several)")
     s.add_argument("-o", "--output", default="receipts.csv")
     s.add_argument("--attachments", help="folder to file PDF attachments by year")
     s.add_argument("--since", help="YYYY-MM-DD")

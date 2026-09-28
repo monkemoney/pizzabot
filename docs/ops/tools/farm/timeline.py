@@ -5,17 +5,24 @@ Runs ON LIMOR'S MAC. Reads metadata only, never an image. Writes derived CSVs
 with no names, no captions, no file paths. Only the derived CSV leaves the machine.
 
 Pipeline
-  1. osxphotos query --json --from-date 2023-01-01 > photos_meta.json      (osxphotos, on the Mac)
+  1. osxphotos query --json --from-date 2020-06-01 --not-hidden > photos_meta.json   (on the Mac)
+     (no trash flag: the default query already excludes Recently Deleted and scrub
+     filters `intrash` again; `--not-in-trash` does not exist and would abort the run)
   2. timeline.py scrub   photos_meta.json  -o photos_meta.csv              (drops persons/titles/paths)
   3. timeline.py cluster photos_meta.csv   -o events_seed.csv [--farm auto] (one row per event)
-     optional: --instagram <export dir or posts_*.json>  joins same-day post captions
+     optional: --instagram <Instagram export folder (instagram-<user>-<date>-<id>/)
+                           or a posts_*.json / posts.json / stories.json file>
+               joins same-day post captions
   4. rm photos_meta.json                                                    (raw export deleted)
 
 Self-check on synthetic data (no real photos needed):
   timeline.py demo
 
-Python 3.9+, standard library only. osxphotos is the only external tool, and
-it is only used for step 1.
+Python 3.9+, standard library only — macOS's bundled python3 (3.9.6) runs it.
+osxphotos is the only external tool and is used for step 1 only; it needs
+Python >= 3.10, so it gets its own interpreter via uv
+(`uv tool install --python 3.13 osxphotos`) — never the system pip, which
+silently installs a 2024 version that predates Photos 11.
 """
 import argparse
 import csv
@@ -42,12 +49,21 @@ EVENT_FIELDS = [
     "type", "population", "headcount", "partner", "evidence_grade", "notes",
 ]
 
-# Fields that may carry a person's name or free text. Never copied.
+# Fields that may carry a person's name, a path or free text. Never copied.
+# This set is DOCUMENTATION, not the mechanism: scrub_records() builds a NEW dict
+# from SCRUBBED_FIELDS only and write_csv() drops extras, so nothing outside
+# SCRUBBED_FIELDS can reach photos_meta.csv whether or not it is listed here.
+# The raw osxphotos JSON (non-shallow) also carries `library` (full path to the
+# library, i.e. the macOS username), `person_info` (names + face counts),
+# `search_info` (Photos' people/scene search terms), `ai_caption`, `album_info`,
+# `import_info`, `cloud_metadata`, `exif_info` — which is why photos_meta.json
+# itself must be deleted at the end of the day (pipeline step 4).
 DROPPED_FIELDS = {
-    "persons", "faces", "face_info", "title", "description", "keywords",
-    "labels", "path", "path_edited", "path_raw", "path_live_photo", "filename",
-    "original_filename", "exif", "comments", "likes", "search_info",
-    "search_info_normalized", "place", "score",
+    "persons", "faces", "face_info", "person_info", "title", "description",
+    "keywords", "labels", "ai_caption", "path", "path_edited", "path_raw",
+    "path_live_photo", "filename", "original_filename", "library", "exif",
+    "exif_info", "comments", "likes", "search_info", "search_info_normalized",
+    "place", "score", "album_info", "import_info", "cloud_metadata",
 }
 
 
@@ -110,8 +126,10 @@ def as_list(v):
 
 def faces_count_of(rec):
     """Number of detected faces. Names are never read, only counted.
-    osxphotos: `faces` (list of face dicts) and/or `persons` (list of names,
-    unnamed faces appear as '_UNKNOWN_')."""
+    osxphotos JSON has NO `faces` key. Faces live in `face_info` (a list of face
+    dicts — each carries the person's name, so the field must stay dropped) and
+    in `persons` (list of names; unnamed faces appear as '_UNKNOWN_'). `faces`
+    is still probed for other exporters, but on osxphotos only `face_info` fires."""
     n = 0
     for key in ("faces", "face_info"):
         v = rec.get(key)
@@ -124,17 +142,27 @@ def faces_count_of(rec):
 
 
 def city_of(rec):
+    """City label for the `offsite: <city>` place (only use of `place`).
+    osxphotos `place` is PlaceInfo.asdict(): `address` is a dict or NULL (no
+    reverse geocode), `names` is a dict whose values are LISTS, e.g.
+    names.city == ["Malibu"]. address.city first; when address is null or has
+    no city, fall through to names.city / names.sub_administrative_area."""
     place = rec.get("place")
     if isinstance(place, dict):
-        addr = place.get("address") or {}
-        if isinstance(addr, dict):
-            return addr.get("city") or addr.get("sub_locality") or ""
-        names = place.get("names") or {}
+        addr = place.get("address")
+        if not isinstance(addr, dict):
+            addr = {}
+        city = addr.get("city") or addr.get("sub_locality")
+        if city:
+            return str(city)
+        names = place.get("names")
         if isinstance(names, dict):
             for k in ("city", "sub_administrative_area"):
                 v = names.get(k)
+                if isinstance(v, list):
+                    v = next((x for x in v if x), None)
                 if v:
-                    return v[0] if isinstance(v, list) else v
+                    return str(v)
     return rec.get("city") or ""
 
 
@@ -192,7 +220,7 @@ def cmd_scrub(args):
     rows = scrub_records(records)
     write_csv(args.output, SCRUBBED_FIELDS, rows)
     print(f"scrub: {len(records)} records in, {len(rows)} rows out -> {args.output}")
-    print("dropped: persons, faces, titles, descriptions, keywords, paths, filenames")
+    print("dropped: persons, face_info, titles, descriptions, keywords, paths, filenames, library path")
 
 
 def write_csv(path, fields, rows):
@@ -308,18 +336,79 @@ def cluster_rows(rows, farm, radius_m=150, min_photos=5, since=None):
 
 # ----------------------------------------------------------------------------- instagram
 
+IG_FILE_RE = re.compile(r"^(posts_\d+|posts|archived_posts|stories|reels)\.json$")
+
+
+def _ig_first_media(d):
+    media = d.get("media")
+    if isinstance(media, list) and media and isinstance(media[0], dict):
+        return media[0]
+    return None
+
+
+def ig_caption_ts(it):
+    """(caption, unix timestamp) of one export item — ('', None) when undated.
+    Two shapes Instagram emits:
+      legacy posts_<n>.json / reels.json / stories.json entries:
+        {"media": [{"uri", "creation_timestamp", "title"}], "title"?, "creation_timestamp"?}
+        single-image posts carry both only inside media[0]; carousels at post level.
+      newer posts.json / archived_posts.json entries (a superset of posts_<n>.json):
+        {"timestamp", "label_values": [{"label", "value"?, "media"?: [{"title", "creation_timestamp"}]}]}
+        caption = a label_values value (a "Caption"/"Title"-labelled one preferred)
+        or nested media[0].title; timestamp = item timestamp or media[0].creation_timestamp."""
+    ts = it.get("creation_timestamp") or it.get("timestamp")
+    cap = it.get("title") or ""
+    m = _ig_first_media(it)
+    if m:
+        ts = ts or m.get("creation_timestamp")
+        cap = cap or m.get("title") or ""
+    lvs = it.get("label_values")
+    if isinstance(lvs, list):
+        # rank: a "Caption"/"Title"-labelled value > nested media title > any other
+        # value (last resort — "Post type": "Image" must never become the caption)
+        labelled, nested, other = "", "", ""
+        for lv in lvs:
+            if not isinstance(lv, dict):
+                continue
+            val = lv.get("value")
+            if isinstance(val, str) and val.strip():
+                label = str(lv.get("label") or "").lower()
+                if any(w in label for w in ("caption", "title", "text")):
+                    labelled = labelled or val
+                else:
+                    other = other or val
+            lm = _ig_first_media(lv)
+            if lm:
+                ts = ts or lm.get("creation_timestamp")
+                nested = nested or lm.get("title") or ""
+        cap = cap or labelled or nested or other
+    try:
+        ts = int(ts) if ts else None
+    except (TypeError, ValueError):
+        ts = None
+    return (cap if isinstance(cap, str) else ""), ts
+
+
 def load_instagram(path):
-    """Instagram 'Download your information' (JSON). Accepts the export folder,
-    a posts_*.json file, or stories.json. Returns {date: [caption, ...]}."""
+    """Instagram 'Download your information' (JSON). Accepts the export folder
+    (instagram-<user>-<date>-<id>/ — walked recursively, so both
+    your_instagram_activity/media/ of 2025+ exports and your_instagram_activity/content/
+    of 2023-2024 exports are found) or a single posts_*.json / posts.json /
+    archived_posts.json / stories.json / reels.json file.
+    posts.json (label_values shape) repeats every posts_<n>.json post, so entries
+    are deduplicated by (day, caption) — an undated-caption post by (day, timestamp).
+    Returns {YYYY-MM-DD: [caption, ...]} in the machine's local timezone."""
     files = []
     if os.path.isdir(path):
         for root, _, names in os.walk(path):
             for n in names:
-                if re.match(r"posts_\d+\.json$", n) or n in ("stories.json", "reels.json"):
+                if IG_FILE_RE.match(n):
                     files.append(os.path.join(root, n))
+        files.sort()
     else:
         files = [path]
     by_day = defaultdict(list)
+    seen = set()
     for fp in files:
         try:
             with open(fp, encoding="utf-8") as f:
@@ -336,17 +425,16 @@ def load_instagram(path):
         for it in items:
             if not isinstance(it, dict):
                 continue
-            ts = it.get("creation_timestamp")
-            cap = it.get("title") or ""
-            media = it.get("media") or []
-            if not ts and media and isinstance(media[0], dict):
-                ts = media[0].get("creation_timestamp")
-            if not cap and media and isinstance(media[0], dict):
-                cap = media[0].get("title") or ""
+            cap, ts = ig_caption_ts(it)
             if not ts:
                 continue
-            day = datetime.fromtimestamp(int(ts), tz=timezone.utc).astimezone().date()
-            by_day[day.isoformat()].append(fix_mojibake(cap).replace("\n", " ").strip())
+            day = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone().date().isoformat()
+            cap = fix_mojibake(cap).replace("\n", " ").strip()
+            key = (day, cap) if cap else (day, "", ts)
+            if key in seen:
+                continue
+            seen.add(key)
+            by_day[day].append(cap)
     return by_day
 
 
@@ -425,9 +513,12 @@ def synthetic_library(seed=7):
                 "longitude": farm[1] + rnd.uniform(-0.0006, 0.0006),
                 "albums": ["Soldiers retreat"] if d % 3 == 0 else [],
                 "persons": rnd.sample(names, rnd.randint(0, 3)),
-                "faces": [{"name": "x"}] * rnd.randint(0, 6),
+                "face_info": [{"name": "Alice Example", "uuid": "f"}] * rnd.randint(0, 6),
+                "person_info": [{"name": "Alice Example", "facecount": 1}],
                 "title": "Group with Alice", "description": "Alice and Bob at the farm",
                 "path": "/Users/limor/Pictures/x.jpg", "favorite": rnd.random() < 0.1,
+                "library": "/Users/limor/Pictures/Photos Library.photoslibrary",
+                "search_info": {"people": ["Alice Example"]}, "ai_caption": "Alice smiling",
                 "ismovie": rnd.random() < 0.15, "intrash": False, "hidden": False,
                 "place": {"address": {"city": "Los Angeles"}},
             })
@@ -439,7 +530,11 @@ def synthetic_library(seed=7):
                          "latitude": 34.0259 + rnd.uniform(-0.001, 0.001),
                          "longitude": -118.7798 + rnd.uniform(-0.001, 0.001),
                          "albums": ["Malibu retreat"], "persons": ["_UNKNOWN_"] * 8,
-                         "faces": [{}] * 8, "place": {"address": {"city": "Malibu"}}})
+                         "face_info": [{"name": "_UNKNOWN_"}] * 8,
+                         # both osxphotos place shapes: address.city, and null address
+                         # with names.city as a list (city_of must read either)
+                         "place": {"address": {"city": "Malibu"}} if i % 2 == 0 else
+                                  {"address": None, "names": {"city": ["Malibu"], "country": ["US"]}}})
     # noise: 200 single photos on random days, some without GPS, 3 in trash
     for i in range(200):
         t = start + timedelta(days=rnd.randint(0, 200), hours=rnd.randint(7, 21))
@@ -462,12 +557,17 @@ def cmd_demo(_args):
 
     # 1. nothing personal survives the scrub
     text = open(meta, encoding="utf-8").read()
-    for bad in ("Alice", "Bob", "_UNKNOWN_", "/Users/", "Group with"):
+    for bad in ("Alice", "Bob", "_UNKNOWN_", "/Users/", "Group with", "limor", "smiling"):
         assert bad not in text, "scrub leaked: %s" % bad
     assert set(csv.DictReader(open(meta)).fieldnames) == set(SCRUBBED_FIELDS)
     # 2. trash is skipped, faces are counted not named
     assert len(rows) == len(recs) - 3, (len(rows), len(recs))
     assert max(int(r["faces_count"]) for r in rows) == 8
+    # city from either osxphotos place shape (address.city / null address + names.city list)
+    assert city_of({"place": {"address": {"city": "Malibu"}}}) == "Malibu"
+    assert city_of({"place": {"address": None, "names": {"city": ["Malibu"]}}}) == "Malibu"
+    assert city_of({"place": {"address": {"street": "x"}, "names": {"city": [], "sub_administrative_area": ["LA County"]}}}) == "LA County"
+    assert city_of({"place": {}}) == ""
 
     # 3. farm inferred within 150 m of the true centre; clusters found
     f = infer_farm(rows)
@@ -480,23 +580,53 @@ def cmd_demo(_args):
     assert all(e["max_faces"] == 8 and e["photos"] == 12 for e in n_out), n_out
     assert not any(e["place"] == "no-gps" for e in events), "noise clustered"
 
-    # 4. instagram join by day, mojibake fixed
-    ig_dir = os.path.join(tmp, "ig", "content")
-    os.makedirs(ig_dir)
-    ts = int(datetime(2024, 5, 12, 12, 0, tzinfo=timezone(timedelta(hours=-7))).timestamp())
+    # 4. instagram join by day, mojibake fixed. The export holds BOTH shapes for the
+    #    same post — posts_1.json (legacy media[]) and posts.json (label_values) —
+    #    so the join must yield ONE caption per day, not two.
+    ig_root = os.path.join(tmp, "ig", "instagram-demo-2024-09-30-1")
+    ig_media = os.path.join(ig_root, "your_instagram_activity", "media")      # 2025+ layout
+    ig_content = os.path.join(ig_root, "your_instagram_activity", "content")  # 2023-2024 layout
+    os.makedirs(ig_media)
+    os.makedirs(ig_content)
+    la = timezone(timedelta(hours=-7))
+    ts = int(datetime(2024, 5, 12, 12, 0, tzinfo=la).timestamp())
+    ts2 = int(datetime(2024, 9, 3, 13, 0, tzinfo=la).timestamp())
     cap = "ריטריט לחיילים במליבו"  # Hebrew
-    moj = cap.encode("utf-8").decode("latin-1")
-    with open(os.path.join(ig_dir, "posts_1.json"), "w", encoding="utf-8") as fh:
+    cap2 = "יום עבודה בחווה עם קבוצה חדשה"
+    moj, moj2 = (c.encode("utf-8").decode("latin-1") for c in (cap, cap2))
+    with open(os.path.join(ig_media, "posts_1.json"), "w", encoding="utf-8") as fh:
         json.dump([{"media": [{"uri": "x", "creation_timestamp": ts, "title": moj}]}], fh)
-    join_instagram(events, load_instagram(os.path.join(tmp, "ig")))
+    with open(os.path.join(ig_media, "posts.json"), "w", encoding="utf-8") as fh:
+        json.dump([
+            # the same 2024-05-12 post again, label_values shape (caption only nested in media)
+            {"timestamp": ts, "label_values": [
+                {"label": "Post type", "value": "Image"},
+                {"label": "Media", "media": [{"uri": "x", "creation_timestamp": ts, "title": moj}]}]},
+            # a post that exists ONLY in posts.json: caption in a label_values value, no media
+            {"timestamp": ts2, "label_values": [{"label": "Caption", "value": moj2}]},
+        ], fh)
+    with open(os.path.join(ig_content, "stories.json"), "w", encoding="utf-8") as fh:
+        json.dump({"ig_stories": [{"uri": "s", "creation_timestamp": ts2 + 60, "title": "story"}]}, fh)
+    ig = load_instagram(os.path.join(tmp, "ig"))
+    assert ig["2024-05-12"] == [cap], ig["2024-05-12"]          # deduped across the two files
+    assert sorted(ig["2024-09-03"]) == sorted([cap2, "story"]), ig["2024-09-03"]  # content/ read too
+    join_instagram(events, ig)
     e = next(e for e in events if e["date"] == "2024-05-12")
     assert e["ig_posts"] == 1 and e["ig_caption"] == cap, e
+    e2 = next(e for e in events if e["date"] == "2024-09-03")
+    assert e2["ig_posts"] == 2 and e2["ig_caption"] == cap2, e2
+    # a single posts.json file (not a folder) works the same
+    assert load_instagram(os.path.join(ig_media, "posts.json"))["2024-05-12"] == [cap]
 
     # 5. --since keeps only new clusters (monthly run)
     later = cluster_rows(rows, f, 150, 5, since=datetime(2024, 8, 1).date())
     assert all(e["date"] >= "2024-08-01" for e in later) and len(later) < len(events)
 
     write_csv(out, EVENT_FIELDS, events)
+    # 6. the shareable file carries no name, no path, no photo title/description
+    text = open(out, encoding="utf-8").read()
+    for bad in ("Alice", "Bob", "_UNKNOWN_", "/Users/", "Group with", "limor", "smiling"):
+        assert bad not in text, "events_seed leaked: %s" % bad
     print("demo OK: %d synthetic records -> %d scrubbed rows -> %d events (%d farm, %d off-site)"
           % (len(recs), len(rows), len(events), n_farm, len(n_out)))
     print("sample:", {k: e[k] for k in ("event_id", "place", "photos", "max_faces", "ig_caption")})
@@ -521,7 +651,9 @@ def main(argv=None):
     c.add_argument("--radius", type=float, default=150, help="metres counted as 'at the farm'")
     c.add_argument("--min-photos", type=int, default=5)
     c.add_argument("--since", help="YYYY-MM-DD — only events from this day (monthly run)")
-    c.add_argument("--instagram", help="Instagram export folder or posts_*.json")
+    c.add_argument("--instagram",
+                   help="Instagram export folder (instagram-<user>-<date>-<id>/) "
+                        "or a posts_*.json / posts.json / stories.json file")
     c.set_defaults(fn=cmd_cluster)
 
     d = sub.add_parser("demo", help="self-test on synthetic data")

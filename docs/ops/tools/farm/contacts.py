@@ -12,13 +12,27 @@ or an email anywhere. It writes:
   contacts_timeline.csv shareable — month → contacts created (the community's growth curve)
 
 Source, in order of preference:
-  1. The Contacts database (creation date per contact = when she met them):
-       ~/Library/Application Support/AddressBook/**/AddressBook-v22.abcddb   (needs Full Disk Access)
-  2. A vCard export (Contacts → select all → File → Export → Export vCard…): --vcf all.vcf
-     (no creation date; REV = last modified is used instead, and the output says so)
+  1. The live Contacts database — one SQLite store PER ACCOUNT (iCloud, Google, Exchange, "On My Mac"):
+       ~/Library/Application Support/AddressBook/Sources/<UUID>/AddressBook-v22.abcddb
+       ~/Library/Application Support/AddressBook/AddressBook-v22.abcddb      (root — usually EMPTY on an iCloud Mac)
+     Needs Full Disk Access for Terminal, granted IN ADVANCE in System Settings → Privacy & Security
+     (macOS never prompts; the symptom without it is 'Operation not permitted'). Creation date per contact kept.
+     The tool prints one line per store ('<UUID or root>: N people, G groups') — the biggest one is hers; two
+     big ones = the same people in two accounts, rerun with --db pointed at the largest.
+  2. A Contacts Archive (Contacts → File → Export → Contacts Archive… → ~/farm-data/Contacts.abbu): --db Contacts.abbu
+     The SAME SQLite store, written to a folder you pick, so NO Full Disk Access is needed; creation dates,
+     notes and groups are all kept. Inside: X.abbu/AddressBook-v22.abcddb + X.abbu/Sources/*/AddressBook-v22.abcddb
+     (auto mode also looks for ~/farm-data/*.abbu). Delete it at the end of the day — it holds every name and phone.
+  3. A vCard export (Contacts → select all → File → Export → Export vCard…): --vcf all.vcf
+     No creation date; REV = last modified is used instead, and the output says so. Export with
+     'Export photos in vCards' OFF and 'Export notes in vCards' ON (Contacts → Settings… → vCard).
 
-  contacts.py vocab   [--db auto | --vcf all.vcf] -o vocab_local.csv --min 5
-  contacts.py count   [--db auto | --vcf all.vcf] --tags tags.txt -o contacts_counts.csv
+Creation date ≈ first meeting ONLY if the account has lived on this Mac since then. A library synced in
+later stamps thousands of contacts with the same month — `count` warns when one month holds more than 25%
+of all creation dates; the growth curve before that month is then not evidence.
+
+  contacts.py vocab   [--db auto | --db X.abbu | --vcf all.vcf] -o vocab_local.csv --min 5
+  contacts.py count   [--db auto | --db X.abbu | --vcf all.vcf] --tags tags.txt -o contacts_counts.csv
   contacts.py demo
 
 Python 3.9+, standard library only (sqlite3 is stdlib).
@@ -32,10 +46,18 @@ import shutil
 import sqlite3
 import sys
 import tempfile
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 CORE_DATA_EPOCH = datetime(2001, 1, 1, tzinfo=timezone.utc)
+DB_NAME = "AddressBook-v22.abcddb"
+
+# Z_PRIMARYKEY maps Z_ENT numbers to entity names. The NUMBERS are assigned per Core Data model version
+# (contact 19→22, group 15→19 over the years), so rows are classified by NAME. Every store also holds one
+# CNCDContainer row and one ABCDInfo row — neither a person nor a group — which the old bool(ZNAME) rule
+# counted as nameless people with year 'unknown'.
+PEOPLE_ENTITIES = {"ABCDContact", "ABCDSubscribedContact"}
+GROUP_ENTITIES = {"ABCDGroup"}
 
 DEFAULT_TAGS = [
     "סיור,tour,visit,ביקור",
@@ -70,13 +92,30 @@ class Contact:
         self.phones, self.groups, self.is_group, self.name = [], [], False, ""
 
 
+def abbu_dbs(archive):
+    """The SQLite stores inside a Contacts Archive (X.abbu): the root one plus one per account under Sources/."""
+    archive = archive.rstrip("/")
+    return sorted(glob.glob(os.path.join(archive, DB_NAME)) +
+                  glob.glob(os.path.join(archive, "Sources", "*", DB_NAME)))
+
+
 def find_db():
-    pats = [os.path.expanduser("~/Library/Application Support/AddressBook/Sources/*/AddressBook-v22.abcddb"),
-            os.path.expanduser("~/Library/Application Support/AddressBook/AddressBook-v22.abcddb")]
-    found = []
-    for p in pats:
-        found.extend(glob.glob(p))
+    """Live stores first (need Full Disk Access); otherwise any Contacts Archive saved under ~/farm-data."""
+    base = os.path.expanduser("~/Library/Application Support/AddressBook")
+    found = sorted(glob.glob(os.path.join(base, "Sources", "*", DB_NAME)) + glob.glob(os.path.join(base, DB_NAME)))
+    if found:
+        return found
+    for arch in sorted(glob.glob(os.path.expanduser("~/farm-data/*.abbu"))):
+        found.extend(abbu_dbs(arch))
     return found
+
+
+def db_label(path):
+    """'<UUID>' for a Sources/<UUID>/ store (live or inside an .abbu), 'root' for the top-level one."""
+    d = os.path.dirname(os.path.abspath(path))
+    if os.path.basename(os.path.dirname(d)) == "Sources":
+        return os.path.basename(d)
+    return "root"
 
 
 def cd_date(v):
@@ -96,30 +135,60 @@ def table_cols(con, table):
 
 
 def load_db(path):
-    """Copy the db (+wal) to temp so Contacts' own lock never matters, then read."""
+    """Copy the db (+wal) to temp so Contacts' own lock never matters, then read. Returns (people, groups)."""
     tmp = tempfile.mkdtemp(prefix="contacts-")
-    dst = os.path.join(tmp, "ab.db")
-    shutil.copy2(path, dst)
-    for ext in ("-wal", "-shm"):
-        if os.path.exists(path + ext):
-            shutil.copy2(path + ext, dst + ext)
-    con = sqlite3.connect("file:%s?mode=ro" % dst, uri=True)
+    try:
+        dst = os.path.join(tmp, "ab.db")
+        shutil.copy2(path, dst)
+        for ext in ("-wal", "-shm"):
+            if os.path.exists(path + ext):
+                shutil.copy2(path + ext, dst + ext)
+        con = sqlite3.connect("file:%s?mode=ro" % dst, uri=True)
+        try:
+            return _read_db(con)
+        finally:
+            con.close()
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _read_db(con):
     con.row_factory = sqlite3.Row
     cols = table_cols(con, "ZABCDRECORD")
     if not cols:
         tables = [r[0] for r in con.execute("select name from sqlite_master where type='table'")]
         raise SystemExit("ZABCDRECORD not found; tables: %s" % tables[:40])
+    # Classify by entity name through Z_PRIMARYKEY (see PEOPLE_ENTITIES); the bool(ZNAME) heuristic is kept
+    # ONLY for a store without Z_PRIMARYKEY, where container/info rows would leak in as nameless people.
+    entities = None
+    if "Z_ENT" in cols:
+        try:
+            entities = {r[0]: r[1] for r in con.execute("select Z_ENT, Z_NAME from Z_PRIMARYKEY")}
+        except sqlite3.Error:
+            entities = None
+        if entities is not None and not (set(entities.values()) & PEOPLE_ENTITIES):
+            entities = None   # a Z_PRIMARYKEY that names no contact entity is not one we understand
     want = ["Z_PK", "Z_ENT", "ZFIRSTNAME", "ZLASTNAME", "ZMIDDLENAME", "ZNICKNAME", "ZORGANIZATION",
             "ZJOBTITLE", "ZDEPARTMENT", "ZNAME", "ZCREATIONDATE", "ZMODIFICATIONDATE"]
     have = [c for c in want if c in cols]
-    rows = con.execute("select %s from ZABCDRECORD" % ", ".join(have)).fetchall()
     contacts = {}
-    for r in rows:
+    for r in con.execute("select %s from ZABCDRECORD" % ", ".join(have)):
+        if entities is not None:
+            ent = entities.get(r["Z_ENT"])
+            if ent in GROUP_ENTITIES:
+                is_group = True
+            elif ent in PEOPLE_ENTITIES:
+                is_group = False
+            else:
+                continue   # CNCDContainer, ABCDInfo, anything else: neither a person nor a group
+        else:
+            is_group = bool(r["ZNAME"]) if "ZNAME" in have else False
         c = Contact()
-        c.name = " ".join(str(r[k]) for k in ("ZFIRSTNAME", "ZMIDDLENAME", "ZLASTNAME") if k in have and r[k])
-        c.is_group = bool(r["ZNAME"]) if "ZNAME" in have else False
-        if c.is_group:
-            c.name = r["ZNAME"]
+        c.is_group = is_group
+        if is_group:
+            c.name = r["ZNAME"] if "ZNAME" in have and r["ZNAME"] else ""
+        else:
+            c.name = " ".join(str(r[k]) for k in ("ZFIRSTNAME", "ZMIDDLENAME", "ZLASTNAME") if k in have and r[k])
         c.text = [str(r[k]) for k in ("ZFIRSTNAME", "ZMIDDLENAME", "ZLASTNAME", "ZNICKNAME", "ZORGANIZATION",
                                       "ZJOBTITLE", "ZDEPARTMENT") if k in have and r[k]]
         c.created = cd_date(r["ZCREATIONDATE"]) if "ZCREATIONDATE" in have else None
@@ -137,73 +206,118 @@ def load_db(path):
         for r in con.execute("select ZOWNER, ZFULLNUMBER from ZABCDPHONENUMBER where ZFULLNUMBER is not null"):
             if r["ZOWNER"] in contacts:
                 contacts[r["ZOWNER"]].phones.append(str(r["ZFULLNUMBER"]))
-    # group membership: a join table Z_<n>CONTACTS / Z_<n>PARENTGROUPS (name varies by version)
-    for (tname,) in con.execute("select name from sqlite_master where type='table' and name like 'Z_%'"):
+    # Group membership: a join table pairing a *CONTACTS column with a *PARENTGROUPS column. Its NAME varies by
+    # macOS version because the numbers are entity ids — current (13→26): Z_22PARENTGROUPS (Z_22CONTACTS,
+    # Z_19PARENTGROUPS1); older: Z_19PARENTGROUPS (Z_19CONTACTS, Z_15PARENTGROUPS1). Z_18PARENTGROUPS
+    # (Z_18CHILDGROUPS, Z_19PARENTGROUPS) is group-inside-group nesting, not membership — no *CONTACTS column,
+    # so it is skipped. '_' is a LIKE wildcard: escaped, or every ZABCD* table is scanned too.
+    for (tname,) in con.execute("select name from sqlite_master where type='table' and name like 'Z\\_%' escape '\\'"):
         tc = table_cols(con, tname)
         gcol = next((c for c in tc if "PARENTGROUPS" in c.upper() or c.upper().endswith("GROUPS")), None)
         ccol = next((c for c in tc if c.upper().endswith("CONTACTS") or c.upper().endswith("MEMBERS")), None)
         if gcol and ccol:
             for r in con.execute("select %s g, %s c from %s" % (gcol, ccol, tname)):
                 g, m = contacts.get(r["g"]), contacts.get(r["c"])
-                if g and m and g.is_group:
+                if g and m and g.is_group and not m.is_group:
                     m.groups.append(g.name)
-    con.close()
-    shutil.rmtree(tmp, ignore_errors=True)
     people = [c for c in contacts.values() if not c.is_group]
-    return people, "db"
+    groups = [c for c in contacts.values() if c.is_group]
+    return people, groups
 
 
 def unfold_vcf(lines):
-    out = []
+    """Yield logical vCard lines, joining folded continuations (a line starting with space/tab).
+    Streams — a photo-inclusive 40k export can be gigabytes, so the file is never read whole."""
+    cur = None
     for ln in lines:
-        if ln[:1] in (" ", "\t") and out:
-            out[-1] += ln[1:]
-        else:
-            out.append(ln)
-    return out
+        ln = ln.rstrip("\r\n")
+        if ln[:1] in (" ", "\t") and cur is not None:
+            cur += ln[1:]
+            continue
+        if cur is not None:
+            yield cur
+        cur = ln
+    if cur is not None:
+        yield cur
 
 
 def load_vcf(path):
-    with open(path, encoding="utf-8", errors="replace") as f:
-        lines = unfold_vcf(f.read().splitlines())
     people, cur = [], None
-    for ln in lines:
-        if ln.startswith("BEGIN:VCARD"):
-            cur = Contact()
-        elif ln.startswith("END:VCARD"):
-            if cur:
-                people.append(cur)
-            cur = None
-        elif cur is not None and ":" in ln:
-            key, val = ln.split(":", 1)
-            k = key.split(";")[0].upper()
-            k = k.split(".")[-1]  # item1.X-ABLabel -> X-ABLabel
-            if k in ("FN", "N", "ORG", "NOTE", "NICKNAME", "TITLE", "X-ABLABEL"):
-                cur.text.append(val.replace(";", " ").replace("\\n", " ").replace("\\,", ","))
-                if k == "FN":
-                    cur.name = val
-            elif k == "TEL":
-                cur.phones.append(val)
-            elif k == "CATEGORIES":
-                cur.groups.extend(v for v in val.split(",") if v)
-            elif k == "REV":
-                try:
-                    cur.modified = datetime.fromisoformat(val.replace("Z", "+00:00"))
-                except ValueError:
-                    pass
+    n_note = n_cat = n_photo = 0
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for ln in unfold_vcf(f):
+            if ln.startswith("BEGIN:VCARD"):
+                cur = Contact()
+            elif ln.startswith("END:VCARD"):
+                if cur:
+                    people.append(cur)
+                cur = None
+            elif cur is not None and ":" in ln:
+                key, val = ln.split(":", 1)
+                k = key.split(";")[0].upper()
+                k = k.split(".")[-1]  # item1.X-ABLabel -> X-ABLabel
+                if k in ("FN", "N", "ORG", "NOTE", "NICKNAME", "TITLE", "X-ABLABEL"):
+                    cur.text.append(val.replace(";", " ").replace("\\n", " ").replace("\\,", ","))
+                    if k == "FN":
+                        cur.name = val
+                    elif k == "NOTE":
+                        n_note += 1
+                elif k == "TEL":
+                    cur.phones.append(val)
+                elif k == "CATEGORIES":
+                    cur.groups.extend(v for v in val.split(",") if v)
+                    n_cat += 1
+                elif k == "PHOTO":
+                    n_photo += 1
+                elif k == "REV":
+                    try:
+                        cur.modified = datetime.fromisoformat(val.replace("Z", "+00:00"))
+                    except ValueError:
+                        pass
+    print("vcf: %d cards — %d NOTE, %d CATEGORIES, %d PHOTO lines" % (len(people), n_note, n_cat, n_photo))
+    print("reminder: the export must be made with 'Export photos in vCards' OFF and 'Export notes in vCards' ON "
+          "(Contacts → Settings… → vCard). 0 NOTE lines = her notes were not exported; PHOTO lines = photos were. "
+          "Years here are REV = last modified, not creation.")
     return people, "vcf"
 
 
 def load(args):
     if getattr(args, "vcf", None):
         return load_vcf(args.vcf)
-    dbs = find_db() if args.db in (None, "auto") else [args.db]
-    if not dbs:
-        raise SystemExit("no Contacts database found — grant Full Disk Access to Terminal, or export a vCard and pass --vcf")
-    people = []
+    if args.db in (None, "auto"):
+        dbs = find_db()
+        if not dbs:
+            raise SystemExit("no Contacts database found — grant Full Disk Access to Terminal (System Settings → Privacy & "
+                             "Security → Full Disk Access, then quit and reopen Terminal), or export a Contacts Archive "
+                             "(File → Export → Contacts Archive…) and pass --db X.abbu, or a vCard and pass --vcf all.vcf")
+    elif args.db.rstrip("/").endswith(".abbu"):
+        dbs = abbu_dbs(args.db)
+        if not dbs:
+            raise SystemExit("no %s inside %s — is it a Contacts Archive (File → Export → Contacts Archive…)?" % (DB_NAME, args.db))
+    else:
+        dbs = [args.db]
+    people, opened, sizes = [], 0, []
     for p in dbs:
-        got, _ = load_db(p)
+        label = db_label(p)
+        where = "root %s" % DB_NAME if label == "root" else "Sources/%s" % label
+        try:
+            got, groups = load_db(p)
+        except (sqlite3.Error, SystemExit, OSError) as e:
+            # a stale or disabled account leaves a .abcddb that never opens — one bad folder must not abort the run
+            print("warning: %s: %s — skipped (a stale or disabled account folder?)" % (where, e), file=sys.stderr)
+            continue
+        opened += 1
+        print("%s: %d people, %d groups" % (label, len(got), len(groups)))
         people.extend(got)
+        sizes.append((len(got), p))
+    if not opened:
+        raise SystemExit("none of the %d Contacts database(s) could be read — see the warnings above" % len(dbs))
+    big = [s for s in sizes if s[0] > 100]
+    if len(big) > 1:
+        print("warning: possible duplicates across accounts — consider --db \"%s\"" % max(big)[1], file=sys.stderr)
+    if not people:
+        print("warning: 0 people — on an iCloud Mac the root store is empty; the contacts live under Sources/<UUID>/",
+              file=sys.stderr)
     return people, "db"
 
 
@@ -278,6 +392,21 @@ def count(people, tags, mode):
     return rows, tl
 
 
+def sync_spike_warning(tl):
+    """One month holding more than 25% of all creation dates is how a synced-in library presents: the stamp
+    is when the records first landed on THIS Mac, not when she met the people. Returns the warning or None."""
+    known = [(r["month"], r["created"]) for r in tl if r["month"] != "unknown"]
+    total = sum(n for _, n in known)
+    if not total:
+        return None
+    month, n = max(known, key=lambda mn: mn[1])
+    if n * 4 <= total:
+        return None
+    return ("warning: %s holds %d of %d dated contacts (%d%%) — creation dates look like an iCloud first-sync stamp, "
+            "not first-meeting dates — the 2020-2022 curve is not evidence (use the curve from that month on, or --vcf REV years)"
+            % (month, n, total, 100 * n // total))
+
+
 def vocab(people, min_n=5):
     df = Counter()
     for c in people:
@@ -319,6 +448,10 @@ def cmd_count(args):
     write_csv(tpath, ["month", "created"], tl)
     tagged = sum(r["n"] for r in rows if r["dimension"] == "tag" and r["key"] == "_any_tag")
     print("count: %d contacts, %d matched a tag (%s) -> %s, %s" % (len(people), tagged, "creation date" if mode == "db" else "REV = last-modified, not creation", args.output, tpath))
+    if mode == "db":
+        spike = sync_spike_warning(tl)
+        if spike:
+            print(spike, file=sys.stderr)
     for r in rows:
         if r["dimension"] == "tag" and r["key"] != "_any_tag" and r["n"] >= 5:
             print("  %-22s %s  %5d" % (r["key"], r["year"], r["n"]))
@@ -327,58 +460,99 @@ def cmd_count(args):
 
 # ----------------------------------------------------------------------------- demo
 
-def synthetic_db(path, n=600):
+def synthetic_db(path, n=600, spike=False, primarykey=True):
+    """A store in the real macOS 13→26 shape. spike=True stamps 60% of the contacts into one month (a library
+    that was synced in); primarykey=False omits Z_PRIMARYKEY (and the phantom rows) to exercise the ZNAME fallback."""
     import random
     rnd = random.Random(3)
     con = sqlite3.connect(path)
+    # Membership join: Z_22PARENTGROUPS (Z_22CONTACTS → contact Z_PK, Z_19PARENTGROUPS1 → group Z_PK) on current
+    # macOS — the numbers are Core Data entity ids (ABCDContact 22, ABCDGroup 19). Older macOS used
+    # Z_19PARENTGROUPS (Z_19CONTACTS, Z_15PARENTGROUPS1). Z_18PARENTGROUPS (Z_18CHILDGROUPS, Z_19PARENTGROUPS)
+    # is group-inside-group nesting, NOT contact membership — load_db must skip it (no *CONTACTS column).
     con.executescript("""
     create table ZABCDRECORD (Z_PK integer primary key, Z_ENT integer, ZFIRSTNAME text, ZLASTNAME text, ZMIDDLENAME text,
         ZNICKNAME text, ZORGANIZATION text, ZJOBTITLE text, ZDEPARTMENT text, ZNAME text, ZCREATIONDATE real, ZMODIFICATIONDATE real);
     create table ZABCDNOTE (Z_PK integer primary key, ZCONTACT integer, ZTEXT text);
     create table ZABCDPHONENUMBER (Z_PK integer primary key, ZOWNER integer, ZFULLNUMBER text);
-    create table Z_19PARENTGROUPS (Z_19CONTACTS integer, Z_22PARENTGROUPS integer);
+    create table Z_22PARENTGROUPS (Z_22CONTACTS integer, Z_19PARENTGROUPS1 integer, primary key (Z_22CONTACTS, Z_19PARENTGROUPS1));
+    create table Z_18PARENTGROUPS (Z_18CHILDGROUPS integer, Z_19PARENTGROUPS integer, primary key (Z_18CHILDGROUPS, Z_19PARENTGROUPS));
     """)
+    ent_contact, ent_group, ent_container, ent_info = 22, 19, 25, 17   # 22/19 are the real current ids; 25/17 illustrative
+    if primarykey:
+        con.execute("create table Z_PRIMARYKEY (Z_ENT integer primary key, Z_NAME varchar, Z_SUPER integer, Z_MAX integer)")
+        con.executemany("insert into Z_PRIMARYKEY values (?, ?, 0, 0)",
+                        [(ent_contact, "ABCDContact"), (ent_group, "ABCDGroup"), (ent_container, "CNCDContainer"), (ent_info, "ABCDInfo")])
+        # one CNCDContainer + one ABCDInfo row per store — no name, no dates; by the ZNAME rule they were nameless 'people'
+        con.execute("insert into ZABCDRECORD (Z_PK, Z_ENT) values (?, ?)", (9100, ent_container))
+        con.execute("insert into ZABCDRECORD (Z_PK, Z_ENT) values (?, ?)", (9101, ent_info))
+    gid, parent_gid = 9001, 9002
+    con.execute("insert into ZABCDRECORD (Z_PK, Z_ENT, ZNAME) values (?, ?, ?)", (gid, ent_group, "נובה 2024"))
+    con.execute("insert into ZABCDRECORD (Z_PK, Z_ENT, ZNAME) values (?, ?, ?)", (parent_gid, ent_group, "ארכיון קבוצות"))
+    con.execute("insert into Z_18PARENTGROUPS values (?, ?)", (gid, parent_gid))   # group nesting, not membership
     first = ["דנה", "אלי", "נועה", "יוסי", "Sarah", "Michael", "רחל", "David"]
     last = ["Example", "לדוגמה", "Test", "בדיקה"]
     kw = ["סיור", "נובה", "חייל", "מילואים", "", "", "", "בית ספר", "מתנדבת", "tour"]
-    gid = 9001
-    con.execute("insert into ZABCDRECORD (Z_PK, Z_ENT, ZNAME) values (?, 1, ?)", (gid, "נובה 2024"))
     start = datetime(2020, 6, 1, tzinfo=timezone.utc)
+    first_sync = datetime(2023, 3, 1, tzinfo=timezone.utc)
     for i in range(1, n + 1):
-        created = start + timedelta(days=rnd.randint(0, 2200))
+        if spike and i <= n * 6 // 10:
+            created = first_sync + timedelta(days=rnd.randint(0, 27))
+        else:
+            created = start + timedelta(days=rnd.randint(0, 2200))
         k = rnd.choice(kw)
         fn = rnd.choice(first) + (" " + k if k and rnd.random() < 0.7 else "")
         con.execute("insert into ZABCDRECORD (Z_PK, Z_ENT, ZFIRSTNAME, ZLASTNAME, ZORGANIZATION, ZCREATIONDATE, ZMODIFICATIONDATE) values (?,?,?,?,?,?,?)",
-                    (i, 0, fn, rnd.choice(last), "Nova community" if k == "נובה" and rnd.random() < 0.5 else None,
+                    (i, ent_contact, fn, rnd.choice(last), "Nova community" if k == "נובה" and rnd.random() < 0.5 else None,
                      (created - CORE_DATA_EPOCH).total_seconds(), (created - CORE_DATA_EPOCH).total_seconds() + 86400))
         if k and rnd.random() < 0.3:
             con.execute("insert into ZABCDNOTE (ZCONTACT, ZTEXT) values (?, ?)", (i, "הגיע ל%s עם המשפחה" % k))
         num = "+972 5%d-%07d" % (rnd.randint(0, 8), rnd.randint(0, 9999999)) if rnd.random() < 0.4 else "(818) 555-%04d" % rnd.randint(0, 9999)
         con.execute("insert into ZABCDPHONENUMBER (ZOWNER, ZFULLNUMBER) values (?, ?)", (i, num))
         if k == "נובה":
-            con.execute("insert into Z_19PARENTGROUPS values (?, ?)", (i, gid))
+            con.execute("insert into Z_22PARENTGROUPS values (?, ?)", (i, gid))
     con.commit()
     con.close()
 
 
 def cmd_demo(_args):
+    import contextlib
+    import io
+
+    def captured(fn, *a):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            res = fn(*a)
+        return res, buf.getvalue()
+
     tmp = tempfile.mkdtemp(prefix="contacts-demo-")
-    db = os.path.join(tmp, "AddressBook-v22.abcddb")
+    # The store laid out exactly as a Contacts Archive (and the live folder) has it: X.abbu/Sources/<UUID>/AddressBook-v22.abcddb
+    uuid = "8F026174-DEMO-4000-8000-000000000001"
+    arch = os.path.join(tmp, "Contacts.abbu")
+    db = os.path.join(arch, "Sources", uuid, DB_NAME)
+    os.makedirs(os.path.dirname(db))
     synthetic_db(db)
-    people, mode = load_db(db)
-    assert mode == "db" and len(people) == 600, len(people)
+    raw = sqlite3.connect(db).execute("select count(*) from ZABCDRECORD").fetchone()[0]
+    assert raw == 604, raw   # 600 people + 2 groups + CNCDContainer + ABCDInfo
+    people, groups = load_db(db)
+    mode = "db"
+    assert len(people) == 600 and len(groups) == 2, (len(people), len(groups))   # container/info rows are NOT people
     assert all(c.created for c in people) and not any(c.is_group for c in people)
+    assert {g.name for g in groups} == {"נובה 2024", "ארכיון קבוצות"}, [g.name for g in groups]
     nova_group = sum(1 for c in people if "נובה 2024" in c.groups)
     assert nova_group > 20, nova_group
+    assert not any("ארכיון קבוצות" in c.groups for c in people)   # Z_18PARENTGROUPS nesting is not membership
     v = vocab(people, 5)
     words = {r["word"] for r in v}
     assert {"סיור", "נובה", "חייל", "example"} <= words, words   # first names DO appear -> local only
     rows, tl = count(people, load_tags(None), mode)
     out = os.path.join(tmp, "contacts_counts.csv")
     write_csv(out, ["dimension", "key", "year", "n"], rows)
-    text = open(out, encoding="utf-8").read()
-    for bad in ("דנה", "Sarah", "Example", "555", "972", "לדוגמה"):
-        assert bad not in text, "counts leaked: %s" % bad
+    tpath = os.path.join(tmp, "contacts_timeline.csv")
+    write_csv(tpath, ["month", "created"], tl)
+    text = open(out, encoding="utf-8").read() + open(tpath, encoding="utf-8").read()
+    for bad in ("דנה", "Sarah", "Example", "555", "972", "לדוגמה", tmp, uuid):
+        assert bad not in text, "shareable file leaked: %s" % bad
     tag_nova = sum(r["n"] for r in rows if r["dimension"] == "tag" and r["key"] == "נובה")
     grp = sum(r["n"] for r in rows if r["dimension"] == "group" and r["key"] == "נובה 2024")
     assert grp == nova_group and tag_nova >= grp, (tag_nova, grp)
@@ -386,15 +560,50 @@ def cmd_demo(_args):
     us = sum(r["n"] for r in rows if r["dimension"] == "phone_country" and r["key"] == "US")
     assert il + us == 600 and 150 < il < 330, (il, us)
     assert sum(r["created"] for r in tl) == 600 and tl[0]["month"] >= "2020-06"
-    # vcf fallback
+    assert sync_spike_warning(tl) is None   # 600 contacts spread over six years: no month dominates
+    # --db X.abbu globs every store inside the archive; a stale account folder is warned about and skipped, never fatal
+    stale_a = os.path.join(arch, "Sources", "DEADBEEF-0000-4000-8000-000000000002", DB_NAME)   # valid sqlite, no ZABCDRECORD
+    stale_b = os.path.join(arch, "Sources", "DEADBEEF-0000-4000-8000-000000000003", DB_NAME)   # not a database at all
+    for s in (stale_a, stale_b):
+        os.makedirs(os.path.dirname(s))
+    con = sqlite3.connect(stale_a)
+    con.execute("create table t (x)")
+    con.commit()
+    con.close()
+    with open(stale_b, "wb") as f:
+        f.write(b"not a database")
+    (p2, m2), log = captured(load, argparse.Namespace(db=arch, vcf=None))
+    assert m2 == "db" and len(p2) == 600, len(p2)
+    assert "%s: 600 people, 2 groups" % uuid in log, log
+    assert log.count("skipped") == 2 and "Sources/DEADBEEF-0000-4000-8000-000000000002" in log and "Sources/DEADBEEF-0000-4000-8000-000000000003" in log, log
+    assert "possible duplicates" not in log, log
+    # the same people in a second account (iCloud + Google): per-store lines make it visible and a warning names the largest
+    dup = os.path.join(arch, "Sources", "0C0FFEE0-0000-4000-8000-000000000004", DB_NAME)
+    os.makedirs(os.path.dirname(dup))
+    shutil.copy2(db, dup)
+    (p3, _), log = captured(load, argparse.Namespace(db=arch, vcf=None))
+    assert len(p3) == 1200 and "possible duplicates across accounts — consider --db" in log, log
+    # a synced-in library (60% of creation dates in one month), stored WITHOUT Z_PRIMARYKEY so the ZNAME fallback runs too
+    spike_db = os.path.join(tmp, "spike", DB_NAME)
+    os.makedirs(os.path.dirname(spike_db))
+    synthetic_db(spike_db, n=300, spike=True, primarykey=False)
+    sp, sg = load_db(spike_db)
+    assert len(sp) == 300 and len(sg) == 2, (len(sp), len(sg))
+    _, log = captured(cmd_count, argparse.Namespace(db=spike_db, vcf=None, tags=None, output=os.path.join(tmp, "spike_counts.csv")))
+    assert "creation dates look like an iCloud first-sync stamp, not first-meeting dates — the 2020-2022 curve is not evidence" in log, log
+    assert "warning: 2023-03 holds" in log and "of 300 dated contacts" in log, log   # the sync month is named, not just flagged
+    # vcf fallback — folded NOTE and PHOTO lines, read as a stream
     vcf = os.path.join(tmp, "all.vcf")
     with open(vcf, "w", encoding="utf-8") as f:
         f.write("BEGIN:VCARD\nVERSION:3.0\nN:Example;דנה סיור;;;\nFN:דנה סיור Example\nTEL;type=CELL:+972 52-1234567\n"
-                "NOTE:הגיעה עם\n  קבוצה של 12\nCATEGORIES:נובה 2024\nREV:2024-05-12T10:00:00Z\nEND:VCARD\n")
-    vp, vm = load_vcf(vcf)
+                "NOTE:הגיעה עם\n  קבוצה של 12\nPHOTO;ENCODING=b;TYPE=JPEG:/9j/4AAQSkZJRg\n AAAQABAAD/2wBDAA\n"
+                "CATEGORIES:נובה 2024\nREV:2024-05-12T10:00:00Z\nEND:VCARD\n")
+    (vp, vm), log = captured(load_vcf, vcf)
     assert vm == "vcf" and len(vp) == 1 and vp[0].modified and "נובה 2024" in vp[0].groups and "קבוצה של 12" in " ".join(vp[0].text)
-    print("demo OK: 600 synthetic contacts -> %d vocab words (local) · tags: nova %d, group %d · IL %d / US %d · timeline %d months · vcf fallback OK"
-          % (len(v), tag_nova, grp, il, us, len(tl)))
+    assert "1 NOTE, 1 CATEGORIES, 1 PHOTO" in log and "'Export photos in vCards' OFF" in log and "'Export notes in vCards' ON" in log, log
+    print("demo OK: 600 synthetic contacts (+2 groups, container/info rows excluded) -> %d vocab words (local) · tags: nova %d, group %d · "
+          "IL %d / US %d · timeline %d months, no sync spike · .abbu: 2 stale stores skipped, duplicate account flagged · "
+          "first-sync spike warned · vcf fallback OK" % (len(v), tag_nova, grp, il, us, len(tl)))
     print("files:", tmp)
 
 
@@ -403,8 +612,8 @@ def main(argv=None):
     sub = p.add_subparsers(dest="cmd", required=True)
     for name, fn in (("vocab", cmd_vocab), ("count", cmd_count)):
         s = sub.add_parser(name)
-        s.add_argument("--db", default="auto", help="path to AddressBook-v22.abcddb, or 'auto'")
-        s.add_argument("--vcf", help="vCard export instead of the database")
+        s.add_argument("--db", default="auto", help="path to AddressBook-v22.abcddb, a Contacts Archive (X.abbu), or 'auto'")
+        s.add_argument("--vcf", help="vCard export instead of the database (REV years, not creation)")
         s.set_defaults(fn=fn)
         if name == "vocab":
             s.add_argument("-o", "--output", default="vocab_local.csv")
