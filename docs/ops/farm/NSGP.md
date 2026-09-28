@@ -33,5 +33,19 @@
 6. **תזרים:** תוכנית החזר — מי משלם לספק בין ההתקנה להחזר (טירן; אולי הלוואת גשר **לעמותה** לפרויקט האבטחה בלבד — זו ההלוואה היחידה שהגיונית כאן).
 7. **תקשורת:** שורה ״federally funded security upgrade (DHS/FEMA NSGP FY2025)״ בדף התורמים ובכל בקשה; לא לפרסם פרטי אבטחה.
 
+## אומת מהמקורות הציבוריים (28.9.2026)
+| עובדה | מקור |
+|---|---|
+| **EMD = EMD NYC**, חברת ייעוץ אבטחה וכתיבת מענקים של Elisa Mula (מ-2004; היא ברשימת הנמענים במייל). מציעים TVRA + כתיבת IJ + **תמיכה אחרי הזכייה** (ספקים, תקציב, EHP, רכש), במחיר שטוח שמפורסם כ-**$5,000**. ⇒ הפנייה של לימור לתקציב המאושר ולתנאים הולכת ל-EMD. | grants.emdnyc.com · emdnyc.com |
+| תקופת ביצוע פדרלית FY2025: **1.9.2025 – 31.8.2028** (36 חודשים ל-SAA); ל-subrecipients נותנים בדרך כלל **קצר יותר** — התאריך של Cal OES יופיע בהודעת Phase I. | FEMA NSGP FY2025 Quick Start / NOFO |
+| Cal OES: **הודעת Phase I** (סכום, תקופת הוצאה, דרישות) חייבת להיחתם על ידי ה-Authorized Agent ולהוחזר **תוך 20 ימים קלנדריים**. | Cal OES FY2024 NSGP guidance (מבנה זהה) |
+| **וובינר ״Required Documents״ הוא חובה**; אי-הגשת המסמכים בזמן ⇒ Cal OES מעביר את הכסף לבא בתור ומסיים את ה-subaward. | Cal OES GMM 2025-11 / 2026-10 |
+| **EHP חייב להיות מאושר ע״י FEMA לפני** כל רכישה או התקנה, **ולפני** כל החזר או מקדמה. | Cal OES NSGP State Supplement / Required Documents webinars |
+| בקשת כסף = טופס FMFW (Financial Management Forms Workbook) ל-Grants Analyst; **מקדמה (advance) קיימת** כמסלול ב-Cal OES בתנאים — לבדוק בוובינר; ברירת המחדל החזר. | Cal OES Subrecipient Handbook / FY24 NSS Supplement |
+| תקרה פדרלית $200,000 לאתר; קליפורניה מחלקת $190,000 (5% M&A של המדינה). M&A ל-subrecipient: עד 5%. אבטחה בחוזה, תכנון, אימונים, תרגילים, ציוד ותשתית סייבר בנכס שבבעלות/שכירות **בזמן הבקשה**. | FEMA FY2025 NSGP Fact Sheet / NOFO |
+| **2 CFR 200.313(c): ציוד שנקנה בכסף פדרלי ״must not encumber the property without prior approval״** — אין שעבוד, אין בטוחה. חל על עמותות. | eCFR 2 CFR 200.313 |
+| Charity Navigator/GuideStar: הארגון **רשום אך לא מדורג** — ״has not received the public data required״ ⇒ כנראה 990-N בלבד. מאשר את ההמלצה על 990 מרצון. | charitynavigator.org/ein/923007627 |
+| האתר: ״Kfar Saba Urban Farm began in **2009** as a small rescue sanctuary״; Yelp 170 ביקורות. **סותר את FACTS #1 (יוני 2020)** — לברר עם לימור מה נכון: 2009 = תחילת ההצלה הפרטית? 2020 = פתיחה לקהל? | kfarsabaurbanfarm.com/about · Yelp |
+
 ## פתוח
 מי EMD ומה ההסכם · מה בתקציב המאושר · תאריכי תקופת הביצוע של Cal OES · האם הכתובת בבקשה היא החווה · מצב UEI/SAM · האם יש חפיפה עם LADBS.
