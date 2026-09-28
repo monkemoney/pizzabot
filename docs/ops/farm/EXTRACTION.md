@@ -89,14 +89,14 @@ PayPal/Venmo/Zelle/Square ─┼──▶ ledger.py ── איחוד + dedupe �
 | 5 | אני | סבב אימות · **4 המספרים** · תקציבי 3 התוכניות · **הבנצ׳מרק האמיתי** | גיליון סופי · שקף מעודכן · יעד מעודכן |
 
 ## 7. הכלים שנבנים (ops, `docs/ops/tools/farm/`)
-`timeline.py` · `ledger.py` · `mail_ledger.py` · `mail_index.py` — Python, stdlib בלבד (+osxphotos כתלות חיצונית למסלול המק). כולם: **קלט מקומי → CSV נגזר בלי שמות/גוף.** נבדקים על דוגמה סינתטית לפני שנוגעים בדאטה אמיתי.
+`timeline.py` **(נבנה 28.9 — scrub · cluster · demo)** · `ledger.py` · `mail_ledger.py` · `mail_index.py` — Python, stdlib בלבד (+osxphotos כתלות חיצונית למסלול המק). כולם: **קלט מקומי → CSV נגזר בלי שמות/גוף.** נבדקים על דוגמה סינתטית לפני שנוגעים בדאטה אמיתי.
 
 ## 8. הסכמה ותיעוד
 - עמוד אחד חתום ע״י לימור וטירן: מה מעובד, איפה (המחשב שלהם), מה יוצא (מצרפים), מי רואה (הם + אני), מחיקה של קבצי ביניים בסוף. זה גם מה שקרן תשאל.
 - לוג עיבוד: תאריך · מקור · סקריפט · שורות · מי הריץ.
 
 ## מה צריך לדעת לפני יום 1
-1. **המכשיר של לימור:** iPhone? יש מק עם iCloud Photos? (קובע את מסלול הגלריה)
+1. ~~**המכשיר של לימור:** iPhone? יש מק עם iCloud Photos?~~ **נענה 28.9: iPhone + מק עם iCloud** ⇒ מסלול osxphotos. Runbook: [`DAY1-PHOTOS.md`](DAY1-PHOTOS.md). הכלי: [`tools/farm/timeline.py`](../tools/farm/timeline.py) (עובר self-test על דאטה סינתטי: `timeline.py demo`).
 2. **פלטפורמת האתר:** Wix / Squarespace / אחר — ומי מנהל.
 3. **ערוצי תשלום בשימוש:** PayPal · Venmo · Zelle · Square · Eventbrite · GoFundMe · מזומן — מה מהם.
 4. **בנק העמותה** — ומי מחזיק גישה לייצוא.
