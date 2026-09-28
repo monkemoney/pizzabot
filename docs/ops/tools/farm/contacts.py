@@ -66,7 +66,7 @@ DEFAULT_TAGS = [
     "מילואים,reserve,reservist",
     "פצוע,פצועים,wounded,הלום,הלומי,ptsd",
     "בית ספר,ביה\"ס,school",
-    "גן,kindergarten,preschool",
+    "גן ילדים,גני ילדים,kindergarten,preschool",
     "קייטנה,camp",
     "טיפול,טיפולי,therapy,therapeutic",
     "צרכים מיוחדים,special needs,autism,אוטיזם",
@@ -74,9 +74,30 @@ DEFAULT_TAGS = [
     "תורם,תורמת,donor,donation,תרומה",
     "אלפקה,אלפקות,alpaca",
     "יום הולדת,birthday",
-    "שבת,shabbat,קהילה,community,חב\"ד,chabad",
+    "שבת בחווה,שבתות,shabbat,קהילה,community,חב\"ד,chabad",
     "עיתונאי,press,כתב,journalist",
 ]
+
+_TAG_RE_CACHE = {}
+
+
+def tag_matches(text, syns):
+    """Word-boundary match. A bare substring made 'גן' hit 'מגן דוד אדום' and 'דגן', 'tour' hit
+    'tourism', 'camp' hit 'campus'. Hebrew allows one attached prefix letter (ב/ל/מ/ה/ו/ש/כ) and a
+    plural/feminine suffix; Latin needs a clean word boundary."""
+    t = (text or "").lower()
+    for s in syns:
+        rx = _TAG_RE_CACHE.get(s)
+        if rx is None:
+            if re.search(r"[\u0590-\u05FF]", s):
+                rx = re.compile(r"(?<![\w\u0590-\u05FF])[ובלכשמה]?" + re.escape(s) + r"(?:ים|ות|יות|י|ה|ת)?(?![\w\u0590-\u05FF])")
+            else:
+                rx = re.compile(r"(?<![\w])" + re.escape(s) + r"(?:s|es)?(?![\w])")
+            _TAG_RE_CACHE[s] = rx
+        if rx.search(t):
+            return True
+    return False
+
 
 STOP = set("the and for from with של את על עם אל לא כן זה זו הוא היא אני אתה מר גב ד״ר דר mr mrs ms dr "
            "iphone whatsapp mobile cell home work phone email inc llc".split())
@@ -314,7 +335,7 @@ def load(args):
         raise SystemExit("none of the %d Contacts database(s) could be read — see the warnings above" % len(dbs))
     big = [s for s in sizes if s[0] > 100]
     if len(big) > 1:
-        print("warning: possible duplicates across accounts — consider --db \"%s\"" % max(big)[1], file=sys.stderr)
+        print("warning: possible duplicates across accounts — consider --db \"%s\"" % short(max(big)[1]), file=sys.stderr)
     if not people:
         print("warning: 0 people — on an iCloud Mac the root store is empty; the contacts live under Sources/<UUID>/",
               file=sys.stderr)
@@ -369,6 +390,7 @@ def count(people, tags, mode):
     counts = Counter()
     per_year = Counter()
     timeline = Counter()
+    group_codes = {}
     for c in people:
         blob = (" ".join(c.text) + " " + " ".join(c.groups)).lower()   # a group named "נובה" tags its members
         yr = year_of(c, mode)
@@ -376,20 +398,22 @@ def count(people, tags, mode):
         timeline[month_of(c)] += 1
         hit_any = False
         for tag, syns in tags:
-            if any(s in blob for s in syns):
+            if tag_matches(blob, syns):
                 counts[("tag", tag, yr)] += 1
                 hit_any = True
         if hit_any:
             counts[("tag", "_any_tag", yr)] += 1
         for g in set(c.groups):
-            counts[("group", g, yr)] += 1
+            # group names are Limor's free text (a group can be a family or a person) -> coded in the
+            # shareable file; the code -> name map goes to contacts_groups_local.csv on this Mac
+            counts[("group", group_codes.setdefault(g, "group_%02d" % (len(group_codes) + 1)), yr)] += 1
         countries = {phone_country(p) for p in c.phones} or {"none"}
         for k in countries:
             counts[("phone_country", k, yr)] += 1
     rows = [{"dimension": d, "key": k, "year": y, "n": n} for (d, k, y), n in sorted(counts.items(), key=lambda kv: (kv[0][0], str(kv[0][2]), -kv[1]))]
     rows += [{"dimension": "all", "key": "contacts", "year": y, "n": n} for y, n in sorted(per_year.items(), key=lambda kv: str(kv[0]))]
     tl = [{"month": m, "created": n} for m, n in sorted(timeline.items())]
-    return rows, tl
+    return rows, tl, group_codes
 
 
 def sync_spike_warning(tl):
@@ -418,6 +442,13 @@ def vocab(people, min_n=5):
 
 # ----------------------------------------------------------------------------- commands
 
+def short(path):
+    """Paths in printed lines: basename only, or ~ for the home folder — a full path carries her macOS username."""
+    home = os.path.expanduser("~")
+    p = str(path)
+    return p.replace(home, "~") if p.startswith(home) else os.path.basename(p)
+
+
 def write_csv(path, fields, rows):
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
@@ -430,7 +461,7 @@ def cmd_vocab(args):
     people, mode = load(args)
     rows = vocab(people, args.min)
     write_csv(args.output, ["word", "contacts"], rows)
-    print("vocab: %d contacts (%s) -> %d words in ≥%d contacts -> %s" % (len(people), mode, len(rows), args.min, args.output))
+    print("vocab: %d contacts (%s) -> %d words in ≥%d contacts -> %s" % (len(people), mode, len(rows), args.min, short(args.output)))
     print("LOCAL ONLY — first names are in there. Read it with Limor, pick her tag words into tags.txt.")
     if not os.path.exists(args.tags_out):
         with open(args.tags_out, "w", encoding="utf-8") as f:
@@ -442,12 +473,14 @@ def cmd_vocab(args):
 def cmd_count(args):
     people, mode = load(args)
     tags = load_tags(args.tags)
-    rows, tl = count(people, tags, mode)
+    rows, tl, group_codes = count(people, tags, mode)
     write_csv(args.output, ["dimension", "key", "year", "n"], rows)
     tpath = os.path.join(os.path.dirname(os.path.abspath(args.output)), "contacts_timeline.csv")
     write_csv(tpath, ["month", "created"], tl)
+    gpath = os.path.join(os.path.dirname(os.path.abspath(args.output)), "contacts_groups_local.csv")
+    write_csv(gpath, ["code", "group"], [{"code": c, "group": g} for g, c in group_codes.items()])
     tagged = sum(r["n"] for r in rows if r["dimension"] == "tag" and r["key"] == "_any_tag")
-    print("count: %d contacts, %d matched a tag (%s) -> %s, %s" % (len(people), tagged, "creation date" if mode == "db" else "REV = last-modified, not creation", args.output, tpath))
+    print("count: %d contacts, %d matched a tag (%s) -> %s, %s" % (len(people), tagged, "creation date" if mode == "db" else "REV = last-modified, not creation", short(args.output), short(tpath)))
     if mode == "db":
         spike = sync_spike_warning(tl)
         if spike:
@@ -545,7 +578,7 @@ def cmd_demo(_args):
     v = vocab(people, 5)
     words = {r["word"] for r in v}
     assert {"סיור", "נובה", "חייל", "example"} <= words, words   # first names DO appear -> local only
-    rows, tl = count(people, load_tags(None), mode)
+    rows, tl, group_codes = count(people, load_tags(None), mode)
     out = os.path.join(tmp, "contacts_counts.csv")
     write_csv(out, ["dimension", "key", "year", "n"], rows)
     tpath = os.path.join(tmp, "contacts_timeline.csv")
@@ -554,7 +587,10 @@ def cmd_demo(_args):
     for bad in ("דנה", "Sarah", "Example", "555", "972", "לדוגמה", tmp, uuid):
         assert bad not in text, "shareable file leaked: %s" % bad
     tag_nova = sum(r["n"] for r in rows if r["dimension"] == "tag" and r["key"] == "נובה")
-    grp = sum(r["n"] for r in rows if r["dimension"] == "group" and r["key"] == "נובה 2024")
+    nova_code = group_codes.get("נובה 2024")
+    assert nova_code and nova_code.startswith("group_"), group_codes
+    grp = sum(r["n"] for r in rows if r["dimension"] == "group" and r["key"] == nova_code)
+    assert "נובה 2024" not in text, "raw group name reached the shareable file"
     assert grp == nova_group and tag_nova >= grp, (tag_nova, grp)
     il = sum(r["n"] for r in rows if r["dimension"] == "phone_country" and r["key"] == "IL")
     us = sum(r["n"] for r in rows if r["dimension"] == "phone_country" and r["key"] == "US")

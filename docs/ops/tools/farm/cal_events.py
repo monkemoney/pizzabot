@@ -44,12 +44,33 @@ LOCAL_FIELDS = ["event_id", "date", "calendar", "title", "location"]
 DEFAULT_TAGS = [
     "סיור,tour,visit,ביקור", "נובה,nova", "חייל,חיילים,חיילת,soldier,soldiers,idf,צה\"ל,צהל",
     "מילואים,reserve,reservist", "פצוע,פצועים,wounded,הלום,הלומי,ptsd", "בית ספר,ביה\"ס,school",
-    "גן,kindergarten,preschool", "קייטנה,camp", "טיפול,טיפולי,therapy,therapeutic",
+    "גן ילדים,גני ילדים,kindergarten,preschool", "קייטנה,camp", "טיפול,טיפולי,therapy,therapeutic",
     "צרכים מיוחדים,special needs,autism,אוטיזם", "מתנדב,מתנדבת,מתנדבים,volunteer",
     "תורם,תורמת,donor,donation,תרומה", "אלפקה,אלפקות,alpaca", "יום הולדת,birthday",
-    "שבת,shabbat,קהילה,community,חב\"ד,chabad", "עיתונאי,press,כתב,journalist",
+    "שבת בחווה,שבתות,shabbat,קהילה,community,חב\"ד,chabad", "עיתונאי,press,כתב,journalist",
     "וטרינר,vet,veterinarian", "אירוע,event,fundraiser,גאלה,gala",
 ]
+_TAG_RE_CACHE = {}
+
+
+def tag_matches(text, syns):
+    """Word-boundary match. A bare substring made 'גן' hit 'מגן דוד אדום' and 'דגן', 'tour' hit
+    'tourism', 'camp' hit 'campus'. Hebrew allows one attached prefix letter (ב/ל/מ/ה/ו/ש/כ) and a
+    plural/feminine suffix; Latin needs a clean word boundary."""
+    t = (text or "").lower()
+    for s in syns:
+        rx = _TAG_RE_CACHE.get(s)
+        if rx is None:
+            if re.search(r"[\u0590-\u05FF]", s):
+                rx = re.compile(r"(?<![\w\u0590-\u05FF])[ובלכשמה]?" + re.escape(s) + r"(?:ים|ות|יות|י|ה|ת)?(?![\w\u0590-\u05FF])")
+            else:
+                rx = re.compile(r"(?<![\w])" + re.escape(s) + r"(?:s|es)?(?![\w])")
+            _TAG_RE_CACHE[s] = rx
+        if rx.search(t):
+            return True
+    return False
+
+
 FARM_WORDS = ("keokuk", "farm", "חווה", "kfar saba urban farm", "winnetka")
 HEADCOUNT_RE = re.compile(r"(\d{1,3})\s*(?:ילדים|ילדות|חיילים|חיילות|אנשים|משתתפים|נערים|תלמידים|kids|children|people|soldiers|"
                           r"participants|pax|guests|students|adults|teens|families|משפחות|x)\b", re.I)
@@ -266,8 +287,7 @@ def load_tags(path):
 
 
 def tags_of(text, tags):
-    t = (text or "").lower()
-    return [tag for tag, syns in tags if any(s in t for s in syns)]
+    return [tag for tag, syns in tags if tag_matches(text, syns)]
 
 
 def headcount_hint(title):
@@ -363,12 +383,12 @@ def cmd_scan(args):
     for r in rows:
         by_year[r["date"][:4]][r["tag"] or "(untagged)"] += 1
     print("scan: %d .ics files -> %d occurrences (%d tagged, %d recurring rows) -> %s" %
-          (len(paths), len(rows), sum(1 for r in rows if r["tag"]), sum(1 for r in rows if r["recurring"]), args.output))
+          (len(paths), len(rows), sum(1 for r in rows if r["tag"]), sum(1 for r in rows if r["recurring"]), os.path.basename(args.output)))
     for y in sorted(by_year):
         top = ", ".join("%s %d" % (t, n) for t, n in by_year[y].most_common(6))
         print("  %s  %4d events  · %s" % (y, sum(by_year[y].values()), top))
-    print("LOCAL ONLY (titles, locations): %s — Limor tags from here; never upload" % lpath)
-    print("shareable: no title, note, attendee or description exists in %s" % args.output)
+    print("LOCAL ONLY (titles, locations): %s — Limor tags from here; never upload" % os.path.basename(lpath))
+    print("shareable: no title, note, attendee or description exists in %s" % os.path.basename(args.output))
 
 
 # ----------------------------------------------------------------------------- demo

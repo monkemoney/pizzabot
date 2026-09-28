@@ -5,7 +5,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"            # docs/ops/tools/farm
 REPO="$(cd "$HERE/../../../.." && pwd)"
 OUT="${1:-$HOME/Desktop/farm-data}"
-rm -rf "$OUT"; mkdir -p "$OUT/docs" "$OUT/raw" "$OUT/ics" "$OUT/local"
+rm -rf "$OUT"; mkdir -p "$OUT/docs" "$OUT/raw/participation" "$OUT/raw/checks" "$OUT/ics" "$OUT/local"
 cp "$HERE"/{timeline,contacts,cal_events,ledger,mail_ledger}.py "$OUT/"
 cp "$HERE/HANDOFF-CLAUDE.md" "$OUT/CLAUDE.md"
 for f in CHECKLIST-TONIGHT DAY1-PHOTOS DAY2-MONEY FACTS EXTRACTION DATA-COLLECTION; do

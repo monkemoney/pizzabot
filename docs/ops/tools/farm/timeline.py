@@ -205,20 +205,47 @@ def scrub_records(records):
 
 
 def load_photos_json(path):
+    """Iterate records of a JSON array one at a time. A 6-year export is hundreds of MB; json.load
+    would build every record as Python objects at once (several GB). raw_decode keeps only the text."""
     with open(path, encoding="utf-8") as f:
-        data = json.load(f)
+        text = f.read()
+    dec = json.JSONDecoder()
+    i = 0
+    n = len(text)
+    while i < n and text[i] in " \r\n\t":
+        i += 1
+    if i < n and text[i] == "[":
+        i += 1
+        while True:
+            while i < n and text[i] in " \r\n\t,":
+                i += 1
+            if i >= n or text[i] == "]":
+                return
+            obj, j = dec.raw_decode(text, i)
+            i = j
+            yield obj
+        return
+    data = json.loads(text[i:]) if i < n else []
     if isinstance(data, dict):
-        # some tools wrap the list
         for k in ("photos", "results", "data"):
             if isinstance(data.get(k), list):
-                return data[k]
-        return [data]
-    return data
+                data = data[k]
+                break
+        else:
+            data = [data]
+    for obj in data:
+        yield obj
 
 
 def cmd_scrub(args):
-    records = load_photos_json(args.input)
-    rows = scrub_records(records)
+    n_in = [0]
+
+    def counted():
+        for rec in load_photos_json(args.input):
+            n_in[0] += 1
+            yield rec
+    rows = scrub_records(counted())
+    records = range(n_in[0])
     write_csv(args.output, SCRUBBED_FIELDS, rows)
     print(f"scrub: {len(records)} records in, {len(rows)} rows out -> {args.output}")
     print("dropped: persons, face_info, titles, descriptions, keywords, paths, filenames, library path")
@@ -481,7 +508,7 @@ def parse_farm(arg, rows):
     if arg is None or arg == "auto":
         f = infer_farm(rows)
         if f:
-            print("farm (inferred, densest 100 m cell): %.5f, %.5f  (%d photos) — confirm with Limor" % f)
+            print("farm (inferred, densest 100 m cell): %.5f, %.5f  (%d photos) — confirm with Limor; coordinates stay here, do not paste them" % f)
         else:
             print("farm: no GPS in data; everything will be 'no-gps'")
         return f
@@ -489,6 +516,38 @@ def parse_farm(arg, rows):
         return None
     lat, lon = (float(x) for x in arg.split(","))
     return (lat, lon, 0)
+
+
+def share_copy(events, keep_captions=False):
+    """The file that leaves the Mac. Album names are Limor's free text (an album can be named after a
+    person), so they become codes; an off-site place with no city would be a ~100 m point, so it is
+    withheld; Instagram captions are public but may name people, so they are blank unless asked for."""
+    codes = {}
+    out = []
+    for e in events:
+        r = dict(e)
+        r["albums"] = ";".join(codes.setdefault(a, "album_%02d" % (len(codes) + 1)) for a in (e.get("albums") or "").split(";") if a)
+        if re.match(r"offsite: -?\d+\.\d+,-?\d+\.\d+$", r.get("place", "")):
+            r["place"] = "offsite: (coords withheld)"
+        if not keep_captions:
+            r["ig_caption"] = ""
+        out.append(r)
+    return out, codes
+
+
+def year_summary(events):
+    years = defaultdict(lambda: [0, 0, 0, 0])
+    for e in events:
+        y = e["date"][:4]
+        if e["place"] == "farm":
+            years[y][0] += 1
+            if int(e.get("max_faces") or 0) >= 3:
+                years[y][1] += 1
+        else:
+            years[y][2] += 1
+        if e.get("evidence_grade") == "R":
+            years[y][3] += 1
+    return years
 
 
 def cmd_cluster(args):
@@ -505,9 +564,20 @@ def cmd_cluster(args):
         join_calendar(events, cal)
         print("calendar: %d days with entries; %d clusters upgraded to grade R" % (len(cal), sum(1 for e in events if e["cal_events"])))
     write_csv(args.output, EVENT_FIELDS, events)
+    share, album_map = share_copy(events, keep_captions=args.share_captions)
+    share_path = os.path.splitext(args.output)[0] + "_share.csv"
+    write_csv(share_path, EVENT_FIELDS, share)
+    map_path = os.path.join(os.path.dirname(os.path.abspath(args.output)), "albums_local.csv")
+    write_csv(map_path, ["code", "album"], [{"code": c, "album": a} for a, c in album_map.items()])
     n_farm = sum(1 for e in events if e["place"] == "farm")
     print("cluster: %d rows -> %d events (%d at the farm, %d off-site/no-gps) -> %s"
-          % (len(rows), len(events), n_farm, len(events) - n_farm, args.output))
+          % (len(rows), len(events), n_farm, len(events) - n_farm, os.path.basename(args.output)))
+    print("per year (candidate days, not events — Limor tags which are events):")
+    for y, (days, faces3, off, rgrade) in sorted(year_summary(events).items()):
+        print("  %s  farm days %3d · farm days with >=3 faces %3d · off-site days %2d · grade R %2d" % (y, days, faces3, off, rgrade))
+    print("SHARE THIS ONE: %s — albums coded (album_01…), off-site coordinates withheld, captions %s"
+          % (os.path.basename(share_path), "kept (--share-captions)" if args.share_captions else "blank"))
+    print("LOCAL: %s (Limor tags here; raw album names) · albums_local.csv (code -> album name)" % os.path.basename(args.output))
     log_line(args.output, "cluster", len(rows), len(events))
 
 
@@ -663,6 +733,20 @@ def cmd_demo(_args):
     first = next(x for x in events if x["date"] == "2024-03-01")
     assert first["evidence_grade"] == "R" and first["cal_tag"] == "" and first["cal_hours"] == "2.0", first
     assert sum(1 for x in events if x["evidence_grade"] == "R") == 2 and all(x["evidence_grade"] in ("E", "R") for x in events)
+
+    # 4c. the share copy carries no album name, no coordinates, no caption
+    for x in events:
+        if x["date"] == "2024-03-01":
+            x["albums"] = "Dana's birthday"
+    e["place"] = "offsite: 34.123,-118.456"   # the Malibu day, with its city unknown
+    share, amap = share_copy(events)
+    stext = "\n".join(",".join(str(v) for v in r.values()) for r in share)
+    assert "Dana" not in stext and "Soldiers retreat" not in stext and "34.123" not in stext and "ריטריט" not in stext, stext[:300]
+    assert amap.get("Dana's birthday", "").startswith("album_") and any(r["place"] == "offsite: (coords withheld)" for r in share)
+    assert all(r["ig_caption"] == "" for r in share) and any(r["ig_posts"] for r in share)
+    e["place"] = "offsite: Malibu"
+    ys = year_summary(events)
+    assert ys["2024"][0] == 30 and ys["2024"][2] == 2 and ys["2024"][3] == 2, ys
 
     # 5. --since keeps only new clusters (monthly run)
     later = cluster_rows(rows, f, 150, 5, since=datetime(2024, 8, 1).date())

@@ -65,6 +65,9 @@ cluster: N rows -> E events (F at the farm, O off-site/no-gps) -> events_seed.cs
 - **Instagram (משני, לא מעודכן):** הייצוא המלא נעשה דרך Accounts Center (הנתיב הישן ״Settings → Your activity → Download your information״ כבר לא קיים): אינסטגרם → פרופיל → ≡ → Settings and activity → **Accounts Center → Your information and permissions → Download your information** (בחלק מהגרסאות: Export your information) → Create export → לסמן את פרופיל האינסטגרם → Next → **Export to device** (לא external service) → Customise: All available information · Date range = **All time** · Format = **JSON** · Media quality = **Low** (צריכים רק כיתובים) → Start export. מגיע במייל + Available downloads (שעות עד יומיים, רשמית עד 30 יום); הלינק תקף 4 ימים; חשבון גדול מגיע בכמה חלקי ZIP — להוריד את כולם. התיקייה: `instagram-<user>-<date>-<id>/` — הכלי מחפש בעצמו את `your_instagram_activity/media/posts_1.json` (בייצוא ישן: `.../content/posts_1.json`), `stories.json`, `reels.json`. **אם בתיקייה יש `posts_1.html` — נבחר HTML; לייצא שוב ב-JSON.** ואז `--instagram ~/Downloads/instagram-<user>-<date>-<id>/` מוסיף `ig_posts` + כיתוב הפוסט הארוך ביותר של אותו יום. כיתובים הם **ציבוריים ממילא**; זה מקור התיאור/השותף, לא מקור השמות.
 - חשבון Business: Meta Business Suite → Insights → Content → Export data נותן **רק מטריקות של 90 הימים האחרונים** (Posts ו-Stories בנפרד) — לא תחליף לייצוא המלא.
 
+## 4ב. מה נשלח ומה נשאר — הקובץ `_share`
+`cluster` כותב שני קבצים: **`events_seed.csv`** (מקומי — לימור מתייגת בו; שמות אלבומים גולמיים, שלימור הקלידה ויכולים לכלול שם של אדם) ו-**`events_seed_share.csv`** (נשלח — אלבומים כקודים `album_01…`, המפה ב-`albums_local.csv` אצלה; יום מחוץ לחווה בלי עיר = ״coords withheld״ במקום נקודה של 100 מ׳; כיתובי אינסטגרם ריקים אלא אם `--share-captions` בהסכמת לימור). בנוסף הכלי מדפיס **סיכום לפי שנה**: ימי-חווה · ימי-חווה עם ≥3 פנים · ימים מחוץ · דרגה R. ״ימים״ הם מועמדים, לא אירועים — לימור מסמנת. שורת `farm (inferred…)` נשארת אצלה (קואורדינטות).
+
 ## 5. מה מסתכלים עליו יחד (15 דק׳)
 `events_seed.csv` — שורה = **אירוע** (יום × מקום × ≥5 תמונות):
 
@@ -80,7 +83,8 @@ cluster: N rows -> E events (F at the farm, O off-site/no-gps) -> events_seed.cs
 
 שאלות בקרה: כמה אירועים בשנה — **2020–2022 (לפני העמותה) לעומת 2023–2025**? זה ההבדל בין ״שש שנות עשייה״ ל״שנתיים וחצי כעמותה״ בשקף.  יש חודשים ריקים (= לא צולם, או לא היה)? ה-off-site תואם לריטריטים שהיא זוכרת? `no-gps` גדול ⇒ **לא** עניין של ענן — שירותי מיקום כבויים במצלמה של ה-iPhone, או תמונות שיובאו ממצלמה בלי GPS (טבלה למטה); הורדת מקוריים לא תוסיף GPS שלא נרשם.
 
-## 6. סיום היום (2 דק׳)
+## 6. סיום היום
+> **מה נמחק הערב:** `photos_meta.json` · `Contacts.abbu` · `all.vcf` · תיקיות ה-demo ב-/tmp. להראות ללימור את ה-`ls` אחרי. `processing_log.csv` נשאר אצלה — לא להעתיק (שם משתמש). (2 דק׳)
 ```bash
 rm photos_meta.json              # הגולמי עם השמות — נמחק
 open events_seed.csv             # נטען לטאב Events בגיליון המשותף (ידני, לימור)
@@ -113,7 +117,7 @@ open contacts_timeline.csv                                  # בדיקת שפי�
 ```
 להשוות את `N` בשורת `vocab: N contacts (db)` למספר ש-Contacts מציג ב-All Contacts. גבוה בהרבה ⇒ שני חשבונות חופפים (iCloud + Google/Exchange) — `--db` על המקור הגדול.
 
-פלט משותף: `contacts_counts.csv` (תגית × שנת יצירת איש הקשר → n; קבוצות; מדינת טלפון IL/US) ו-`contacts_timeline.csv` (חודש → אנשי קשר חדשים = **עקומת הגדילה של הקהילה**).
+פלט משותף: `contacts_counts.csv` (תגית × שנת יצירת איש הקשר → n; קבוצות **כקודים** `group_01…` — המפה ב-`contacts_groups_local.csv` אצלה; מדינת טלפון IL/US) ו-`contacts_timeline.csv` (חודש → אנשי קשר חדשים = **עקומת הגדילה של הקהילה**).
 
 **בדיקת שפיות — חובה לפני שהעקומה יוצאת מהחדר:** לפתוח `contacts_timeline.csv`. אם **חודש אחד מחזיק אלפים** (בדרך כלל החודש שבו המק / חשבון ה-iCloud הוגדרו) — תאריכי היצירה הם **תאריכי סנכרון ראשון**, לא פגישה ראשונה, ועקומת 2020–2022 **אינה ראיה**. הכלי מזהיר על זה בעצמו; אומרים את זה בפלט במקום להציג את העקומה. תאריך יצירה ≈ פגישה ראשונה **רק** אם החשבון חי במק הזה מ-2020 — ההיסטוגרמה החודשית היא הבדיקה.
 

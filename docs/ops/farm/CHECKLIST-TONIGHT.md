@@ -1,26 +1,30 @@
 # הערב, ליד המק של לימור — צעד · איפה · מה להביא לי
 
-> נגזר מ-[`DAY1-PHOTOS.md`](DAY1-PHOTOS.md) (מלא, עם טבלת תקלות) ומ-[`DAY2-MONEY.md`](DAY2-MONEY.md) §Wix. כל פקודה כאן אומתה מול המקורות ב-28.9.2026 (osxphotos 0.77, uv, TCC, Instagram export, Contacts DB).
+> נגזר מ-[`DAY1-PHOTOS.md`](DAY1-PHOTOS.md) (מלא, עם טבלת תקלות) ומ-[`DAY2-MONEY.md`](DAY2-MONEY.md). אומת מול המקורות ועבר ביקורת של שלושה סוקרים (ביצוע · פרטיות · זמן) ב-28.9.2026.
+> **ריאלי: 1:45–2:45 בעבודה מקבילה** (לא 2.5 שעות בטור). צעד 7 רץ 15–45 דק׳ בשקט — זה החלון לסעיפים ג׳, ג2, ד׳, ה׳.
+> **ידיים של לימור — שלוש פעמים, לא שמונה:** (1) בהתחלה: לפתוח את המק, Touch ID ל-Full Disk Access, ולענות על השאלות בזמן שההתקנה רצה; (2) כשצעד 7 רץ: Wix בדפדפן, Instagram בטלפון, 10 דק׳ על רשימת המילים ואישור החווה; (3) בסוף: Touch ID להסרת ההרשאה, ומבט משותף בתוצאה. להגיד לה זאת בהתחלה.
+> **אם משהו נתקע יותר מ-10 דקות — חוץ מצעדים 4 ו-7 —** לעבור לצעד הבא ולכתוב לי מה קרה.
 
-> כל הפקודות: להדביק **בטרמינל של המק שלה** (Spotlight ⌘Space → "Terminal") — או לתת ל-Claude Code המקומי להריץ אותן (צעד 1). כל קובץ שכתוב ״להביא לי״ — לשלוח לי כאן בצ׳אט. כל קובץ שכתוב ״נשאר״ — לא לשלוח, לא להעלות. אין טוקנים, אין סיסמאות, אין קבצים גולמיים אליי.
-> חלון זמן: ~3 שעות. אם משהו נתקע יותר מ-10 דקות — לעבור לצעד הבא ולכתוב לי מה קרה.
+## כללי פרטיות לערב — קצר
+- הסקריפטים רצים על המק שלה; החוצה יוצאים רק **קבצי `_share` וספירות**. שום קובץ גולמי, שום `*_local.csv`.
+- **להעתיק לצ׳אט רק שורות פלט.** אף שורה עם הפרומפט (`שם@מחשב %`), אף צילום מסך של הטרמינל, אף נתיב מלא (`/Users/<שם>`). בתחילת הסשן: `PROMPT='%% '`.
+- העברת קבצים אליי: AirDrop מהמק שלה לטלפון/מק שלך, ומשם לצ׳אט. לא להתחבר ל-claude.ai שלך מהמק שלה, לא במייל/וואטסאפ שלה.
+- **בסגירת קובץ שנפתח ב-Numbers: Delete, לא Keep** (Keep שומר ל-iCloud Drive). לכן הפקודות למטה פותחות ב-TextEdit.
+- אם ה-Claude Code המקומי מריץ (צעד 1) — `CLAUDE.md` בחבילה כופה את הכללים האלה עליו.
 
-## א. הכנה (10 דק׳)
+## א. הכנה (15–25 דק׳)
 
-1. **לבנות את החבילה ולהעביר** (במק שלך, מהריפו, אחרי `git pull`):
+1. **החבילה** (במק שלך, מהריפו, אחרי `git pull`): `bash docs/ops/tools/farm/make-handoff.sh` → `~/Desktop/farm-data`. במק שלה: Control Center → AirDrop → **Everyone for 10 Minutes**; Wi-Fi + Bluetooth דלוקים בשניים. AirDrop של התיקייה. במק שלה, בטרמינל:
    ```bash
-   bash docs/ops/tools/farm/make-handoff.sh        # בונה ~/Desktop/farm-data ומריץ demo לכל כלי
+   mv ~/Downloads/farm-data ~/farm-data && cd ~/farm-data && ls
    ```
-   AirDrop של התיקייה `farm-data` למק שלה → להעביר ל-`~/farm-data` (Home). בפנים: 5 הסקריפטים, `CLAUDE.md` (ההנחיות לסשן המקומי), `docs/` (הרנבוקים והצ׳קליסט הזה).
-   **יש לה Claude Code:** במק שלה → Terminal → `cd ~/farm-data && claude` → להדביק את ההודעה הראשונה מסוף `CLAUDE.md`. הסשן המקומי מריץ איתכם את הצ׳קליסט צעד-צעד, ו-`CLAUDE.md` אוסר עליו לקרוא או להדפיס קבצים גולמיים (שמות לא נכנסים לשיחה). לפני שמתחילים, 30 שניות עם לימור: claude.ai → Settings → Privacy → לוודא ש-"Help improve Claude" **כבוי** בחשבון שלה.
-2. **לבדוק מה יש על המק:**
-   ```bash
-   cd ~/farm-data && ls
-   xcode-select -p >/dev/null 2>&1 && python3 --version || echo 'no CLT — fine, we use uv'
-   ```
-   אם קופץ דיאלוג ״Install Command Line Tools?״ — **Cancel**. לא מתקינים.
-3. **Full Disk Access לטרמינל — לפני הכל, macOS לא יבקש לבד:** System Settings → Privacy & Security → Full Disk Access → (+) → Applications/Utilities/Terminal.app → להדליק → **⌘Q לטרמינל ולפתוח מחדש**.
-4. **uv + osxphotos** (הפייתון של macOS הוא 3.9.6 — ישן מדי ל-osxphotos; ~3–5 דק׳, בלי סיסמת אדמין):
+   צפוי: `CLAUDE.md cal_events.py contacts.py docs ics ledger.py local mail_ledger.py raw timeline.py`. (יש לה Claude Code: `claude` מכאן, ולהדביק את ההודעה מסוף `CLAUDE.md`. לפני כן, 30 שניות: claude.ai → Settings → Privacy → "Help improve Claude" **כבוי** בחשבון שלה.)
+2. **שלוש בדיקות לפני כל התקנה** (אם אחת נופלת — סעיף ב׳ נדחה לביקור 2, הערב עושים ג׳, ג2, ד׳, ה׳):
+   - **הספרייה מלאה?** Photos במק → Library → לגלול לתחתית → ״N Photos, M Videos״. באייפון שלה: Photos → Library → תחתית. המק מראה **הרבה פחות**, או System Settings → Apple ID → iCloud → Photos כבוי? → **לא להדליק הערב** (סנכרון של שעות). לרשום N.
+   - **דיסק:** `df -h ~ | tail -1` → צריך ≥ 5 GB פנויים.
+   - **Photos סגור לגמרי (⌘Q)** — חובה, לא מומלץ: אחרת osxphotos מעתיק GBs של מסד נתונים בכל קריאה.
+   בזמן הזה, לימור עונה על **השאלות 1–7** (סוף המסמך).
+3. **uv + osxphotos** — קודם, בחלון הנוכחי, בלי סיסמה (~3–8 דק׳ על wifi ביתי):
    ```bash
    curl -LsSf https://astral.sh/uv/install.sh | sh
    source ~/.local/bin/env
@@ -28,97 +32,123 @@
    uv tool install --python 3.13 osxphotos
    osxphotos --version
    ```
-   צפוי: `0.77` ומעלה. **כלל לכל ההמשך:** אם בצעד 2 הודפס `no CLT` — כל `python3` בפקודות למטה = `python3.13`. אם הודפס `Python 3.9.6` — `python3` כמו שכתוב.
-
-## ב. גלריה → ציר הזמן (30–60 דק׳, לפי גודל הספרייה)
-
-5. **בדיקה עצמית על דאטה מזויף** (מוכיח ללימור ששמות לא עוברים, לפני שנוגעים באמיתי):
+   צפוי `0.77` ומעלה. **מעכשיו כל סקריפט רץ עם `python3.13` — כתוב כך למטה, בכל מק.** לא `python3`: במק בלי Command Line Tools זה מקפיץ דיאלוג התקנה; אם קופץ — Cancel. אם `python3.13: command not found` → `source ~/.local/bin/env`; אם עדיין → `uv run --no-project --python 3.13 python timeline.py demo`.
+   *אם לימור שואלת:* ״מתקין שני כלים חופשיים בתיקיית המשתמש שלך, בלי סיסמה, בלי לשנות את המערכת; מסירים בשתי פקודות.״
+4. **Full Disk Access — אחרי ההתקנה, לימור מאשרת ב-Touch ID:** System Settings → Privacy & Security → Full Disk Access → (+) → Applications/Utilities/Terminal.app → on → **⌘Q לטרמינל, לפתוח מחדש**, `cd ~/farm-data`. macOS לא מבקש לבד; בלי זה: ״Operation not permitted״ בלי שום חלון. בדיקה של שנייה:
    ```bash
-   cd ~/farm-data && python3 timeline.py demo
+   ls "$HOME/Pictures/Photos Library.photoslibrary/database/" "$HOME/Library/Application Support/AddressBook/Sources/" >/dev/null && echo FDA OK
    ```
-   צפוי: `demo OK: 945 synthetic records -> 942 scrubbed rows -> 32 events`.
-6. **כמה תמונות יש** (מהיר, בודק הרשאות):
+   *אם לימור שואלת:* ״הרשאה לטרמינל לקרוא את מסד הנתונים של Photos ושל אנשי הקשר — כמו לתוכנת גיבוי. מסירים בסוף הערב, את תראי.״
+
+## ב. גלריה → ציר הזמן (ב7 רץ ברקע 15–45 דק׳)
+
+5. **בדיקה על דאטה מזויף** (לפני שנוגעים באמיתי):
+   ```bash
+   python3.13 timeline.py demo
+   ```
+   צפוי: `demo OK: 945 synthetic records -> 942 scrubbed rows -> 32 events`. *אם לימור שואלת:* ״945 תמונות מזויפות עם שמות מזויפים — מראה ששמות אנשים, כיתובים ונתיבים לא עוברים. שמות אלבומים ועיר של יום מחוץ לחווה עוברים כקודים בקובץ שנשלח.״
+6. **כמה פריטים** (1–4 דק׳ של שקט — טוען את כל הספרייה, לא נתקע):
    ```bash
    osxphotos query --count --from-date 2020-06-01 --not-hidden
    ```
-   אם ״Operation not permitted״ → צעד 3 לא נתפס: לוודא Terminal מסומן, ⌘Q, לפתוח מחדש, `source ~/.local/bin/env`.
-7. **ייצוא מטא-דאטה** (Photos סגור = מהיר יותר, לא חובה):
+   **אם N > ~80,000:** הערב `--from-date 2023-01-01` (תקופת העמותה) בצעד 7, לרשום, ו-2020–2022 בביקור 2.
+7. **ייצוא מטא-דאטה — להפעיל ולעזוב:**
    ```bash
    osxphotos query --json --from-date 2020-06-01 --not-hidden > photos_meta.json
-   ls -lh photos_meta.json
    ```
-   מאות MB לספרייה גדולה — נורמלי. **הקובץ הזה מכיל שמות** (תיוגי פנים, כיתובים). נמחק בצעד 17.
-8. **ניקוי + קיבוץ:**
+   **הקובץ נשאר 0 בייט עד השנייה האחרונה — זה לא תקלה.** osxphotos בונה את כל ה-JSON בזיכרון וכותב פעם אחת. צפוי 15–45 דק׳ בלי שום פלט. חי? בטאב אחר: `top -l 1 -pid $(pgrep -f 'osxphotos query') | tail -1` (CPU > 0). **0 בייט אחרי שחזר הפרומפט = שגיאה.**
+   **⌘T — טאב חדש** (אותו Terminal = אותו Full Disk Access) → `cd ~/farm-data` → **להמשיך לסעיפים ג׳, ג2, ד׳, ה׳ בזמן שזה רץ.**
+   *אם לימור שואלת:* ״מייצא רק מידע *על* התמונות — תאריך, מיקום, כמה פנים — אף תמונה. הקובץ הזה כן מכיל שמות של תיוגי פנים, ולכן הוא נמחק לפני שאני יוצא, מולך.״
+8. **כשצעד 7 סיים — לסגור דפדפן, ואז ניקוי + קיבוץ** (scrub קורא רשומה-רשומה; אם בכל זאת `Killed` — פרוסות שנתיות, DAY1 טבלת תקלות):
    ```bash
-   python3 timeline.py scrub photos_meta.json -o photos_meta.csv
-   python3 timeline.py cluster photos_meta.csv -o events_seed.csv --farm auto
+   ls -lh photos_meta.json
+   python3.13 timeline.py scrub photos_meta.json -o photos_meta.csv
+   python3.13 timeline.py cluster photos_meta.csv -o events_seed.csv --farm auto --calendar calendar_events.csv
    ```
-9. **לאשר עם לימור** את שורת `farm (inferred…): 34.xxxxx, -118.xxxxx` — זה Keokuk? (Google Maps → לחיצה ארוכה על החווה → הקואורדינטות). אם זה הבית שלה: להריץ שוב `--farm 34.xxxxx,-118.xxxxx`.
-10. **להסתכל יחד 5 דק׳:** `open events_seed.csv` — כמה אירועים ב-2020–2022 לעומת 2023–2025? ריטריטים מחוץ לחווה מופיעים?
+   (`--calendar` רק אם ג2 כבר הופק; אחרת בלי.) הפלט: שורת `farm (inferred…)`, שורת `cluster`, **סיכום לפי שנה** (ימי-חווה · ימי-חווה עם ≥3 פנים · ימים מחוץ · דרגה R), ושתי שורות: `SHARE THIS ONE: events_seed_share.csv` ו-`LOCAL: events_seed.csv`.
+9. **לימור מאשרת** ששורת `farm (inferred)` היא Keokuk (Google Maps → לחיצה ארוכה על החווה). אם זה הבית שלה: להריץ שוב עם `--farm 34.xxxxx,-118.xxxxx`. **הקואורדינטות לא נשלחות אליי** — נשארות אצלה בפתק לריצה החודשית.
+10. **מבט משותף (2–5 דק׳):** `open -a TextEdit events_seed.csv`. להגיד במילים: ״אלה **ימים-מועמדים**, לא אירועים — את מסמנת מה אירוע בישיבות התיוג.״ אלבום שנקרא על שם אדם? בקובץ ה-share הוא כבר `album_07`.
 
-**להביא לי מ-ב׳:** שלוש השורות שהודפסו (scrub / farm / cluster) + **הקובץ `events_seed.csv`** (אין בו שמות — תאריכים, מקום, ספירות, אלבום).
+**להביא לי מ-ב׳:** שורת `scrub` · שורת `cluster` · **שורות הסיכום לפי שנה** · המילה ״החווה אושרה״ / ״הוחלף ידנית״ (בלי מספרים משורת farm) · **הקובץ `events_seed_share.csv`** (אלבומים כקודים, בלי קואורדינטות, בלי כיתובים). **נשאר אצלה:** `events_seed.csv`, `albums_local.csv`, `photos_meta.csv`.
 
-## ג. אנשי קשר → ספר המשתתפים, בספירה בלבד (20 דק׳)
+## ג. אנשי קשר → ספירות (20–30 דק׳, בזמן שב7 רץ)
 
-11. ```bash
-    python3 contacts.py demo
-    python3 contacts.py vocab -o vocab_local.csv --min 5
-    open vocab_local.csv
+11. לפני ההרצה לשאול: **״מאז מתי המק הזה / חשבון ה-iCloud הזה?״** (2023+ ⇒ ספייק סנכרון צפוי; אז `year` בספירות אינו ראיה, רק הסכומים).
+    ```bash
+    python3.13 contacts.py demo
+    python3.13 contacts.py vocab -o vocab_local.csv --min 30
+    open -a TextEdit vocab_local.csv
     ```
-    עם לימור: אילו מילים ברשימה הן **התגיות שלה**? (״סיור״, ״נובה״, …). לפתוח `tags.txt` (נוצר אוטומטית) → להוסיף/למחוק שורות. שורה = תגית, פסיקים = מילים נרדפות.
+    אם קופץ ״Terminal would like to access your contacts״ → Allow. **לקרוא עם לימור את 100 השורות העליונות** (מסודר לפי תדירות): אילו מילים הן **תגיות** שלה? עידון — בישיבות התיוג, לא הערב.
+    `open -e tags.txt` (נוצר אוטומטית עם תגיות מוצא) → להוסיף/למחוק שורות → ⌘S. **תגית = אוכלוסייה / תוכנית / ארגון שותף. תגית שהיא שם של אדם (״דרך רותי״) לא נכנסת** — אם חייבים, ״הפניה-1״ והפירוש נשאר אצלה. מילה של 2–3 אותיות תופסת גם שמות משפחה — רק תגיות ארוכות/חד-משמעיות (הכלי כבר דורש גבול מילה).
+    *אם לימור שואלת:* ״רשימת מילים וכמה פעמים כל אחת מופיעה — לא אנשים. נשארת פה; רק מחפשים בה את התגיות שלך.״
 12. ```bash
-    python3 contacts.py count --tags tags.txt -o contacts_counts.csv
-    open contacts_timeline.csv
+    python3.13 contacts.py count --tags tags.txt -o contacts_counts.csv 2>/dev/null | sed 's# -> .*##'
+    open -a TextEdit contacts_timeline.csv
     ```
-    **בדיקת שפיות:** אם חודש אחד מחזיק אלפים (החודש שהמק/iCloud הוגדר) — תאריכי היצירה הם תאריכי סנכרון, לא פגישה ראשונה; הכלי מזהיר, ואז עקומת 2020–2022 לא ראיה. לכתוב לי.
-    - אם ״no Contacts database found״: Contacts → File → Export → **Contacts Archive…** → לשמור `~/farm-data/Contacts.abbu` → `python3 contacts.py count --db "$HOME/farm-data/Contacts.abbu" --tags tags.txt`.
-    - אם הספירה גדולה בהרבה ממה ש-Contacts מציג — אותם אנשים בשני חשבונות (iCloud + Google); הכלי מדפיס ספירה לכל מקור → `--db` על הגדול.
+    שמות קבוצות מ-Contacts יוצאים **כקודים** (`group_01`); המפה ב-`contacts_groups_local.csv` אצלה. **ספייק:** חודש אחד עם אלפים = תאריכי סנכרון; הכלי מזהיר — לכתוב לי ״ספייק: כן״.
+    - ״no Contacts database found״ → Contacts → File → Export → **Contacts Archive…** → `~/farm-data/Contacts.abbu` → `python3.13 contacts.py count --tags tags.txt --db "$HOME/farm-data/Contacts.abbu" -o contacts_counts.csv`.
+    - ספירה גדולה בהרבה ממה ש-Contacts מציג → אותם אנשים בשני חשבונות; הכלי מדפיס לכל מקור `<UUID>: N people` → `--db "$HOME/Library/Application Support/AddressBook/Sources/<UUID>/AddressBook-v22.abcddb"`.
+    *אם לימור שואלת:* ״ספירה — כמה אנשי קשר לכל תגית לכל שנה. אף שם, טלפון או מייל לא נכתבים לשום קובץ.״
 
-**להביא לי מ-ג׳:** שורת הסיכום + שורות התגיות שהודפסו · **`tags.txt`** · **`contacts_timeline.csv`** · **`contacts_counts.csv`** (ספירות בלבד). **נשאר אצלה:** `vocab_local.csv`.
+**להביא לי מ-ג׳:** שורת `count` **כפי שה-sed מדפיס אותה** (בלי הנתיב) + שורות התגיות · **`tags.txt`** (אחרי שקראת אותו בעין) · **`contacts_counts.csv`** · **`contacts_timeline.csv`** · ״ספייק: כן/לא״. **נשאר אצלה:** `vocab_local.csv`, `contacts_groups_local.csv`.
 
-## ג2. היומן → אירועים מתועדים, דרגה R (15 דק׳) — **הכי שווה**
+## ג2. היומן → אירועים מתועדים, דרגה R (15 דק׳, בזמן שב7 רץ) — **הכי שווה**
 
-12א. **לייצא כל יומן רלוונטי כ-.ics:** Calendar.app → בסרגל הצד ללחוץ על היומן (״חווה״, וגם ״Home״ — 2020–2022 כנראה שם) → File → Export → **Export…** → לשמור ב-`~/farm-data/ics/` (ליצור קודם: `mkdir -p ~/farm-data/ics`).
-12ב. ```bash
-    python3 cal_events.py demo
-    python3 cal_events.py scan ~/farm-data/ics/*.ics --tags tags.txt --farm 34.xxxxx,-118.xxxxx -o calendar_events.csv
-    python3 timeline.py cluster photos_meta.csv -o events_seed.csv --farm 34.xxxxx,-118.xxxxx --calendar calendar_events.csv
+13. Calendar.app → בסרגל הצד ללחוץ על היומן (״חווה״, **וגם ״Home״** — 2020–2022 כנראה שם) → File → Export → **Export…** → `~/farm-data/ics/<שם>.ics`. לכל יומן רלוונטי. לא Calendar Archive.
+14. ```bash
+    python3.13 cal_events.py demo
+    python3.13 cal_events.py scan ~/farm-data/ics/*.ics --tags tags.txt -o calendar_events.csv
     ```
-    `--farm` = הקואורדינטות משלב 9. השורה `calendar: D days with entries; K clusters upgraded to grade R` = כמה ימי צילום הפכו למתועדים.
+    (`--farm lat,lon` אופציונלי — מסמן ״בחווה״ לפי מיקום; אפשר בלי, או להוסיף אחרי צעד 9.) הפלט: שורת `scan` וסיכום **לפי שנה ותגית**. `calendar_local.csv` (כותרות) נשאר אצלה. שנים 2020–2022 ריקות? → היומן ההוא לא יוצא — לשאול.
+    *אם לימור שואלת:* ״רשומת יומן נכתבת לפני האירוע — זו ראיה שקרנות מקבלות. יוצאים רק תאריך, שעות, תגית ומספרים. הכותרות נשארות פה.״
 
-**להביא לי מ-ג2:** שורות הסיכום של `scan` (לפי שנה ותגית) · **`calendar_events.csv`** (בלי כותרות) · `events_seed.csv` המעודכן. **נשאר אצלה:** `calendar_local.csv` (כותרות).
+**להביא לי מ-ג2:** שורות `scan` לפי שנה · **`calendar_events.csv`** (בלי כותרות). אחרי צעד 8 עם `--calendar`, `events_seed_share.csv` כבר מכיל את החיבור.
 
-## ד. Wix — ייצוא כשאתה כבר בפנים (20 דק׳, נדרש אישור של לימור — בעל האתר)
+## ד. Wix — הערב רק שני דברים (10 דק׳, לימור מחוברת)
 
-בדשבורד של Wix (אם התפריט שונה — שורת החיפוש למעלה עם שם העמוד). לשמור הכל ב-`~/farm-data/raw/`:
-
-13. **Payments** → סינון תאריכים 1.1.2023 → היום → אייקון Download → CSV → `wix_payments.csv`.
-14. **Accept Payments** → Manage ליד Wix Payments → **Settlement Report** → טווח מלא, כל סוגי העסקאות → Download Detailed Table → `wix_settlement.csv` (זה עם העמלות).
-15. **Orders** → סימון כל הזמנות התרומה (checkbox עליון, לכל עמוד) → Export → `raw/wix_donations.csv` (שיוך תורם/קמפיין; הכסף כבר ב-13 — הכלי מסמן אותן `counted=0`).
-    **Booking List** → Filter → Session date & time 1.1.2023→היום → לגלול לסוף → Export → Filtered items → `raw/participation/wix_bookings.csv` (= נוכחות רשומה, דרגה R; יש בו שמות, לא נטען לכסף). **Events** → לכל אירוע: Manage → Guests → Export Guests → `raw/participation/`.
-16. **Analytics → All Reports → Accounting → Payments Summary** → 1.1.2023→היום, Group by Month, + עמודת Payment method → Export → `raw/checks/wix_payments_summary.csv`.
-
-**להביא לי מ-ד׳:** **שורת הכותרת בלבד** (השורה הראשונה) של כל קובץ — `head -1 ~/farm-data/raw/wix_*.csv` — בלי נתונים. ואת `raw/checks/wix_payments_summary.csv` השלם (סיכומים חודשיים, בלי שמות). הקובץ האמיתי הראשון של Wix כנראה יודפס אצלי כ-`UNRECOGNISED` — זה צפוי; הכותרת היא מה שמתקן את זה.
-
-## ה. Instagram (5 דק׳ להפעיל, מגיע אחר כך — לא חובה הערב)
-
-17. באפליקציה: פרופיל → ≡ → Settings and activity → **Accounts Center → Your information and permissions → Download your information** → Create export → הפרופיל → **Export to device** → All available information · Date range **All time** · Format **JSON** · Media quality Low → Start export. מגיע במייל (שעות–יומיים). כשמגיע: לפרוס ל-`~/farm-data/instagram/` ולהריץ שוב צעד 8 עם `--instagram ~/farm-data/instagram/`.
-
-## ו. סיום (5 דק׳)
-
-18. ```bash
-    rm ~/farm-data/photos_meta.json
-    cat ~/farm-data/processing_log.csv
+15. **להזמין את טירן:** Wix → Settings → **Roles & Permissions** → Invite People → המייל של טירן → **Admin (Co-Owner)**. זה הדבר היחיד בסעיף שדורש את לימור, ומונע שיום 2 ייתקע על ״רק בעל האתר יכול לייצא״. הייצוא המלא (Payments, Settlement, Donations, Bookings, Events) — **טירן, ביום 2, במק שלו**, לפי DAY2-MONEY §Wix. לא הערב.
+16. **סיכום חודשי בלי שמות:** Analytics → All Reports → Accounting → **Payments Summary** → 1.1.2023→היום · Group by **Month** · + עמודת Payment method → Export → הקובץ יורד ל-Downloads → `mv ~/Downloads/<שם>.csv ~/farm-data/raw/checks/wix_payments_summary.csv`. ואז:
+    ```bash
+    cd ~/farm-data/raw/checks && head -3 wix_payments_summary.csv | cut -c1-200; cd ~/farm-data
     ```
-    להוריד את Terminal מ-Full Disk Access (System Settings → Privacy & Security → Full Disk Access → Terminal → כבוי). **להשאיר** uv/osxphotos אם הריצה החודשית מתוכננת; אחרת בלוק ה-״residue״ ב-DAY1-PHOTOS.md.
+    בכותרת צריכות להיות רק עמודות של תקופה / אמצעי תשלום / סכום / מספר. אם יש Customer / Name / Email / Order → להפיק שוב Group by Month בלבד.
+17. **שורת כותרת של Payments** (לאימות המתאם לפני יום 3): Payments (בדשבורד) → סינון תאריכים → Download → `mv ~/Downloads/<שם>.csv ~/farm-data/raw/wix_payments.csv` → `cd ~/farm-data/raw && head -1 wix_payments.csv; cd ~/farm-data`. **תמיד `cd` קודם — נתיב מלא מדפיס את שם המשתמש שלה.** הקובץ עצמו נשאר אצלה (יש בו שמות) עד שטירן מייצא בעצמו.
+    בסוף: `ls ~/Downloads | grep -i -E 'wix|payment|orders'` צריך להיות ריק.
+    *אם לימור שואלת:* ״ייצוא מהחשבון שלך למק שלך; אליי מגיעים רק שורת כותרת של עמודות וסיכום חודשי.״
 
-## מה נשאר אצלה, מה מגיע אליי
+**להביא לי מ-ד׳:** `raw/checks/wix_payments_summary.csv` השלם · שורת הכותרת של `wix_payments.csv` · ״טירן הוזמן: כן/לא״ · **כמה אירועים** מופיעים במסך Events של Wix וכמה הזמנות ב-Booking List (מספרים בלבד, מהמסך).
 
-| מגיע אליי (בלי שמות) | נשאר על המק שלה |
-|---|---|
-| `events_seed.csv` · `calendar_events.csv` · `contacts_counts.csv` · `contacts_timeline.csv` · `tags.txt` · `raw/checks/wix_payments_summary.csv` · שורות כותרת של Wix · שורות הסיכום שהודפסו | `photos_meta.json` (נמחק) · `photos_meta.csv` · `vocab_local.csv` · `calendar_local.csv` · `ics/` · כל `raw/` · `raw/participation/` · `Contacts.abbu` |
+## ה. Instagram (5 דק׳, בטלפון **שלה**, בידיים שלה)
 
-## שאלות שאני צריך תשובה עליהן (בהודעה אחת, בסוף)
-1. הג׳ימייל של העמותה — חשבון נפרד מהפרטי של לימור?
-2. ב-Wix: יש Bookings/Events עם הזמנות בפנים? (אם כן — זו הנוכחות הרשומה)
-3. תאריך ליום 3 עם טירן (ייצוא Chase: ~24 חודשים CSV; מרץ 2023–ינואר 2024 מה-PDF).
+18. פרופיל → ≡ → Settings and activity → **Accounts Center → Your information and permissions → Download your information** → Create export → הפרופיל → **Export to device** → All available information · Date range **All time** · Format **JSON** · Media quality Low → Start export. Meta כנראה תבקש סיסמה — היא מקלידה. מגיע במייל (שעות–יומיים; הלינק תקף 4 ימים). **כשמגיע:** לימור מורידה את כל חלקי ה-ZIP ל-`~/farm-data/instagram/`; ההרצה עם `--instagram` היא **ביקור 2 / שיחת מסך איתי**. הכיתובים ציבוריים אבל יכולים לנקוב בשמות — **לשאול במילים:** ״מסכימה שכיתובי הפוסטים הציבוריים ייכנסו לקובץ שאני שולח?״ ולרשום. בלי הסכמה — הם נשארים ריקים בקובץ ה-share (ברירת המחדל).
+
+## ו. סיום (5–10 דק׳, לימור מאשרת ב-Touch ID)
+
+19. ```bash
+    cd ~/farm-data && rm -f photos_meta.json all.vcf && rm -rf Contacts.abbu /tmp/timeline-demo-* /tmp/contacts-demo-* /tmp/calendar-demo-* && ls
+    ```
+    להראות ללימור את ה-`ls`: אין `photos_meta.json`, אין `Contacts.abbu`. `processing_log.csv` — להסתכל, **לא להעתיק** (יש בו שם משתמש).
+20. System Settings → Privacy & Security → **Full Disk Access → Terminal → כבוי**; ואם הופיע — **Contacts → Terminal → כבוי**. **להשאיר** uv/osxphotos לריצה החודשית (אחרת בלוק ה-residue ב-DAY1 §6).
+
+## מה נוסע, מה נשאר, מה עוד חסר
+
+| מגיע אליי (בלי שמות) | נשאר על המק שלה | נמחק הערב |
+|---|---|---|
+| `events_seed_share.csv` · `calendar_events.csv` · `contacts_counts.csv` · `contacts_timeline.csv` · `tags.txt` · `raw/checks/wix_payments_summary.csv` · שורת כותרת של wix_payments · שורות scrub/cluster/סיכום-שנים/scan/count (בלי נתיבים, בלי קואורדינטות) | `events_seed.csv` · `albums_local.csv` · `photos_meta.csv` · `vocab_local.csv` · `contacts_groups_local.csv` · `calendar_local.csv` · `ics/` · `raw/wix_payments.csv` · `processing_log.csv` | `photos_meta.json` · `Contacts.abbu` · `all.vcf` · תיקיות demo |
+
+**מה עוד חסר אחרי הערב ומי מביא:** הכנסות ותורמים → טירן, ימים 2–3 (Chase CSV 24 חודשים + PDF למרץ 2023–ינואר 2024, Wix מלא, Venmo). משתתפים → לימור 3×1 שעה תיוג + ספירות Bookings (R). חיות → לימור הערב (S) → קבלות וטרינר (R) ביום 3.
+
+**סדר הקרבה אם נגמר הזמן** (הראשון נופל ראשון): ד17 → ד16 → עומק ג11 (להשאיר תגיות מוצא) → ב10 מקוצר → ה18 רק אם הטלפון לא בחדר. **לא מקריבים:** צעד 4, ב6–ב8, ג12, ג2, ו19–20, והשאלות.
+
+## שאלות ללימור (בזמן שההתקנה / צעד 7 רצים — תשובות בהודעה אחת)
+1. הג׳ימייל של העמותה — חשבון נפרד מהפרטי שלה?
+2. **חיות היום לפי מין (מספרים)** · כמה נכנסו/יצאו ב-2023/2024/2025 · וטרינר בשנה בערך.
+3. **מהזיכרון:** כמה אירועים בשנה וכמה משתתפים בשנה ב-2023/2024/2025, לפי אוכלוסייה (S — להשוואה מול מה שהכלים מצאו).
+4. מאז מתי המק הזה / חשבון ה-iCloud הזה?
+5. לטירן יש גישה ל-Wix ול-Chase של העמותה? (Wix — הוזמן בצעד 15.)
+6. תאריך ליום 3 עם טירן.
+7. הסכמה לכיתובי אינסטגרם בקובץ (צעד 18): כן/לא.
+
+## סיימנו הערב כש…
+(1) אצלי בצ׳אט: `events_seed_share.csv` · `calendar_events.csv` · `contacts_counts.csv` · `contacts_timeline.csv` · `tags.txt` · `wix_payments_summary.csv` · שורות הסיכום · כותרת wix_payments; (2) `ls ~/farm-data` בלי `photos_meta.json` ובלי `Contacts.abbu`; (3) Terminal לא ברשימת Full Disk Access — לימור ראתה; (4) לימור ענתה על 1–7; (5) ייצוא Instagram הופעל או נדחה במפורש. **לביקור 2:** `--instagram`, ואם ב׳ נדחה — הגלריה אחרי סנכרון iCloud.
