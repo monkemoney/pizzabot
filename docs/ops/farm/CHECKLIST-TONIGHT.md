@@ -3,7 +3,7 @@
 > נגזר מ-[`DAY1-PHOTOS.md`](DAY1-PHOTOS.md) (מלא, עם טבלת תקלות) ומ-[`DAY2-MONEY.md`](DAY2-MONEY.md) §Wix. כל פקודה כאן אומתה מול המקורות ב-28.9.2026 (osxphotos 0.77, uv, TCC, Instagram export, Contacts DB).
 
 > כל הפקודות: להדביק **בטרמינל של המק שלה** (Spotlight ⌘Space → "Terminal"). כל קובץ שכתוב ״להביא לי״ — לשלוח לי כאן בצ׳אט. כל קובץ שכתוב ״נשאר״ — לא לשלוח, לא להעלות. אין טוקנים, אין סיסמאות, אין קבצים גולמיים אליי.
-> חלון זמן: ~2.5 שעות. אם משהו נתקע יותר מ-10 דקות — לעבור לצעד הבא ולכתוב לי מה קרה.
+> חלון זמן: ~3 שעות. אם משהו נתקע יותר מ-10 דקות — לעבור לצעד הבא ולכתוב לי מה קרה.
 
 ## א. הכנה (10 דק׳)
 
@@ -71,6 +71,18 @@
 
 **להביא לי מ-ג׳:** שורת הסיכום + שורות התגיות שהודפסו · **`tags.txt`** · **`contacts_timeline.csv`** · **`contacts_counts.csv`** (ספירות בלבד). **נשאר אצלה:** `vocab_local.csv`.
 
+## ג2. היומן → אירועים מתועדים, דרגה R (15 דק׳) — **הכי שווה**
+
+12א. **לייצא כל יומן רלוונטי כ-.ics:** Calendar.app → בסרגל הצד ללחוץ על היומן (״חווה״, וגם ״Home״ — 2020–2022 כנראה שם) → File → Export → **Export…** → לשמור ב-`~/farm-data/ics/` (ליצור קודם: `mkdir -p ~/farm-data/ics`).
+12ב. ```bash
+    python3 cal_events.py demo
+    python3 cal_events.py scan ~/farm-data/ics/*.ics --tags tags.txt --farm 34.xxxxx,-118.xxxxx -o calendar_events.csv
+    python3 timeline.py cluster photos_meta.csv -o events_seed.csv --farm 34.xxxxx,-118.xxxxx --calendar calendar_events.csv
+    ```
+    `--farm` = הקואורדינטות משלב 9. השורה `calendar: D days with entries; K clusters upgraded to grade R` = כמה ימי צילום הפכו למתועדים.
+
+**להביא לי מ-ג2:** שורות הסיכום של `scan` (לפי שנה ותגית) · **`calendar_events.csv`** (בלי כותרות) · `events_seed.csv` המעודכן. **נשאר אצלה:** `calendar_local.csv` (כותרות).
+
 ## ד. Wix — ייצוא כשאתה כבר בפנים (20 דק׳, נדרש אישור של לימור — בעל האתר)
 
 בדשבורד של Wix (אם התפריט שונה — שורת החיפוש למעלה עם שם העמוד). לשמור הכל ב-`~/farm-data/raw/`:
@@ -99,7 +111,7 @@
 
 | מגיע אליי (בלי שמות) | נשאר על המק שלה |
 |---|---|
-| `events_seed.csv` · `contacts_counts.csv` · `contacts_timeline.csv` · `tags.txt` · `raw/checks/wix_payments_summary.csv` · שורות כותרת של Wix · שורות הסיכום שהודפסו | `photos_meta.json` (נמחק) · `photos_meta.csv` · `vocab_local.csv` · כל `raw/` · `raw/participation/` · `Contacts.abbu` |
+| `events_seed.csv` · `calendar_events.csv` · `contacts_counts.csv` · `contacts_timeline.csv` · `tags.txt` · `raw/checks/wix_payments_summary.csv` · שורות כותרת של Wix · שורות הסיכום שהודפסו | `photos_meta.json` (נמחק) · `photos_meta.csv` · `vocab_local.csv` · `calendar_local.csv` · `ics/` · כל `raw/` · `raw/participation/` · `Contacts.abbu` |
 
 ## שאלות שאני צריך תשובה עליהן (בהודעה אחת, בסוף)
 1. הג׳ימייל של העמותה — חשבון נפרד מהפרטי של לימור?

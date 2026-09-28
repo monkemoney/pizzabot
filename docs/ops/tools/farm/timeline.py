@@ -45,6 +45,7 @@ EVENT_FIELDS = [
     "event_id", "date", "weekday", "place", "first_time", "last_time",
     "photos", "videos", "max_faces", "favorites", "albums",
     "ig_posts", "ig_caption",
+    "cal_events", "cal_tag", "cal_headcount", "cal_hours",
     # blank — Limor fills these in the sheet
     "type", "population", "headcount", "partner", "evidence_grade", "notes",
 ]
@@ -328,6 +329,7 @@ def cluster_rows(rows, farm, radius_m=150, min_photos=5, since=None):
                 "favorites": sum(1 for _, r, _, _ in items if str(r.get("favorite", "0")) == "1"),
                 "albums": ";".join(a for a, _ in albums.most_common(3)),
                 "ig_posts": 0, "ig_caption": "",
+                "cal_events": 0, "cal_tag": "", "cal_headcount": "", "cal_hours": "",
                 "type": "", "population": "", "headcount": "", "partner": "",
                 "evidence_grade": "E", "notes": "",
             })
@@ -438,6 +440,32 @@ def load_instagram(path):
     return by_day
 
 
+def load_calendar(path):
+    """calendar_events.csv from cal_events.py (shareable: no titles). {date: [row, ...]}"""
+    by_day = defaultdict(list)
+    with open(path, newline="", encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            by_day[r.get("date", "")].append(r)
+    return by_day
+
+
+def join_calendar(events, cal_by_day):
+    """A photo cluster on a day with a calendar entry is a RECORDED event: grade R.
+    Carries the entry's tag, headcount hint and hours; never its title."""
+    for e in events:
+        rows = cal_by_day.get(e["date"], [])
+        if not rows:
+            continue
+        tagged = [r for r in rows if r.get("tag")]
+        pick = tagged[0] if tagged else rows[0]
+        e["cal_events"] = len(rows)
+        e["cal_tag"] = pick.get("tag", "")
+        e["cal_headcount"] = pick.get("headcount_hint", "")
+        e["cal_hours"] = pick.get("hours", "")
+        e["evidence_grade"] = "R"
+    return events
+
+
 def join_instagram(events, ig_by_day, max_len=200):
     for e in events:
         caps = ig_by_day.get(e["date"], [])
@@ -472,6 +500,10 @@ def cmd_cluster(args):
         ig = load_instagram(args.instagram)
         join_instagram(events, ig)
         print("instagram: %d days with posts" % len(ig))
+    if args.calendar:
+        cal = load_calendar(args.calendar)
+        join_calendar(events, cal)
+        print("calendar: %d days with entries; %d clusters upgraded to grade R" % (len(cal), sum(1 for e in events if e["cal_events"])))
     write_csv(args.output, EVENT_FIELDS, events)
     n_farm = sum(1 for e in events if e["place"] == "farm")
     print("cluster: %d rows -> %d events (%d at the farm, %d off-site/no-gps) -> %s"
@@ -617,6 +649,20 @@ def cmd_demo(_args):
     assert e2["ig_posts"] == 2 and e2["ig_caption"] == cap2, e2
     # a single posts.json file (not a folder) works the same
     assert load_instagram(os.path.join(ig_media, "posts.json"))["2024-05-12"] == [cap]
+
+    # 4b. calendar join: a cluster on a calendar day becomes grade R and carries tag/headcount, never a title
+    cal_csv = os.path.join(tmp, "calendar_events.csv")
+    with open(cal_csv, "w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["event_id", "date", "weekday", "start", "end", "hours", "all_day", "calendar", "recurring", "tag",
+                    "tags_all", "headcount_hint", "attendees", "at_farm", "has_location", "evidence_grade"])
+        w.writerow(["c1", "2024-05-12", "Sun", "", "", "", 1, "חווה", 0, "נובה", "נובה", 30, 0, 0, 1, "R"])
+        w.writerow(["c2", "2024-03-01", "Fri", "10:00", "12:00", 2.0, 0, "חווה", 0, "", "", "", 0, 1, 1, "R"])
+    join_calendar(events, load_calendar(cal_csv))
+    assert e["cal_events"] == 1 and e["cal_tag"] == "נובה" and e["cal_headcount"] == "30" and e["evidence_grade"] == "R", e
+    first = next(x for x in events if x["date"] == "2024-03-01")
+    assert first["evidence_grade"] == "R" and first["cal_tag"] == "" and first["cal_hours"] == "2.0", first
+    assert sum(1 for x in events if x["evidence_grade"] == "R") == 2 and all(x["evidence_grade"] in ("E", "R") for x in events)
 
     # 5. --since keeps only new clusters (monthly run)
     later = cluster_rows(rows, f, 150, 5, since=datetime(2024, 8, 1).date())

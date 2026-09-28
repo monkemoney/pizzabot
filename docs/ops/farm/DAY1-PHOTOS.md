@@ -31,7 +31,7 @@ osxphotos --version                                  # צפוי: 0.77.x — לה
 
 **Full Disk Access — macOS לא מבקש, אין דיאלוג.** ספריית Photos ו-AddressBook מוגנות TCC, ואי-אפשר לבקש את ההרשאה מתוך תוכנה. **לתת לפני הריצה הראשונה:** System Settings → Privacy & Security → Full Disk Access → (+) → `/Applications/Utilities/Terminal.app` → on → **לצאת מ-Terminal לגמרי (⌘Q)** ולפתוח מחדש → `source ~/.local/bin/env` שוב. חלון Terminal שהיה פתוח שומר את ההרשאה הישנה. תסמין אם דילגתם: `Operation not permitted` — בלי שום חלון שקופץ. (מוסר בסוף היום, שלב 6.)
 
-`timeline.py` ו-`contacts.py` מגיעים אליה **בהעתקה מהריפו** (`docs/ops/tools/farm/`) דרך AirDrop/USB — קובץ אחד כל אחד, ספריית תקן בלבד, אין מה להתקין. לא דרך Claude.
+`timeline.py`, `contacts.py` ו-`cal_events.py` מגיעים אליה **בהעתקה מהריפו** (`docs/ops/tools/farm/`) דרך AirDrop/USB — קובץ אחד כל אחד, ספריית תקן בלבד, אין מה להתקין. לא דרך Claude.
 
 ## 2. בדיקה על דאטה סינתטי — לפני שנוגעים בגלריה (1 דק׳)
 ```bash
@@ -132,6 +132,23 @@ python3 contacts.py count --tags tags.txt --vcf all.vcf -o contacts_counts.csv
 ב-vCard **אין תאריך יצירה** — השנים הן `REV` (שינוי אחרון), והכלי אומר זאת. `all.vcf` נמחק בסוף היום.
 
 `vocab_local.csv` ו-`tags.txt` נשארים אצלה. `tags.txt` בלי שמות — אפשר לשלוח לי. משותף רק `contacts_counts.csv` + `contacts_timeline.csv` (ספירות, בלי שמות/טלפונים).
+
+## 6ג. היומן (Apple Calendar) — הרשומה שנכתבה לפני האירוע = דרגה R (15 דק׳, באותו ביקור)
+כל היומן של לימור על Apple (FACTS #12). רשומת יומן נכתבת **לפני** שהאירוע קורה — זו רשומה מהזמן, הדרגה שקרנות מקבלות. קלאסטר תמונות ביום שיש בו רשומת יומן = אירוע **מתועד**, לא רק מצולם.
+1. **ייצוא, יומן-יומן:** Calendar.app → בסרגל הצד ללחוץ על שם היומן (״חווה״ / ״Home״ / …) → File → Export → **Export…** → לשמור ב-`~/farm-data/ics/<שם>.ics`. לחזור לכל יומן שרלוונטי (גם ״Home״ — פעילות החווה ב-2020–2022 כנראה שם). לא Calendar Archive (.icbu).
+2. ```bash
+   mkdir -p ~/farm-data/ics          # לפני הייצוא
+   python3 cal_events.py demo
+   python3 cal_events.py scan ~/farm-data/ics/*.ics --tags tags.txt --farm 34.xxxxx,-118.xxxxx -o calendar_events.csv
+   ```
+   `--farm` = הקואורדינטות משורת ״farm (inferred)״ של timeline (שלב 4). `tags.txt` = אותו קובץ מאנשי הקשר (§6ב) — תגית אחת לכל המקורות.
+3. **לחבר לתמונות:**
+   ```bash
+   python3 timeline.py cluster photos_meta.csv -o events_seed.csv --farm 34.xxxxx,-118.xxxxx --calendar calendar_events.csv
+   ```
+   הפלט: `calendar: D days with entries; K clusters upgraded to grade R`. ב-`events_seed.csv` נוספו `cal_events` · `cal_tag` · `cal_headcount` (מספר שהופיע בכותרת, כמו ״40 ילדים״) · `cal_hours`, ו-`evidence_grade` הופך ל-**R** באותם ימים.
+4. **מה יוצא:** `calendar_events.csv` (משותף: תאריך · שעות · יומן · חוזר · תגית · headcount hint · מס׳ משתתפים · בחווה/לא · R) ו-`calendar_local.csv` (**נשאר אצלה:** כותרות ומיקומים — משם לימור מתייגת). אירועים חוזרים (חוג שבועי) מורחבים לשורה לכל מופע; ביטולים (EXDATE/CANCELLED) מוסרים; החלון 1.6.2020 → היום.
+5. **בדיקה:** הכלי מדפיס לכל שנה כמה אירועים וכמה מכל תגית. שנים 2020–2022 ריקות? → היומן ההוא לא יוצא (״Home״?) או שהיומן התחיל מאוחר — לשאול את לימור.
 
 ## 7. ריצה חודשית (אחרי הפיילוט — AUTOMATION.md §שכבה 2)
 ```bash
