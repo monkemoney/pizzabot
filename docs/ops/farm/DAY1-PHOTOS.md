@@ -31,7 +31,7 @@ osxphotos --version                                  # צפוי: 0.77.x — לה
 
 **Full Disk Access — macOS לא מבקש, אין דיאלוג.** ספריית Photos ו-AddressBook מוגנות TCC, ואי-אפשר לבקש את ההרשאה מתוך תוכנה. **לתת לפני הריצה הראשונה:** System Settings → Privacy & Security → Full Disk Access → (+) → `/Applications/Utilities/Terminal.app` → on → **לצאת מ-Terminal לגמרי (⌘Q)** ולפתוח מחדש → `source ~/.local/bin/env` שוב. חלון Terminal שהיה פתוח שומר את ההרשאה הישנה. תסמין אם דילגתם: `Operation not permitted` — בלי שום חלון שקופץ. (מוסר בסוף היום, שלב 6.)
 
-`timeline.py`, `contacts.py` ו-`cal_events.py` מגיעים אליה **בהעתקה מהריפו** (`docs/ops/tools/farm/`) דרך AirDrop/USB — קובץ אחד כל אחד, ספריית תקן בלבד, אין מה להתקין. לא דרך Claude.
+הכלים מגיעים אליה כחבילה אחת: `bash docs/ops/tools/farm/make-handoff.sh` במק של Nave בונה `~/Desktop/farm-data` (5 סקריפטים + `CLAUDE.md` לסשן Claude Code המקומי + `docs/`), AirDrop → `~/farm-data`. ספריית תקן בלבד, אין מה להתקין. **יש לה Claude Code** — `cd ~/farm-data && claude` מריץ את הצ׳קליסט איתכם; `CLAUDE.md` אוסר עליו להדפיס קבצים גולמיים, כי כל פלט נכנס לתמליל השיחה שיוצא מהמק.
 
 ## 2. בדיקה על דאטה סינתטי — לפני שנוגעים בגלריה (1 דק׳)
 ```bash
