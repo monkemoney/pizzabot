@@ -71,6 +71,18 @@ cat processing_log.csv           # לוג: תאריך · שלב · שורות ·
 ```
 `photos_meta.csv` (בלי שמות, עם GPS מדויק) **נשאר אצלה** לריצות חודשיות — לא עולה לגיליון.
 
+## 6ב. אנשי הקשר — ספר המשתתפים, בספירה בלבד (20 דק׳, באותו ביקור)
+לימור תייגה עשרות אלפי אנשי קשר במילות מפתח (״סיור״, ״נובה״, פריסטייל). **זה הקובץ הרגיש ביותר במחשב** — שמות וטלפונים של שורדים וחיילים. `contacts.py` לא כותב שם, טלפון או מייל לשום מקום:
+```bash
+python3 contacts.py demo                                    # demo OK לפני הכל
+python3 contacts.py vocab -o vocab_local.csv --min 5        # המילים שמופיעות ב-≥5 אנשי קשר. LOCAL — יש בו שמות פרטיים נפוצים
+open vocab_local.csv                                        # עם לימור: אילו מילים הן תגיות שלה? → לערוך tags.txt (נוצר אוטומטית עם תגיות מוצא)
+python3 contacts.py count --tags tags.txt -o contacts_counts.csv
+```
+פלט משותף: `contacts_counts.csv` (תגית × שנת יצירת איש הקשר → n; קבוצות; מדינת טלפון IL/US) ו-`contacts_timeline.csv` (חודש → אנשי קשר חדשים = **עקומת הגדילה של הקהילה**). תאריך היצירה של איש קשר ≈ הפגישה הראשונה איתו — זו ראיה בדרגה E לכל שנה, כולל 2020–2022.
+אם הכלי לא מוצא את מסד הנתונים: Contacts → בחר הכל → File → Export → Export vCard… → `--vcf all.vcf` (בלי תאריך יצירה; משתמש ב-REV ואומר זאת).
+`vocab_local.csv` ו-`tags.txt` נשארים אצלה. `tags.txt` בלי שמות — אפשר לשלוח לי.
+
 ## 7. ריצה חודשית (אחרי הפיילוט — AUTOMATION.md §שכבה 2)
 ```bash
 osxphotos query --json --from-date $(date -v-45d +%Y-%m-%d) --not-hidden --not-in-trash > new.json
