@@ -1,13 +1,14 @@
 *מענקים — שבוע 29.09*
 
-*החלטות (0 חדשות מעל 70):*
+*החלטות (2 חדשות מעל 70):*
+• Jewish Federation of Greater Los Angeles — apply page changed — review · $15,812–112,158 · עד רץ · ציון 83
+   https://www.jewishla.org/
+• LA County Department of Mental Health —  — apply page changed — review · סכום לא צוין · עד רץ · ציון 71
+   https://dmh.lacounty.gov/
 
 *מועדים ב-45 יום:*
-• 2026-10-13 · Governor’s Office of Land Use  · Extreme Heat and Community Resilience Program Roun
-• 2026-10-30 · Department of Parks and Recrea · Division of Boating and Waterways Aquatic Center B
-• 2026-11-03 · CA Department of Food and Agri · 2026 California Nutrition Incentive Program
 • 2026-11-04 · CA Natural Resources Agency · Youth Community Access Grant Program (Round 4)
 
-*בצינור:* 0 הזדמנויות מעל 70 · עד ~$0
+*בצינור:* 2 הזדמנויות מעל 70 · עד ~$112,158
 
 לאשר/לדחות: לענות ״אשר <שם>״ / ״דחה <שם>״ — או בעמודת decision בגיליון.

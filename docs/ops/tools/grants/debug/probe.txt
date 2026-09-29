@@ -1,0 +1,21 @@
+keyword: 'nonprofit security'
+  encoded+pipe           hitCount=211    errorcode=0
+  encoded+comma          hitCount=0      errorcode=0
+  plain+pipe             hitCount=211    errorcode=0
+  encoded+noelig         hitCount=518    errorcode=0
+  plain+noelig+nosort    hitCount=518    errorcode=0
+  singleword             hitCount=451    errorcode=0
+keyword: 'security'
+  encoded+pipe           hitCount=163    errorcode=0
+  encoded+comma          hitCount=0      errorcode=0
+  plain+pipe             hitCount=163    errorcode=0
+  encoded+noelig         hitCount=414    errorcode=0
+  plain+noelig+nosort    hitCount=414    errorcode=0
+  singleword             hitCount=414    errorcode=0
+keyword: 'animal'
+  encoded+pipe           hitCount=183    errorcode=0
+  encoded+comma          hitCount=0      errorcode=0
+  plain+pipe             hitCount=183    errorcode=0
+  encoded+noelig         hitCount=330    errorcode=0
+  plain+noelig+nosort    hitCount=330    errorcode=0
+  singleword             hitCount=330    errorcode=0
