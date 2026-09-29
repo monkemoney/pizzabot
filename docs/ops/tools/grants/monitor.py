@@ -51,7 +51,9 @@ OFF_TOPIC = ["climate", "wastewater", "drinking water", "recycling", "broadband"
              "wildfire", "energy efficiency", "flood", "levee", "conservancy", "land acquisition", "watershed", "stormwater", "electric vehicle",
              "solar", "sea level", "fisheries", "forest", "groundwater", "port", "rail", "hospital", "bond financing", "loan program",
              "boating", "aquatic", "library", "virus", "crop", "rice", "beet", "livestock compensation", "ranch", "extreme heat",
-             "river", "trail", "park development", "nutrition incentive", "hazard mitigation", "construction"]
+             "river", "trail", "park development", "nutrition incentive", "hazard mitigation", "construction",
+             "clinical trial", "research program", "research center", "r01", "u01", "u19", "p30", "r21", "desalination", "postgraduate",
+             "cooperative agreement for research", "fellowship", "dissertation", "reentry", "homelessness", "substance use disorder treatment"]
 NONPROFIT_WORDS = ["nonprofit", "non-profit", "501", "community-based", "faith", "community based organization", "cbo", "ngo", "charit"]
 
 
@@ -202,7 +204,37 @@ def cmd_probe(a):
                 print("  %-22s ERROR %s" % (v["name"], str(e)[:80]))
 
 
-def pull_grantsgov(cfg, fixtures=None, debug=False):
+AGENCY_SKIP = ["national institutes of health", "national science foundation", "nasa", "department of defense", "naval", "army", "air force",
+               "bureau of reclamation", "department of energy", "geological survey", "national oceanic", "nuclear", "darpa", "federal aviation",
+               "bureau of land management", "forest service", "fish and wildlife service", "patent", "census", "highway", "transit", "railroad"]
+DETAIL_CACHE = os.path.join(HERE, "debug", "gg_details.json")
+
+
+def gg_detail(cfg, opp_id, cache):
+    """fetchOpportunity: synopsis text, award floor/ceiling, applicant types. Cached per id (one call per new hit, ever)."""
+    if opp_id in cache:
+        return cache[opp_id]
+    try:
+        data = http_json(cfg["detail"], {"opportunityId": int(opp_id) if str(opp_id).isdigit() else opp_id})
+    except (urllib.error.URLError, ValueError, TimeoutError) as e:
+        cache[opp_id] = {"error": str(e)[:80]}
+        return cache[opp_id]
+    d = data.get("data") if isinstance(data.get("data"), dict) else data
+    syn = d.get("synopsis") or d.get("forecast") or {}
+    if not isinstance(syn, dict):
+        syn = {}
+    types = syn.get("applicantTypes") or d.get("applicantTypes") or []
+    out = {
+        "summary": re.sub(r"<[^>]+>", " ", str(syn.get("synopsisDesc") or syn.get("forecastDesc") or ""))[:600],
+        "amount_min": money_range(syn.get("awardFloor"))[1], "amount_max": money_range(syn.get("awardCeiling"))[1],
+        "eligibility": "; ".join(str(t.get("description", t)) if isinstance(t, dict) else str(t) for t in types)[:300] or "nonprofits",
+        "categories": "; ".join(str(c.get("description", c)) if isinstance(c, dict) else str(c) for c in (syn.get("fundingActivityCategories") or []))[:200],
+    }
+    cache[opp_id] = out
+    return out
+
+
+def pull_grantsgov(cfg, fixtures=None, debug=False, detail=True):
     """Grants.gov Search2: one query per keyword, nonprofits eligible (12 = with 501c3, 13 = without)."""
     out = []
     if fixtures:
@@ -226,6 +258,13 @@ def pull_grantsgov(cfg, fixtures=None, debug=False):
                 print("grantsgov: %s -> HTTP %s %s" % (kw, e.code, e.read()[:200].decode("utf-8", "replace")), file=sys.stderr)
             except (urllib.error.URLError, ValueError, TimeoutError) as e:
                 print("grantsgov: %s -> %s" % (kw, e), file=sys.stderr)
+    skipped_agency = 0
+    cache = {}
+    if detail and not fixtures and os.path.exists(DETAIL_CACHE):
+        try:
+            cache = json.load(open(DETAIL_CACHE, encoding="utf-8"))
+        except ValueError:
+            cache = {}
     for data in batches:
         hits = find_hits(data)
         if not fixtures:
@@ -233,6 +272,10 @@ def pull_grantsgov(cfg, fixtures=None, debug=False):
             print("grantsgov: errorcode=%s hitCount=%s parsed=%d msg=%s" % (data.get("errorcode"), d.get("hitCount"), len(hits), str(data.get("msg", ""))[:60]))
         for h in hits:
             num = h.get("number") or h.get("id")
+            agency = (h.get("agency") or h.get("agencyCode") or "").lower()
+            if any(a in agency for a in AGENCY_SKIP):
+                skipped_agency += 1
+                continue
             out.append({
                 "opp_id": "gg-" + str(num), "source": "grants.gov", "funder": h.get("agency") or h.get("agencyCode") or "federal",
                 "program": h.get("title", ""), "url": "https://www.grants.gov/search-results-detail/%s" % h.get("id", ""),
@@ -242,6 +285,23 @@ def pull_grantsgov(cfg, fixtures=None, debug=False):
                 "categories": ";".join(c.get("cfdaNumber", "") if isinstance(c, dict) else str(c) for c in (h.get("cfdaList") or [])),
                 "geography": "US", "summary": (h.get("synopsis") or h.get("description") or "")[:300],
             })
+    if detail and not fixtures:
+        fetched = 0
+        for r in out:
+            oid_ = r["url"].rsplit("/", 1)[-1]
+            if not oid_:
+                continue
+            was_cached = oid_ in cache
+            det = gg_detail(cfg, oid_, cache)
+            fetched += 0 if was_cached else 1
+            if "error" not in det:
+                for k in ("summary", "amount_min", "amount_max", "eligibility", "categories"):
+                    if det.get(k) not in ("", None):
+                        r[k] = det[k]
+        os.makedirs(os.path.dirname(DETAIL_CACHE), exist_ok=True)
+        with open(DETAIL_CACHE, "w", encoding="utf-8") as f:
+            json.dump(cache, f)
+        print("grantsgov: %d hits kept, %d skipped by agency, %d details fetched (%d cached)" % (len(out), skipped_agency, fetched, len(cache) - fetched))
     return out
 
 
@@ -303,11 +363,13 @@ def pull_funders(fixtures=None):
             except (urllib.error.URLError, TimeoutError) as e:
                 print("funders: %s -> %s" % (r["funder"], e), file=sys.stderr)
                 continue
-        h = hashlib.sha1(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text)).encode("utf-8")).hexdigest()[:12]
+        body = re.sub(r"(?is)<(script|style|noscript).*?</\1>", " ", text)
+        words = [w for w in re.findall(r"[A-Za-z][A-Za-z\-]{3,}", re.sub(r"<[^>]+>", " ", body))]
+        h = hashlib.sha1(" ".join(words).lower().encode("utf-8")).hexdigest()[:12]   # digits/nonces/timestamps ignored
         prev = r.get("page_hash", "")
         if prev and prev != h:
             changed += 1
-            out.append({"opp_id": "fp-" + oid(r["funder"], h), "source": "funder-page", "funder": r["funder"], "program": "apply page changed — review",
+            out.append({"opp_id": "fp-" + oid(r["funder"]), "source": "funder-page", "funder": r["funder"], "program": "apply page changed — review",
                         "url": url, "type": r.get("type", "foundation"), "amount_min": r.get("p25_usd", ""), "amount_max": r.get("p75_usd", ""),
                         "deadline": "", "open_date": date.today().isoformat(), "status": "review", "eligibility": "", "categories": r.get("lane", ""),
                         "geography": "LA", "summary": "Page content changed since %s" % (r.get("last_checked") or "last run")})
@@ -323,7 +385,7 @@ def cmd_pull(a):
     srcs = a.sources.split(",")
     new = []
     if "grantsgov" in srcs:
-        new += pull_grantsgov(SOURCES["grantsgov"], a.fixtures, getattr(a, "debug", False))
+        new += pull_grantsgov(SOURCES["grantsgov"], a.fixtures, getattr(a, "debug", False), not getattr(a, "no_detail", False))
     if "cagrants" in srcs:
         new += pull_cagrants(SOURCES["cagrants"], a.fixtures, getattr(a, "include_closed", False))
     if "funders" in srcs:
@@ -354,6 +416,8 @@ def score_row(r, org, today=None):
     today = today or date.today()
     text = " ".join(str(r.get(k, "")) for k in ("program", "summary", "categories", "eligibility", "funder")).lower()
     reasons, s = [], 0
+    if r.get("source") == "funder-page":
+        return 55, "funder apply page changed — open the link and review (not scored as an opportunity)"
     if any(w in text for w in EXCLUDE_WORDS):
         return 0, "excluded: eligibility text"
     if r.get("status") in ("closed", "archived", "expired"):
@@ -452,7 +516,9 @@ def cmd_score(a):
 
 def render_digest(rows, top=10, today=None):
     today = today or date.today()
-    live = [r for r in rows.values() if int(r.get("score") or 0) > 0 and r.get("decision") not in ("rejected", "submitted", "won", "lost")]
+    live = [r for r in rows.values() if int(r.get("score") or 0) > 0 and r.get("decision") not in ("rejected", "submitted", "won", "lost")
+            and r.get("source") != "funder-page"]
+    pages = [r for r in rows.values() if r.get("source") == "funder-page" and r.get("last_checked") == today.isoformat()]
     live.sort(key=lambda r: (-int(r["score"]), r.get("deadline") or "9999"))
     new = [r for r in live if r.get("first_seen") == today.isoformat() or r.get("decision", "") == ""]
     soon = sorted([r for r in live if int(r["score"]) >= 50 and r.get("deadline") and 0 <= (date.fromisoformat(r["deadline"]) - today).days <= 45], key=lambda r: r["deadline"])
@@ -465,6 +531,8 @@ def render_digest(rows, top=10, today=None):
         L.append("• %s · %s · %s" % (r["deadline"], r["funder"][:30], r["program"][:50]))
     if not soon:
         L.append("• אין")
+    if pages:
+        L += ["", "*עמודי קרנות שהשתנו (לפתוח ולבדוק):*"] + ["• %s · %s" % (p["funder"][:40], p["url"]) for p in pages[:8]]
     pipeline = sum(min(int(r["amount_max"] or r["amount_min"] or 0), org_cap()) for r in live if int(r["score"]) >= 70)
     L += ["", "*בצינור:* %d הזדמנויות מעל 70 · עד ~$%s" % (sum(1 for r in live if int(r["score"]) >= 70), format(pipeline, ",")),
           "", "לאשר/לדחות: לענות ״אשר <שם>״ / ״דחה <שם>״ — או בעמודת decision בגיליון."]
@@ -545,6 +613,7 @@ def main(argv=None):
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("pull"); s.add_argument("--sources", default="grantsgov,cagrants,funders"); s.add_argument("--fixtures")
     s.add_argument("--debug", action="store_true", help="dump the first Grants.gov response to debug/"); s.add_argument("--include-closed", action="store_true")
+    s.add_argument("--no-detail", action="store_true", help="skip Grants.gov fetchOpportunity detail calls")
     s.set_defaults(fn=cmd_pull)
     c = sub.add_parser("score"); c.add_argument("--org", default=os.path.join(HERE, "org.json")); c.set_defaults(fn=cmd_score)
     d = sub.add_parser("digest"); d.add_argument("--top", type=int, default=10); d.add_argument("-o", "--output", default=os.path.join(HERE, "digest.md")); d.set_defaults(fn=cmd_digest)
