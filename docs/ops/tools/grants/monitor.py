@@ -34,8 +34,8 @@ SOURCES = {
 FIELD_KEYWORDS = {  # org.fields -> words in an opportunity text that indicate the field
     "animal_welfare": ["animal welfare", "animal rescue", "animal shelter", "humane", "animal care", "rescue animal", "veterinar", "companion animal", "farm animal"],
     "animal_assisted_therapy": ["animal-assisted", "equine", "therapy animal", "therapeutic"],
-    "mental_health": ["mental health", "behavioral health", "wellness", "trauma", "ptsd", "counsel"],
-    "veterans": ["veteran", "service member", "military", "soldier"],
+    "mental_health": ["mental health", "behavioral health", "wellness", "ptsd", "counsel", "emotional support"],
+    "veterans": ["veteran", "service member", "soldier", "military famil", "military member"],
     "special_needs": ["disabilit", "special needs", "autism", "developmental"],
     "youth": ["youth", "children's program", "k-12", "students", "after school", "mentoring", "teens", "kids"],
     "education": ["educational program", "environmental education", "school field", "learning program", "stem"],
@@ -43,7 +43,7 @@ FIELD_KEYWORDS = {  # org.fields -> words in an opportunity text that indicate t
     "community_building": ["community-based organization", "neighborhood", "civic engagement", "community program"],
     "urban_agriculture": ["urban agriculture", "community garden", "urban farm", "food access", "farm to school"],
     "security": ["nonprofit security", "physical security", "target hardening", "hate crime", "antisemitism", "security enhancement", "security grant"],
-    "trauma": ["trauma", "survivor", "crisis", "healing"],
+    "trauma": ["trauma-informed", "trauma survivor", "trauma recovery", "post-traumatic", "psychological trauma", "survivor", "crisis", "healing"],
 }
 EXCLUDE_WORDS = ["for-profit only", "individuals only", "state agencies only", "tribal governments only", "institutions of higher education only"]
 CORE_FIELDS = {"animal_welfare", "animal_assisted_therapy", "mental_health", "trauma", "veterans", "special_needs", "jewish_community", "security", "youth"}
@@ -54,6 +54,11 @@ OFF_TOPIC = ["climate", "wastewater", "drinking water", "recycling", "broadband"
              "river", "trail", "park development", "nutrition incentive", "hazard mitigation", "construction",
              "clinical trial", "research program", "research center", "r01", "u01", "u19", "p30", "r21", "desalination", "postgraduate",
              "cooperative agreement for research", "fellowship", "dissertation", "reentry", "homelessness", "substance use disorder treatment"]
+# Deliverables the farm cannot produce. These cap the score EVEN WITH a core hit — the $4M "Military and Civilian
+# Partnership for Trauma Readiness" (hospital trauma centres) matched trauma+veterans+mental_health and scored 73.
+HARD_OFF = ["trauma center", "trauma care", "acute care", "clinical", "patient", "registry", "protocol", "antimicrobial", "surveillance",
+            "epidemiolog", "disease", "infection", "spina bifida", "health outcomes", "data collection", "research", "laborator",
+            "pharmac", "vaccine", "diagnos", "marine", "fisheries", "military trauma"]
 NONPROFIT_WORDS = ["nonprofit", "non-profit", "501", "community-based", "faith", "community based organization", "cbo", "ngo", "charit"]
 
 
@@ -392,6 +397,13 @@ def cmd_pull(a):
         new += pull_funders(a.fixtures)
     today = date.today().isoformat()
     added = updated = 0
+    seen = {r["opp_id"] for r in new}
+    pulled_sources = {r["source"] for r in new}
+    stale = 0
+    for r in existing.values():
+        if r.get("source") in pulled_sources and r["opp_id"] not in seen and r.get("status") != "stale":
+            r["status"] = "stale"   # kept for history and decisions; score_row zeroes it
+            stale += 1
     for r in new:
         r["last_checked"] = today
         if r["opp_id"] in existing:
@@ -405,7 +417,7 @@ def cmd_pull(a):
             added += 1
         existing[r["opp_id"]] = r
     write_opps(existing)
-    print("pull: %d fetched -> %d new, %d updated, %d total -> %s" % (len(new), added, updated, len(existing), os.path.basename(OPPS)))
+    print("pull: %d fetched -> %d new, %d updated, %d marked stale, %d total -> %s" % (len(new), added, updated, stale, len(existing), os.path.basename(OPPS)))
     return existing
 
 
@@ -422,6 +434,8 @@ def score_row(r, org, today=None):
         return 0, "excluded: eligibility text"
     if r.get("status") in ("closed", "archived", "expired"):
         return 0, "closed"
+    if r.get("status") == "stale":
+        return 0, "stale: no longer returned by its source"
     # applicant type gate: a listed applicant type that does not include nonprofits is a hard zero
     elig = str(r.get("eligibility", "")).lower()
     if elig and elig not in ("nonprofits",) and not any(w in elig for w in NONPROFIT_WORDS):
@@ -438,6 +452,13 @@ def score_row(r, org, today=None):
     off = [w for w in OFF_TOPIC if re.search(r"\b" + re.escape(w) + r"\b", text)]   # 'port' must not match 'support'
     if off and not core:
         return min(25, fs + 15), "off-topic (%s); fields %d/40" % (off[0], fs)
+    if off:   # a core hit next to an off-topic word (a 'youth reentry' programme) is a weaker match, not a disqualified one
+        fs = max(0, fs - 15)
+        reasons.append("off-topic word (%s) -15" % off[0])
+    hard = [w for w in HARD_OFF if w in text]
+    if len(hard) >= 2 or (hard and not core):   # one medical word in a mental-health synopsis is normal; two is a hospital
+        return min(30, fs), "shape: medical/research deliverable (%s); fields %d/40" % (", ".join(hard[:3]), fs)
+    cap = 100 if core else 40   # generic-only ('education', 'community') never reaches the review threshold
     s += fs
     reasons.append("fields %d/40 (%s%s)" % (fs, ",".join(core[:4]) or "no core", ("+" + ",".join(generic[:2])) if generic else ""))
     # amount fit (0-20)
@@ -449,6 +470,8 @@ def score_row(r, org, today=None):
         top = int(amax or amin); bottom = int(amin or 0)
         if bottom > hi * 1.5:
             am = 0; reasons.append("amount too large for us 0/20")
+        elif not amin and top > hi * 5:
+            am = 4; reasons.append("ceiling %sx our max ask, floor unknown 4/20" % (top // hi))
         elif top < lo:
             am = 4; reasons.append("amount small 4/20")
         elif lo <= top <= hi * 1.5:
@@ -489,7 +512,7 @@ def score_row(r, org, today=None):
     s += hist
     if hist:
         reasons.append("benchmark funder +5")
-    return min(100, s), "; ".join(reasons)
+    return min(cap, s), "; ".join(reasons)
 
 
 _FN = None
@@ -525,16 +548,18 @@ def render_digest(rows, top=10, today=None):
     L = ["*מענקים — שבוע %s*" % today.strftime("%d.%m"), ""]
     L.append("*החלטות (%d חדשות מעל 70):*" % sum(1 for r in new if int(r["score"]) >= 70))
     for r in [x for x in new if int(x["score"]) >= 70][:top]:
-        L.append("• %s — %s · %s · עד %s · ציון %s\n   %s" % (r["funder"][:40], r["program"][:60], amt(r), r.get("deadline") or "רץ", r["score"], r["url"]))
+        L.append("• %s — %s · %s · %s · ציון %s\n   %s" % (r["funder"][:40], r["program"][:60], amt(r),
+                 ("מועד " + r["deadline"]) if r.get("deadline") else "ללא מועד (רץ)", r["score"], r["url"]))
     L += ["", "*מועדים ב-45 יום:*"]
     for r in soon[:5]:
         L.append("• %s · %s · %s" % (r["deadline"], r["funder"][:30], r["program"][:50]))
     if not soon:
         L.append("• אין")
     if pages:
-        L += ["", "*עמודי קרנות שהשתנו (לפתוח ולבדוק):*"] + ["• %s · %s" % (p["funder"][:40], p["url"]) for p in pages[:8]]
+        L += ["", "*עמודי קרנות שהשתנו (לפתוח ולבדוק):*"] + ["• %s · %s" % (p["funder"][:40], p["url"]) for p in pages[:20]]
     pipeline = sum(min(int(r["amount_max"] or r["amount_min"] or 0), org_cap()) for r in live if int(r["score"]) >= 70)
-    L += ["", "*בצינור:* %d הזדמנויות מעל 70 · עד ~$%s" % (sum(1 for r in live if int(r["score"]) >= 70), format(pipeline, ",")),
+    L += ["", "*בצינור:* %d הזדמנויות מעל 70 · סכום בקשה משוער ~$%s (כל הזדמנות נספרת עד תקרת הבקשה שלנו, $%s)"
+          % (sum(1 for r in live if int(r["score"]) >= 70), format(pipeline, ","), format(org_cap(), ",")),
           "", "לאשר/לדחות: לענות ״אשר <שם>״ / ״דחה <שם>״ — או בעמודת decision בגיליון."]
     return "\n".join(L)
 
@@ -593,6 +618,11 @@ def cmd_demo(_a):
     assert int(animal["score"]) >= 60 and "animal_welfare" in animal["score_reasons"], animal["score_reasons"]
     levee = next(r for r in rows.values() if "Levee" in r["program"])
     assert int(levee["score"]) <= 25 and "off-topic" in levee["score_reasons"], (levee["score"], levee["score_reasons"])
+    tc = dict(nsgp, program="Military and Civilian Partnership for Trauma Readiness", amount_min="", amount_max="4000000",
+              summary="grants to high-acuity trauma centers to enable military trauma teams to provide trauma care and acute care")
+    sc, why = score_row(tc, org, today)
+    assert sc <= 30 and "shape: medical" in why, (sc, why)                      # live run 4: this scored 73
+    assert score_row(dict(nsgp, status="stale"), org, today)[0] == 0              # a row its source stopped returning
     agency = next(r for r in rows.values() if "Agencies Only" in r["program"])
     assert int(agency["score"]) == 0 and "applicant type" in agency["score_reasons"], agency["score_reasons"]
     # second pull must not duplicate and must keep decisions
