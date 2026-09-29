@@ -1,4 +1,71 @@
-{"result": {"records": [
- {"PortalID": "CA-9001", "Title": "Animal Welfare and Shelter Support Grant", "AgencyDept": "California Department of Food and Agriculture", "Status": "active", "ApplicantType": "Nonprofit", "OpenDate": "2026-09-01", "ApplicationDeadline": "2026-11-30", "EstAmounts": "50000", "GrantURL": "https://www.grants.ca.gov/grants/CA-9001", "Categories": "Agriculture; Animal welfare", "Purpose": "Support nonprofit animal rescue and shelter organizations in California with veterinary care and facility improvements."},
- {"PortalID": "CA-9002", "Title": "Youth Mental Health Community Partnerships", "AgencyDept": "California Health and Human Services", "Status": "active", "ApplicantType": "Nonprofit; Local government", "OpenDate": "2026-10-01", "ApplicationDeadline": "2026-12-20", "EstAmounts": "150000", "GrantURL": "https://www.grants.ca.gov/grants/CA-9002", "Categories": "Health; Youth", "Purpose": "Community-based programs serving youth trauma and mental health in Los Angeles County and statewide."}
-]}}
+{
+ "result": {
+  "records": [
+   {
+    "PortalID": "CA-9001",
+    "Title": "Animal Welfare and Shelter Support Grant",
+    "AgencyDept": "California Department of Food and Agriculture",
+    "Status": "active",
+    "ApplicantType": "Nonprofit",
+    "OpenDate": "2026-09-01",
+    "ApplicationDeadline": "2026-11-30",
+    "EstAmounts": "50000",
+    "GrantURL": "https://www.grants.ca.gov/grants/CA-9001",
+    "Categories": "Agriculture; Animal welfare",
+    "Purpose": "Support nonprofit animal rescue and shelter organizations in California with veterinary care and facility improvements."
+   },
+   {
+    "PortalID": "CA-9002",
+    "Title": "Youth Mental Health Community Partnerships",
+    "AgencyDept": "California Health and Human Services",
+    "Status": "active",
+    "ApplicantType": "Nonprofit; Local government",
+    "OpenDate": "2026-10-01",
+    "ApplicationDeadline": "2026-12-20",
+    "EstAmounts": "150000",
+    "GrantURL": "https://www.grants.ca.gov/grants/CA-9002",
+    "Categories": "Health; Youth",
+    "Purpose": "Community-based programs serving youth trauma and mental health in Los Angeles County and statewide."
+   },
+   {
+    "PortalID": "CA-9003",
+    "Title": "Delta Levee Community Resilience Grant",
+    "AgencyDept": "Sacramento-San Joaquin Delta Conservancy",
+    "Status": "active",
+    "ApplicantType": "Nonprofit; Local government; Tribal government",
+    "OpenDate": "2026-09-01",
+    "ApplicationDeadline": "2026-10-23",
+    "EstAmounts": "$1,000,000 - $2,000,000",
+    "GrantURL": "https://deltaconservancy.ca.gov/",
+    "Categories": "Environment",
+    "Purpose": "Community-based climate and levee improvement projects with community engagement."
+   },
+   {
+    "PortalID": "CA-9004",
+    "Title": "Animal Shelter Range Test Grant",
+    "AgencyDept": "CDFA",
+    "Status": "active",
+    "ApplicantType": "Nonprofit",
+    "OpenDate": "2026-09-01",
+    "ApplicationDeadline": "2026-11-15",
+    "EstAmounts": "$30,000 - $300,000",
+    "GrantURL": "https://www.grants.ca.gov/grants/CA-9004",
+    "Categories": "Animal welfare",
+    "Purpose": "Veterinary care for rescue shelters."
+   },
+   {
+    "PortalID": "CA-9005",
+    "Title": "Public Agencies Only Youth Program",
+    "AgencyDept": "CDE",
+    "Status": "active",
+    "ApplicantType": "Public agency; School district",
+    "OpenDate": "2026-09-01",
+    "ApplicationDeadline": "2026-12-01",
+    "EstAmounts": "$50,000",
+    "GrantURL": "https://www.cde.ca.gov/",
+    "Categories": "Youth",
+    "Purpose": "Youth mental health services for school districts."
+   }
+  ]
+ }
+}

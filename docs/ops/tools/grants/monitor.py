@@ -46,6 +46,11 @@ FIELD_KEYWORDS = {  # org.fields -> words in an opportunity text that indicate t
     "trauma": ["trauma", "survivor", "crisis", "healing"],
 }
 EXCLUDE_WORDS = ["for-profit only", "individuals only", "state agencies only", "tribal governments only", "institutions of higher education only"]
+CORE_FIELDS = {"animal_welfare", "animal_assisted_therapy", "mental_health", "trauma", "veterans", "special_needs", "jewish_community", "security", "youth"}
+OFF_TOPIC = ["climate", "wastewater", "drinking water", "recycling", "broadband", "digital divide", "transit", "highway", "housing development",
+             "wildfire", "energy efficiency", "flood", "levee", "conservancy", "land acquisition", "watershed", "stormwater", "electric vehicle",
+             "solar", "sea level", "fisheries", "forest", "groundwater", "port", "rail"]
+NONPROFIT_WORDS = ["nonprofit", "non-profit", "501", "community-based", "faith", "community based organization", "cbo", "ngo", "charit"]
 
 
 # ----------------------------------------------------------------------------- io
@@ -72,8 +77,11 @@ def http_json(url, payload=None, timeout=40):
         return json.loads(r.read().decode("utf-8", "replace"))
 
 
+UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+
+
 def http_text(url, timeout=40):
-    req = urllib.request.Request(url, headers={"User-Agent": "farm-grants-monitor/0.1"})
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/html,*/*"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read().decode("utf-8", "replace")
 
@@ -95,14 +103,32 @@ def to_iso(s):
     return to_iso(m.group(0)) if m else ""
 
 
+def money_range(*vals):
+    """'$30,000 - $300,000' -> (30000, 300000); 'Up to $50,000' -> ('', 50000); '$1.5M' -> (1500000, 1500000).
+    Several fields may be passed (min, max, total); all numbers found are pooled."""
+    nums = []
+    for v in vals:
+        if v in (None, ""):
+            continue
+        for m in re.finditer(r"\$?\s*(\d[\d,]*(?:\.\d+)?)\s*(k|m|mm|million|thousand|b|billion)?\b", str(v), re.I):
+            try:
+                x = float(m.group(1).replace(",", ""))
+            except ValueError:
+                continue
+            unit = (m.group(2) or "").lower()
+            x *= {"k": 1e3, "thousand": 1e3, "m": 1e6, "mm": 1e6, "million": 1e6, "b": 1e9, "billion": 1e9}.get(unit, 1)
+            if 100 <= x <= 5e10:
+                nums.append(int(x))
+    if not nums:
+        return "", ""
+    text = " ".join(str(v) for v in vals if v).lower()
+    if len(nums) == 1:
+        return ("", nums[0]) if ("up to" in text or "maximum" in text or "max" in text) else (nums[0], nums[0])
+    return min(nums), max(nums)
+
+
 def money(s):
-    if s in (None, ""):
-        return ""
-    m = re.sub(r"[^\d.]", "", str(s))
-    try:
-        return int(float(m)) if m else ""
-    except ValueError:
-        return ""
+    return money_range(s)[1]
 
 
 # ----------------------------------------------------------------------------- sources
@@ -128,7 +154,7 @@ def pull_grantsgov(cfg, fixtures=None):
             out.append({
                 "opp_id": "gg-" + str(num), "source": "grants.gov", "funder": h.get("agency") or h.get("agencyCode") or "federal",
                 "program": h.get("title", ""), "url": "https://www.grants.gov/search-results-detail/%s" % h.get("id", ""),
-                "type": "federal", "amount_min": money(h.get("awardFloor")), "amount_max": money(h.get("awardCeiling")),
+                "type": "federal", "amount_min": money_range(h.get("awardFloor"))[1], "amount_max": money_range(h.get("awardCeiling"))[1],
                 "deadline": to_iso(h.get("closeDate")), "open_date": to_iso(h.get("openDate")), "status": (h.get("oppStatus") or "").lower(),
                 "eligibility": "nonprofits" if h.get("eligibilities") in (None, "") else str(h.get("eligibilities")),
                 "categories": ";".join(c.get("cfdaNumber", "") if isinstance(c, dict) else str(c) for c in (h.get("cfdaList") or [])),
@@ -161,7 +187,8 @@ def pull_cagrants(cfg, fixtures=None):
             out.append({
                 "opp_id": "ca-" + str(pid), "source": "grants.ca.gov", "funder": g.get("agencydept") or g.get("agency") or "State of California",
                 "program": title, "url": g.get("granturl") or g.get("grant_url") or g.get("url") or "https://www.grants.ca.gov/grants/%s" % pid,
-                "type": "state", "amount_min": money(g.get("estamounts_min") or g.get("estamountmin")), "amount_max": money(g.get("estamounts_max") or g.get("estamountmax") or g.get("estamounts")),
+                "type": "state", "amount_min": money_range(g.get("estamounts_min") or g.get("estamountmin"), g.get("estamounts"))[0],
+                "amount_max": money_range(g.get("estamounts_max") or g.get("estamountmax"), g.get("estamounts"))[1],
                 "deadline": to_iso(g.get("applicationdeadline") or g.get("deadline")), "open_date": to_iso(g.get("opendate")),
                 "status": (g.get("status") or "").lower(), "eligibility": g.get("applicanttype") or g.get("applicanttypes") or "",
                 "categories": g.get("categories") or "", "geography": g.get("geography") or "CA",
@@ -186,6 +213,9 @@ def pull_funders(fixtures=None):
         else:
             try:
                 text = http_text(url)
+            except urllib.error.HTTPError as e:
+                r["notes"] = "page blocks bots (HTTP %s) — check by hand monthly" % e.code
+                continue
             except (urllib.error.URLError, TimeoutError) as e:
                 print("funders: %s -> %s" % (r["funder"], e), file=sys.stderr)
                 continue
@@ -244,11 +274,24 @@ def score_row(r, org, today=None):
         return 0, "excluded: eligibility text"
     if r.get("status") in ("closed", "archived", "expired"):
         return 0, "closed"
-    # field match (0-40): count distinct org fields with a keyword hit
+    # applicant type gate: a listed applicant type that does not include nonprofits is a hard zero
+    elig = str(r.get("eligibility", "")).lower()
+    if elig and elig not in ("nonprofits",) and not any(w in elig for w in NONPROFIT_WORDS):
+        return 0, "applicant type excludes nonprofits (%s)" % elig[:60]
+    # field match (0-40): core fields 14 each; generic fields (community/education/agriculture) 5 each and
+    # only on top of a core hit — 'community' alone is how a levee grant scored 81
     hits = [f for f in org["fields"] if any(k in text for k in FIELD_KEYWORDS.get(f, []))]
-    fs = min(40, 14 * len(hits))
+    core = [f for f in hits if f in CORE_FIELDS]
+    generic = [f for f in hits if f not in CORE_FIELDS]
+    if core:
+        fs = min(40, 14 * len(core) + 5 * len(generic))
+    else:
+        fs = 6 if generic else 0
+    off = [w for w in OFF_TOPIC if w in text]
+    if off and not core:
+        return min(25, fs + 15), "off-topic (%s); fields %d/40" % (off[0], fs)
     s += fs
-    reasons.append("fields %d/40 (%s)" % (fs, ",".join(hits[:4]) or "none"))
+    reasons.append("fields %d/40 (%s%s)" % (fs, ",".join(core[:4]) or "no core", ("+" + ",".join(generic[:2])) if generic else ""))
     # amount fit (0-20)
     lo, hi = org["ask_range_usd"]["min"], org["ask_range_usd"]["max"]
     amax, amin = r.get("amount_max") or "", r.get("amount_min") or ""
@@ -328,7 +371,7 @@ def render_digest(rows, top=10, today=None):
     live = [r for r in rows.values() if int(r.get("score") or 0) > 0 and r.get("decision") not in ("rejected", "submitted", "won", "lost")]
     live.sort(key=lambda r: (-int(r["score"]), r.get("deadline") or "9999"))
     new = [r for r in live if r.get("first_seen") == today.isoformat() or r.get("decision", "") == ""]
-    soon = sorted([r for r in live if r.get("deadline") and 0 <= (date.fromisoformat(r["deadline"]) - today).days <= 45], key=lambda r: r["deadline"])
+    soon = sorted([r for r in live if int(r["score"]) >= 50 and r.get("deadline") and 0 <= (date.fromisoformat(r["deadline"]) - today).days <= 45], key=lambda r: r["deadline"])
     L = ["*מענקים — שבוע %s*" % today.strftime("%d.%m"), ""]
     L.append("*החלטות (%d חדשות מעל 70):*" % sum(1 for r in new if int(r["score"]) >= 70))
     for r in [x for x in new if int(x["score"]) >= 70][:top]:
@@ -338,10 +381,17 @@ def render_digest(rows, top=10, today=None):
         L.append("• %s · %s · %s" % (r["deadline"], r["funder"][:30], r["program"][:50]))
     if not soon:
         L.append("• אין")
-    pipeline = sum(int(r["amount_max"] or r["amount_min"] or 0) for r in live if int(r["score"]) >= 70)
+    pipeline = sum(min(int(r["amount_max"] or r["amount_min"] or 0), org_cap()) for r in live if int(r["score"]) >= 70)
     L += ["", "*בצינור:* %d הזדמנויות מעל 70 · עד ~$%s" % (sum(1 for r in live if int(r["score"]) >= 70), format(pipeline, ",")),
           "", "לאשר/לדחות: לענות ״אשר <שם>״ / ״דחה <שם>״ — או בעמודת decision בגיליון."]
     return "\n".join(L)
+
+
+def org_cap():
+    try:
+        return int(json.load(open(os.path.join(HERE, "org.json"), encoding="utf-8"))["ask_range_usd"]["max"])
+    except Exception:  # noqa: BLE001 — no profile: do not cap
+        return 10**9
 
 
 def amt(r):
@@ -370,7 +420,10 @@ def cmd_demo(_a):
     fx = os.path.join(HERE, "fixtures")
     ns = argparse.Namespace(sources="grantsgov,cagrants", fixtures=fx)
     rows = cmd_pull(ns)
-    assert len(rows) == 6, len(rows)
+    assert len(rows) == 9, len(rows)
+    rng = next(r for r in rows.values() if "Range Test" in r["program"])
+    assert rng["amount_min"] == 30000 and rng["amount_max"] == 300000, (rng["amount_min"], rng["amount_max"])
+    assert money_range("Up to $50,000") == ("", 50000) and money_range("$1.5M")[1] == 1500000 and money_range("N/A") == ("", "")
     org = json.load(open(os.path.join(HERE, "org.json"), encoding="utf-8"))
     today = date(2026, 9, 29)
     for r in rows.values():
@@ -386,16 +439,20 @@ def cmd_demo(_a):
     assert int(huge["score"]) < 50 and "too large" in huge["score_reasons"], huge["score_reasons"]
     animal = next(r for r in rows.values() if "Animal" in r["program"])
     assert int(animal["score"]) >= 60 and "animal_welfare" in animal["score_reasons"], animal["score_reasons"]
+    levee = next(r for r in rows.values() if "Levee" in r["program"])
+    assert int(levee["score"]) <= 25 and "off-topic" in levee["score_reasons"], (levee["score"], levee["score_reasons"])
+    agency = next(r for r in rows.values() if "Agencies Only" in r["program"])
+    assert int(agency["score"]) == 0 and "applicant type" in agency["score_reasons"], agency["score_reasons"]
     # second pull must not duplicate and must keep decisions
     animal["decision"] = "approved"
     write_opps(rows)
     rows2 = cmd_pull(ns)
-    assert len(rows2) == 6 and rows2[animal["opp_id"]]["decision"] == "approved"
+    assert len(rows2) == 9 and rows2[animal["opp_id"]]["decision"] == "approved"
     for r in rows2.values():
         r["score"], r["score_reasons"] = score_row(r, org, today)
     text = render_digest(rows2, 10, today)
-    assert "Nonprofit Security" in text and "Closed" not in text and "בצינור" in text, text
-    print("demo OK: 6 fixture opportunities pulled · NSGP scored %s · closed/past = 0 · oversized penalised · upsert kept decision · digest renders" % nsgp["score"])
+    assert "Nonprofit Security" in text and "Closed" not in text and "Levee" not in text and "בצינור" in text, text
+    print("demo OK: 9 fixture opportunities pulled · NSGP scored %s · closed/past = 0 · oversized penalised · upsert kept decision · digest renders" % nsgp["score"])
     print("files:", tmp)
 
 
