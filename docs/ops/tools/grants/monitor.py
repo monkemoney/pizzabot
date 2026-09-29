@@ -154,6 +154,54 @@ def find_hits(obj, depth=0):
     return []
 
 
+GG_VARIANTS = [  # Grants.gov Search2 accepted shapes differ from the docs; each is tried until one returns hits
+    {"name": "encoded+pipe", "encode": True, "elig": "12|13", "sort": True},
+    {"name": "encoded+comma", "encode": True, "elig": "12,13", "sort": True},
+    {"name": "plain+pipe", "encode": False, "elig": "12|13", "sort": True},
+    {"name": "encoded+noelig", "encode": True, "elig": "", "sort": True},
+    {"name": "plain+noelig+nosort", "encode": False, "elig": "", "sort": False},
+    {"name": "singleword", "encode": False, "elig": "", "sort": False, "first_word": True},
+]
+
+
+def gg_body(cfg, kw, v):
+    k = kw.split()[0] if v.get("first_word") else kw
+    body = {"keyword": urllib.request.quote(k) if v["encode"] else k, "oppStatuses": "forecasted|posted",
+            "rows": cfg["rows"], "startRecordNum": 0}
+    if v["elig"]:
+        body["eligibilities"] = v["elig"]
+    if v["sort"]:
+        body["sortBy"] = "closeDate|asc"
+    return body
+
+
+def gg_first_working(cfg, kw):
+    """Try request shapes in order; return (data, variant) for the first with hits, else the last response."""
+    last = ({}, GG_VARIANTS[0])
+    for v in GG_VARIANTS:
+        data = http_json(cfg["search"], gg_body(cfg, kw, v))
+        d = data.get("data") if isinstance(data.get("data"), dict) else {}
+        n = d.get("hitCount") or 0
+        print("grantsgov probe %-22s hitCount=%s" % (v["name"], n))
+        last = (data, v)
+        if n:
+            return data, v
+    return last
+
+
+def cmd_probe(a):
+    cfg = SOURCES["grantsgov"]
+    for kw in (a.keyword, "security", "animal"):
+        print("keyword: %r" % kw)
+        for v in GG_VARIANTS:
+            try:
+                data = http_json(cfg["search"], gg_body(cfg, kw, v))
+                d = data.get("data") if isinstance(data.get("data"), dict) else {}
+                print("  %-22s hitCount=%-6s errorcode=%s" % (v["name"], d.get("hitCount"), data.get("errorcode")))
+            except Exception as e:  # noqa: BLE001 — a probe reports, never dies
+                print("  %-22s ERROR %s" % (v["name"], str(e)[:80]))
+
+
 def pull_grantsgov(cfg, fixtures=None, debug=False):
     """Grants.gov Search2: one query per keyword, nonprofits eligible (12 = with 501c3, 13 = without)."""
     out = []
@@ -162,11 +210,13 @@ def pull_grantsgov(cfg, fixtures=None, debug=False):
         batches = [data]
     else:
         batches = []
+        variant = None   # the first request shape that returns hits is reused for every keyword
         for i, kw in enumerate(cfg["keywords"]):
-            body = {"keyword": kw, "oppStatuses": "forecasted|posted", "eligibilities": cfg["eligibilities"],
-                    "rows": cfg["rows"], "startRecordNum": 0, "sortBy": "closeDate|asc"}
             try:
-                data = http_json(cfg["search"], body)
+                if variant is None:
+                    data, variant = gg_first_working(cfg, kw)
+                else:
+                    data = http_json(cfg["search"], gg_body(cfg, kw, variant))
                 batches.append(data)
                 if debug and i == 0:
                     os.makedirs(os.path.join(HERE, "debug"), exist_ok=True)
@@ -498,6 +548,7 @@ def main(argv=None):
     s.set_defaults(fn=cmd_pull)
     c = sub.add_parser("score"); c.add_argument("--org", default=os.path.join(HERE, "org.json")); c.set_defaults(fn=cmd_score)
     d = sub.add_parser("digest"); d.add_argument("--top", type=int, default=10); d.add_argument("-o", "--output", default=os.path.join(HERE, "digest.md")); d.set_defaults(fn=cmd_digest)
+    pr = sub.add_parser("probe", help="try Grants.gov request shapes and print hit counts"); pr.add_argument("--keyword", default="nonprofit security"); pr.set_defaults(fn=cmd_probe)
     e = sub.add_parser("demo"); e.set_defaults(fn=cmd_demo)
     a = p.parse_args(argv); a.fn(a)
 
