@@ -1,0 +1,15 @@
+{
+  "name": "The Jewish Sanctuary Kfar Saba Urban Farm",
+  "ein": "92-3007627",
+  "legal": {"status": "501(c)(3) public charity, religious organization (IRS filing exempt)", "incorporated": "2023-03-11", "state": "CA", "sam_uei": "unknown — verify"},
+  "location": {"city": "Los Angeles (Winnetka)", "county": "Los Angeles", "state": "CA", "council_district": "unknown"},
+  "operating_since": {"private_rescue": 2009, "public_programs": 2020, "nonprofit": 2023},
+  "budget": {"annual_expenses_usd": null, "note": "filled from money_summary.csv after Day 3; NSGP FY2025 $190,000 restricted (security)"},
+  "fields": ["animal_welfare", "animal_rescue", "animal_assisted_therapy", "mental_health", "trauma", "veterans", "israel_soldiers", "nova_survivors", "special_needs", "youth", "education", "jewish_community", "community_building", "urban_agriculture", "security"],
+  "populations": ["soldiers", "trauma survivors", "children", "special needs", "families", "community"],
+  "programs": ["healing_visits", "rescue_and_care", "education_tours"],
+  "ask_range_usd": {"min": 5000, "max": 200000},
+  "capacity": {"can_match": false, "federal_ready": true, "reporting_capacity": "low", "min_lead_days": 21},
+  "exclusions": ["capital campaigns over 250k", "loans", "programs requiring paid staff before 2027"],
+  "existing_awards": [{"funder": "FEMA/Cal OES NSGP FY2025", "amount": 190000, "restricted": "physical security", "period": "2025-09-01..2028-08-31 (subaward shorter)"}]
+}
