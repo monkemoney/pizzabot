@@ -1,0 +1,56 @@
+{
+ "errorcode": 0,
+ "msg": "Webservice Succeeds",
+ "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.IlA4dFdWZlBwS1dCQ2xWSVFEdXVldG9qcjRubjdWYVljNGM5K0NMUTU0K2M9Ig.oCThcQM6BQ4hVUdFYpEyfAtVO-UJjoBpt3xZLXPhGhU",
+ "data": {
+  "searchParams": {
+   "resultType": "json",
+   "searchOnly": false,
+   "oppNum": "",
+   "cfda": "",
+   "sortBy": "closeDate|asc",
+   "oppStatuses": "forecasted|posted",
+   "startRecordNum": 0,
+   "eligibilities": "12,13",
+   "fundingInstruments": "",
+   "fundingCategories": "",
+   "agencies": "",
+   "rows": 50,
+   "keyword": "nonprofit security",
+   "keywordEncoded": true
+  },
+  "hitCount": 0,
+  "startRecord": 0,
+  "oppHits": [],
+  "oppStatusOptions": [
+   {
+    "label": "posted",
+    "value": "posted",
+    "count": 0
+   },
+   {
+    "label": "closed",
+    "value": "closed",
+    "count": 0
+   },
+   {
+    "label": "archived",
+    "value": "archived",
+    "count": 0
+   },
+   {
+    "label": "forecasted",
+    "value": "forecasted",
+    "count": 0
+   }
+  ],
+  "dateRangeOptions": [],
+  "suggestion": "",
+  "eligibilities": [],
+  "fundingCategories": [],
+  "fundingInstruments": [],
+  "agencies": [],
+  "accessKey": "",
+  "errorMsgs": []
+ }
+}
