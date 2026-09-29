@@ -1,0 +1,55 @@
+# Grants monitor — weekly live pull for the farm (docs/ops/tools/grants). Ops tool, not the product.
+#
+# Triggered by workflow_dispatch from the weekly Routine (a GitHub scheduled trigger only runs from the default
+# branch, and this work lives on its own branch by rule). Fetches Grants.gov + California portal + funder pages,
+# scores, renders the digest, and commits the outputs back to the SAME branch it was dispatched on.
+# Nothing here touches src/, public/, tests/ or the deploy — Render deploys main only.
+name: Grants monitor
+
+on:
+  workflow_dispatch:
+    inputs:
+      no_detail:
+        description: "skip Grants.gov detail calls"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: grants-monitor-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+      - name: Self-test on fixtures (no network)
+        working-directory: docs/ops/tools/grants
+        run: python3 monitor.py demo
+      - name: Live run
+        working-directory: docs/ops/tools/grants
+        env:
+          GRANTS_RUNNER: github-actions
+        run: |
+          python3 seed_funders.py
+          python3 monitor.py run ${{ inputs.no_detail && '--no-detail' || '' }}
+      - name: Commit outputs
+        working-directory: docs/ops/tools/grants
+        run: |
+          git config user.name "grants-monitor"
+          git config user.email "grants-monitor@users.noreply.github.com"
+          git add opportunities.csv digest.md funders.csv runs.csv debug/
+          if git diff --cached --quiet; then echo "nothing changed"; exit 0; fi
+          git commit -m "grants: weekly live run $(date -u +%Y-%m-%d) [skip ci]"
+          for i in 1 2 3; do
+            git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((i * 5))
+          done
+          exit 1

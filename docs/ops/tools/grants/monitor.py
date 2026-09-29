@@ -381,8 +381,12 @@ def pull_funders(fixtures=None):
         r["page_hash"], r["last_checked"] = h, date.today().isoformat()
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys())); w.writeheader(); w.writerows(rows)
+    RUN_STATS.update(funder_pages=len(rows), funder_changed=changed)
     print("funders: %d pages checked, %d changed" % (len(rows), changed))
     return out
+
+
+RUN_STATS = {}   # filled by pull/score for the run record; resets with the process (one run = one process)
 
 
 def cmd_pull(a):
@@ -417,6 +421,7 @@ def cmd_pull(a):
             added += 1
         existing[r["opp_id"]] = r
     write_opps(existing)
+    RUN_STATS.update(fetched=len(new), new=added, updated=updated, stale=stale, total=len(existing))
     print("pull: %d fetched -> %d new, %d updated, %d marked stale, %d total -> %s" % (len(new), added, updated, stale, len(existing), os.path.basename(OPPS)))
     return existing
 
@@ -531,7 +536,8 @@ def cmd_score(a):
         r["score"], r["score_reasons"] = score_row(r, org)
     write_opps(rows)
     hi = sum(1 for r in rows.values() if int(r["score"] or 0) >= 70)
-    print("score: %d opportunities, %d at 70+, %d zero" % (len(rows), hi, sum(1 for r in rows.values() if int(r["score"] or 0) == 0)))
+    RUN_STATS.update(score70=hi, score50=sum(1 for r in rows.values() if int(r["score"] or 0) >= 50), zero=sum(1 for r in rows.values() if int(r["score"] or 0) == 0))
+    print("score: %d opportunities, %d at 70+, %d zero" % (len(rows), hi, RUN_STATS["zero"]))
     return rows
 
 
@@ -590,10 +596,42 @@ def cmd_digest(a):
 
 # ----------------------------------------------------------------------------- demo
 
+RUNS = os.path.join(HERE, "runs.csv")
+RUN_FIELDS = ["run_at", "runner", "status", "duration_s", "fetched", "new", "updated", "stale", "total", "score70", "score50", "zero",
+              "funder_pages", "funder_changed", "error"]
+
+
+def cmd_run(a):
+    """pull + score + digest as one run, recorded as one row in runs.csv — a run that died still leaves a row
+    (status=failed), and a week with no row is the failure the weekly reviewer is there to notice."""
+    t0 = datetime.now()
+    row = {k: "" for k in RUN_FIELDS}
+    row.update(run_at=t0.strftime("%Y-%m-%dT%H:%M"), runner=a.runner, status="failed")
+    try:
+        cmd_pull(a)
+        cmd_score(a)
+        cmd_digest(a)
+        row["status"] = "ok"
+    except Exception as e:  # noqa: BLE001 — recorded, then re-raised: the row is the point
+        row["error"] = str(e)[:200].replace("\n", " ")
+        raise
+    finally:
+        row.update({k: v for k, v in RUN_STATS.items() if k in RUN_FIELDS})
+        row["duration_s"] = int((datetime.now() - t0).total_seconds())
+        new_file = not os.path.exists(RUNS)
+        with open(RUNS, "a", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=RUN_FIELDS)
+            if new_file:
+                w.writeheader()
+            w.writerow(row)
+        print("run: %s in %ss -> %s" % (row["status"], row["duration_s"], os.path.basename(RUNS)))
+
+
 def cmd_demo(_a):
-    global OPPS
+    global OPPS, RUNS
     tmp = tempfile.mkdtemp(prefix="grants-demo-")
     OPPS = os.path.join(tmp, "opportunities.csv")
+    RUNS = os.path.join(tmp, "runs.csv")
     fx = os.path.join(HERE, "fixtures")
     ns = argparse.Namespace(sources="grantsgov,cagrants", fixtures=fx)
     rows = cmd_pull(ns)
@@ -634,6 +672,11 @@ def cmd_demo(_a):
         r["score"], r["score_reasons"] = score_row(r, org, today)
     text = render_digest(rows2, 10, today)
     assert "Nonprofit Security" in text and "Closed" not in text and "Levee" not in text and "בצינור" in text, text
+    # the run command leaves exactly one row, with the counts the weekly reviewer reads
+    cmd_run(argparse.Namespace(sources="grantsgov,cagrants", fixtures=fx, debug=False, include_closed=False, no_detail=True,
+                               org=os.path.join(HERE, "org.json"), top=10, output=os.path.join(tmp, "digest.md"), runner="demo"))
+    runs = list(csv.DictReader(open(RUNS, newline="", encoding="utf-8")))
+    assert len(runs) == 1 and runs[0]["status"] == "ok" and runs[0]["total"] == "9" and runs[0]["runner"] == "demo", runs
     print("demo OK: 9 fixture opportunities pulled · NSGP scored %s · closed/past = 0 · oversized penalised · upsert kept decision · digest renders" % nsgp["score"])
     print("files:", tmp)
 
@@ -646,6 +689,12 @@ def main(argv=None):
     s.add_argument("--no-detail", action="store_true", help="skip Grants.gov fetchOpportunity detail calls")
     s.set_defaults(fn=cmd_pull)
     c = sub.add_parser("score"); c.add_argument("--org", default=os.path.join(HERE, "org.json")); c.set_defaults(fn=cmd_score)
+    r = sub.add_parser("run", help="pull + score + digest, one row in runs.csv")
+    r.add_argument("--sources", default="grantsgov,cagrants,funders"); r.add_argument("--fixtures"); r.add_argument("--debug", action="store_true")
+    r.add_argument("--include-closed", action="store_true"); r.add_argument("--no-detail", action="store_true")
+    r.add_argument("--org", default=os.path.join(HERE, "org.json")); r.add_argument("--top", type=int, default=10)
+    r.add_argument("-o", "--output", default=os.path.join(HERE, "digest.md")); r.add_argument("--runner", default=os.environ.get("GRANTS_RUNNER", "manual"))
+    r.set_defaults(fn=cmd_run)
     d = sub.add_parser("digest"); d.add_argument("--top", type=int, default=10); d.add_argument("-o", "--output", default=os.path.join(HERE, "digest.md")); d.set_defaults(fn=cmd_digest)
     pr = sub.add_parser("probe", help="try Grants.gov request shapes and print hit counts"); pr.add_argument("--keyword", default="nonprofit security"); pr.set_defaults(fn=cmd_probe)
     e = sub.add_parser("demo"); e.set_defaults(fn=cmd_demo)
