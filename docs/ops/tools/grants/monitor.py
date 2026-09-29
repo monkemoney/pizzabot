@@ -32,24 +32,26 @@ SOURCES = {
 }
 
 FIELD_KEYWORDS = {  # org.fields -> words in an opportunity text that indicate the field
-    "animal_welfare": ["animal", "humane", "shelter", "rescue", "pet", "veterinar", "livestock"],
+    "animal_welfare": ["animal welfare", "animal rescue", "animal shelter", "humane", "animal care", "rescue animal", "veterinar", "companion animal", "farm animal"],
     "animal_assisted_therapy": ["animal-assisted", "equine", "therapy animal", "therapeutic"],
     "mental_health": ["mental health", "behavioral health", "wellness", "trauma", "ptsd", "counsel"],
     "veterans": ["veteran", "service member", "military", "soldier"],
     "special_needs": ["disabilit", "special needs", "autism", "developmental"],
-    "youth": ["youth", "children", "k-12", "students", "after school", "mentoring"],
-    "education": ["education", "learning", "school", "stem"],
+    "youth": ["youth", "children's program", "k-12", "students", "after school", "mentoring", "teens", "kids"],
+    "education": ["educational program", "environmental education", "school field", "learning program", "stem"],
     "jewish_community": ["jewish", "synagogue", "faith", "religious", "interfaith", "antisemitism"],
-    "community_building": ["community", "neighborhood", "civic", "resilien"],
-    "urban_agriculture": ["agricultur", "farm", "garden", "food", "urban ag"],
-    "security": ["security", "target hardening", "hate crime", "protect"],
+    "community_building": ["community-based organization", "neighborhood", "civic engagement", "community program"],
+    "urban_agriculture": ["urban agriculture", "community garden", "urban farm", "food access", "farm to school"],
+    "security": ["nonprofit security", "physical security", "target hardening", "hate crime", "antisemitism", "security enhancement", "security grant"],
     "trauma": ["trauma", "survivor", "crisis", "healing"],
 }
 EXCLUDE_WORDS = ["for-profit only", "individuals only", "state agencies only", "tribal governments only", "institutions of higher education only"]
 CORE_FIELDS = {"animal_welfare", "animal_assisted_therapy", "mental_health", "trauma", "veterans", "special_needs", "jewish_community", "security", "youth"}
 OFF_TOPIC = ["climate", "wastewater", "drinking water", "recycling", "broadband", "digital divide", "transit", "highway", "housing development",
              "wildfire", "energy efficiency", "flood", "levee", "conservancy", "land acquisition", "watershed", "stormwater", "electric vehicle",
-             "solar", "sea level", "fisheries", "forest", "groundwater", "port", "rail"]
+             "solar", "sea level", "fisheries", "forest", "groundwater", "port", "rail", "hospital", "bond financing", "loan program",
+             "boating", "aquatic", "library", "virus", "crop", "rice", "beet", "livestock compensation", "ranch", "extreme heat",
+             "river", "trail", "park development", "nutrition incentive", "hazard mitigation", "construction"]
 NONPROFIT_WORDS = ["nonprofit", "non-profit", "501", "community-based", "faith", "community based organization", "cbo", "ngo", "charit"]
 
 
@@ -133,7 +135,26 @@ def money(s):
 
 # ----------------------------------------------------------------------------- sources
 
-def pull_grantsgov(cfg, fixtures=None):
+def find_hits(obj, depth=0):
+    """Locate the list of opportunity dicts wherever the API put it (data.oppHits today; tolerant to moves)."""
+    if depth > 4:
+        return []
+    if isinstance(obj, list) and obj and isinstance(obj[0], dict) and ("title" in obj[0] or "number" in obj[0]):
+        return obj
+    if isinstance(obj, dict):
+        for k in ("oppHits", "data", "hits", "results", "opportunities"):
+            if k in obj:
+                got = find_hits(obj[k], depth + 1)
+                if got:
+                    return got
+        for v in obj.values():
+            got = find_hits(v, depth + 1)
+            if got:
+                return got
+    return []
+
+
+def pull_grantsgov(cfg, fixtures=None, debug=False):
     """Grants.gov Search2: one query per keyword, nonprofits eligible (12 = with 501c3, 13 = without)."""
     out = []
     if fixtures:
@@ -141,14 +162,25 @@ def pull_grantsgov(cfg, fixtures=None):
         batches = [data]
     else:
         batches = []
-        for kw in cfg["keywords"]:
+        for i, kw in enumerate(cfg["keywords"]):
+            body = {"keyword": kw, "oppStatuses": "forecasted|posted", "eligibilities": cfg["eligibilities"],
+                    "rows": cfg["rows"], "startRecordNum": 0, "sortBy": "closeDate|asc"}
             try:
-                batches.append(http_json(cfg["search"], {"keyword": kw, "oppStatuses": "forecasted|posted",
-                                                        "eligibilities": cfg["eligibilities"], "rows": cfg["rows"]}))
+                data = http_json(cfg["search"], body)
+                batches.append(data)
+                if debug and i == 0:
+                    os.makedirs(os.path.join(HERE, "debug"), exist_ok=True)
+                    with open(os.path.join(HERE, "debug", "grantsgov_first.json"), "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=1)
+            except urllib.error.HTTPError as e:
+                print("grantsgov: %s -> HTTP %s %s" % (kw, e.code, e.read()[:200].decode("utf-8", "replace")), file=sys.stderr)
             except (urllib.error.URLError, ValueError, TimeoutError) as e:
                 print("grantsgov: %s -> %s" % (kw, e), file=sys.stderr)
     for data in batches:
-        hits = (data.get("data") or {}).get("oppHits") or data.get("oppHits") or []
+        hits = find_hits(data)
+        if not fixtures:
+            d = data.get("data") if isinstance(data.get("data"), dict) else {}
+            print("grantsgov: errorcode=%s hitCount=%s parsed=%d msg=%s" % (data.get("errorcode"), d.get("hitCount"), len(hits), str(data.get("msg", ""))[:60]))
         for h in hits:
             num = h.get("number") or h.get("id")
             out.append({
@@ -163,7 +195,7 @@ def pull_grantsgov(cfg, fixtures=None):
     return out
 
 
-def pull_cagrants(cfg, fixtures=None):
+def pull_cagrants(cfg, fixtures=None, include_closed=False):
     """California Grants Portal via the data.ca.gov CKAN datastore."""
     out = []
     if fixtures:
@@ -172,6 +204,8 @@ def pull_cagrants(cfg, fixtures=None):
         batches = []
         for term in cfg["terms"]:
             url = "%s?resource_id=%s&q=%s&limit=%d" % (cfg["datastore"], cfg["resource_id"], urllib.request.quote(term), cfg["limit"])
+            if not include_closed:
+                url += "&filters=" + urllib.request.quote(json.dumps({"Status": "active"}))
             try:
                 batches.append(http_json(url))
             except (urllib.error.URLError, ValueError, TimeoutError) as e:
@@ -239,9 +273,9 @@ def cmd_pull(a):
     srcs = a.sources.split(",")
     new = []
     if "grantsgov" in srcs:
-        new += pull_grantsgov(SOURCES["grantsgov"], a.fixtures)
+        new += pull_grantsgov(SOURCES["grantsgov"], a.fixtures, getattr(a, "debug", False))
     if "cagrants" in srcs:
-        new += pull_cagrants(SOURCES["cagrants"], a.fixtures)
+        new += pull_cagrants(SOURCES["cagrants"], a.fixtures, getattr(a, "include_closed", False))
     if "funders" in srcs:
         new += pull_funders(a.fixtures)
     today = date.today().isoformat()
@@ -287,7 +321,7 @@ def score_row(r, org, today=None):
         fs = min(40, 14 * len(core) + 5 * len(generic))
     else:
         fs = 6 if generic else 0
-    off = [w for w in OFF_TOPIC if w in text]
+    off = [w for w in OFF_TOPIC if re.search(r"\b" + re.escape(w) + r"\b", text)]   # 'port' must not match 'support'
     if off and not core:
         return min(25, fs + 15), "off-topic (%s); fields %d/40" % (off[0], fs)
     s += fs
@@ -436,7 +470,7 @@ def cmd_demo(_a):
     past = next(r for r in rows.values() if "Past Deadline" in r["program"])
     assert int(past["score"]) == 0 and past["score_reasons"] == "deadline passed"
     huge = next(r for r in rows.values() if "Hospital" in r["program"])
-    assert int(huge["score"]) < 50 and "too large" in huge["score_reasons"], huge["score_reasons"]
+    assert int(huge["score"]) < 50 and ("too large" in huge["score_reasons"] or "off-topic" in huge["score_reasons"]), huge["score_reasons"]
     animal = next(r for r in rows.values() if "Animal" in r["program"])
     assert int(animal["score"]) >= 60 and "animal_welfare" in animal["score_reasons"], animal["score_reasons"]
     levee = next(r for r in rows.values() if "Levee" in r["program"])
@@ -459,7 +493,9 @@ def cmd_demo(_a):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("pull"); s.add_argument("--sources", default="grantsgov,cagrants,funders"); s.add_argument("--fixtures"); s.set_defaults(fn=cmd_pull)
+    s = sub.add_parser("pull"); s.add_argument("--sources", default="grantsgov,cagrants,funders"); s.add_argument("--fixtures")
+    s.add_argument("--debug", action="store_true", help="dump the first Grants.gov response to debug/"); s.add_argument("--include-closed", action="store_true")
+    s.set_defaults(fn=cmd_pull)
     c = sub.add_parser("score"); c.add_argument("--org", default=os.path.join(HERE, "org.json")); c.set_defaults(fn=cmd_score)
     d = sub.add_parser("digest"); d.add_argument("--top", type=int, default=10); d.add_argument("-o", "--output", default=os.path.join(HERE, "digest.md")); d.set_defaults(fn=cmd_digest)
     e = sub.add_parser("demo"); e.set_defaults(fn=cmd_demo)
