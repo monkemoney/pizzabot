@@ -611,7 +611,8 @@ def cmd_run(a):
         cmd_pull(a)
         cmd_score(a)
         cmd_digest(a)
-        row["status"] = "ok"
+        # a blocked network does not raise (each source logs and returns nothing) — zero fetched is a failed run, not a quiet week
+        row["status"] = "ok" if RUN_STATS.get("fetched", 0) > 0 else "empty"
     except Exception as e:  # noqa: BLE001 — recorded, then re-raised: the row is the point
         row["error"] = str(e)[:200].replace("\n", " ")
         raise
