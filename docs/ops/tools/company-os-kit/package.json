@@ -1,0 +1,15 @@
+{
+  "name": "company-os-kit",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "An AI-agent company run from one Claude Code session: briefs, worktrees, ledger, gate, logs, one report a day.",
+  "scripts": {
+    "test": "node --test \"scripts/lib/*.test.mjs\"",
+    "gate": "node scripts/gate.mjs",
+    "board": "node scripts/board.mjs",
+    "merge-check": "node scripts/merge-lines-check.mjs",
+    "lint": "node scripts/lint-docs.mjs",
+    "case": "node scripts/case.mjs"
+  }
+}

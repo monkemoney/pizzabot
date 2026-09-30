@@ -1,0 +1,10 @@
+{
+  "project": "<Project name>",
+  "mainBranch": "main",
+  "timezone": "America/Los_Angeles",
+  "ownerLanguage": "he",
+  "silenceHours": 48,
+  "pausedAlertHours": 24,
+  "caseStaleDays": 14,
+  "briefParts": ["Goal of the run", "Read first", "Report a short English summary", "Never contact"]
+}

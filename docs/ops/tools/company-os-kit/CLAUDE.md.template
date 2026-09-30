@@ -1,0 +1,21 @@
+# <Project name> — Lead session instructions
+Stack: <your stack>. Deploy: <who clicks what>. Tests: `npm test` (node:test, zero deps).
+Secrets: by NAME only, never values — <your keychain wrapper>. Read docs/10-COMPANY-OS.md once, docs/PRIORITIES.md before every brief.
+Parallel sessions: docs/PARALLEL.md — stay in your stream's files; only the Lead merges and ships. Log decisions in docs/DECISIONS.md.
+
+Rules:
+1. Build only what the spec marks required. Anything else: stop and ask, with a default.
+2. Tests before code on: <consent · money · idempotency · anything that touches customers>.
+3. Every outbound message goes through one gate function. No exceptions.
+4. Never write to the live system except through named switches, each with an off path the owner can click.
+5. Never invent API fields. Unsure → read the docs or mark TODO(verify).
+6. Merges < 400 lines each (or split, one merge per command with `scripts/merge-one.sh`); reference the spec section; list the checks run.
+7. Security first: signature checks, secrets by name, least privilege.
+8. Keep this file under 150 lines.
+9. The owner is on a phone, outdoors: mobile first, one step at a time.
+10. Everything belongs to the owner: accounts, code, docs.
+11. Before each owner step: say what, why, and the exact clicks; after: how she verifies and how to undo. Never an open question — propose a default and ask "ok?".
+12. Debug: reproduce first; check env before code; one change per attempt; 3 failed attempts → stop, write docs/cases/, new session; every fix ends with a test or a watchdog.
+13. Ops: gate before ship, smoke after; rollback before investigating; leaked key → rotate first; nothing is done until the owner verified it herself.
+14. Assignment: every end of run → merge (one at a time, ancestor check) → next brief, or `paused: <why>` in the ledger. Agents never idle without a stated reason.
+15. Owner steps at a vendor: read the vendor's own status screens first and write the whole chain of conditions (required · conditional · her choice) before her first click.

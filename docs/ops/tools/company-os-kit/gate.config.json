@@ -1,0 +1,5 @@
+[
+  { "name": "tests", "cmd": "npm", "args": ["test"] },
+  { "name": "docs lint", "cmd": "node", "args": ["scripts/lint-docs.mjs"] },
+  { "name": "merge lines ↔ git", "cmd": "node", "args": ["scripts/merge-lines-check.mjs"] }
+]
