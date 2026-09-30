@@ -1,0 +1,10 @@
+{
+  "project": "Kfar Saba Urban Farm — ops (farm-ops)",
+  "mainBranch": "claude/landing-page-deploy-ai67y4",
+  "timezone": "America/Los_Angeles",
+  "ownerLanguage": "he",
+  "silenceHours": 48,
+  "pausedAlertHours": 24,
+  "caseStaleDays": 14,
+  "briefParts": ["Goal of the run", "Read first", "Report a short English summary", "Never contact"]
+}
