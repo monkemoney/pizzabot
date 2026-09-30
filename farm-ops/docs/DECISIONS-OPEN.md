@@ -18,8 +18,9 @@ Silence 48 h past the deadline on a **reversible** item = the Lead takes the def
 | 2026-09-30 | L-09 | reversible | default: separate — Takeout runs on the farm account |
 | 2026-09-30 | L-10 | legal | wait |
 | 2026-09-30 | L-11 | reversible | default: Nave is the second pair of eyes until a board member is named |
+| 2026-09-30 | L-12 | reversible | default: register the farm on Goodstack (free verification + Maia finder) as a SOURCE only; no auto-submission; compare for 90 days |
 
-**Count 30.9.2026:** 11 open · 0 overdue · 5 due this week.
+**Count 30.9.2026:** 12 open · 0 overdue · 5 due this week.
 
 ## Open
 | id | Question | Proposed default | Impact if delayed | Source | Deadline |
@@ -35,5 +36,6 @@ Silence 48 h past the deadline on a **reversible** item = the Lead takes the def
 | L-09 | Is the farm's Gmail separate from Limor's private one? (decides where Takeout runs) | **separate** | mail_ledger scope wrong | FACTS "still open" | 2026-10-02 |
 | L-10 | Iris Shapiro (Secretary): independent director or family? Affects governance text and Schedule A story. | **ask Limor; write "three officers" until known** | governance paragraph in applications unverified | FACTS #16 | 2026-10-10 |
 | L-11 | Who is the second pair of eyes on submissions (the review step)? | **Nave until a board member is named** | review step has one person | SPEC §B | 2026-10-10 |
+| L-12 | Goodstack (Maia grant finder/writer, free Causes Portal): use as a discovery source and get verified, or let it submit? | **source + verification only; every hit re-verified on the funder's own page; submissions stay ours (two signatures)** | one more feed missing; corporate giving programs that check Goodstack verification cannot see the farm | Nave 30.9; goodstack.org | 2026-10-10 |
 
 ## Answered (rows are deleted here and numbered in DECISIONS.md)
