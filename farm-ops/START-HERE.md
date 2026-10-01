@@ -6,6 +6,7 @@
 | What | Where | Read when |
 |---|---|---|
 | **Instructions for the Lead session** | `farm-ops/CLAUDE.md` | first |
+| **How we work: time sinks, dead ends, what to stop/keep** | `farm-ops/docs/CONTEXT.md` | second — before the first brief |
 | **Priorities P0–P3** | `farm-ops/docs/PRIORITIES.md` | before every brief |
 | **90-day work plan with dates** | `farm-ops/docs/PLAN-90D.md` | weekly |
 | **KPI plan + catalogue** | `farm-ops/docs/KPI-PLAN.md` · `farm-ops/kpi.config.json` | before touching a threshold or a report number |
@@ -19,6 +20,7 @@
 | Tool-level lessons | `docs/ops/farm/LESSONS.md` | after every live run |
 | Extraction protocol, schema, checklists | `docs/ops/farm/PROTOCOL.md` · `SCHEMA.md` · `CHECKLIST-TONIGHT.md` · `DAY1-PHOTOS.md` · `DAY2-MONEY.md` · `EXTRACTION.md` | Day-1 / Day-3 work |
 | NSGP, 990, grants spec | `docs/ops/farm/NSGP.md` · `990.md` · `GRANTS-SYSTEM-SPEC.md` | grants work |
+| Compensation model · legal questions 9–11 · deck corrections | `docs/ops/farm/COMPENSATION.md` · `LEGAL-QUESTIONS.md` · `DECK-CORRECTIONS.md` | before any outward text or any paid-work question |
 | Environment migration (why the old session retired) | `docs/ops/farm/ENV-MIGRATION.md` | if a network probe fails |
 | **Grants monitor** (code) | `docs/ops/tools/grants/` (`README.md`, `monitor.py`, `runs.csv`) | head-a |
 | **Extraction tools** (code) | `docs/ops/tools/farm/` (+ `make-handoff.sh` → bundle for Limor's Mac) | head-d |
