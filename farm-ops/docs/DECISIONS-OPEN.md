@@ -17,9 +17,10 @@ Silence 48 h past the deadline on a **reversible** item = the Lead takes the def
 | 2026-09-30 | L-09 | reversible | default: separate — Takeout runs on the farm account |
 | 2026-09-30 | L-10 | legal | wait |
 | 2026-09-30 | L-11 | reversible | default: Nave is the second pair of eyes until a board member is named |
+| 2026-10-01 | L-13 | reversible | default: repos `company-os-kit` + `farm-ops` under Nave's GitHub account, both private, default branch `main` |
 | 2026-09-30 | L-12 | reversible | default: register the farm on Goodstack (free verification + Maia finder) as a SOURCE only; no auto-submission; compare for 90 days |
 
-**Count 1.10.2026 (evening):** 11 open · 0 overdue · 2 due within 24 h (L-05, L-09 on 2.10) · 6 due by 8.10 (L-02, L-04, L-05, L-06, L-07, L-09). No answers arrived today; L-06 now has its fit memo (go, conditional; decide by 14.10).
+**Count 1.10.2026 (evening):** 12 open (L-13 added) · 0 overdue · 2 due within 24 h (L-05, L-09 on 2.10) · 6 due by 8.10 (L-02, L-04, L-05, L-06, L-07, L-09). No answers arrived today; L-06 now has its fit memo (go, conditional; decide by 14.10).
 
 ## Open
 | id | Question | Proposed default | Impact if delayed | Source | Deadline |
@@ -34,6 +35,7 @@ Silence 48 h past the deadline on a **reversible** item = the Lead takes the def
 | L-09 | Is the farm's Gmail separate from Limor's private one? (decides where Takeout runs) | **separate** | mail_ledger scope wrong | FACTS "still open" | 2026-10-02 |
 | L-10 | Iris Shapiro (Secretary): independent director or family? Affects governance text and Schedule A story. | **ask Limor; write "three officers" until known** | governance paragraph in applications unverified | FACTS #16 | 2026-10-10 |
 | L-11 | Who is the second pair of eyes on submissions (the review step)? | **Nave until a board member is named** | review step has one person | SPEC §B | 2026-10-10 |
+| L-13 | Split the new product out of the Jasell repo: names and visibility of the two new repositories? | **`company-os-kit` + `farm-ops`, both private, `main`** | every session keeps fighting the branch-only rule; the weekly fetch stays dependent on cloud network | Nave 1.10 "אנחנו בונים מוצר חדש לגמרי" | 2026-10-02 |
 | L-12 | Goodstack (Maia grant finder/writer, free Causes Portal): use as a discovery source and get verified, or let it submit? | **source + verification only; every hit re-verified on the funder's own page; submissions stay ours (two signatures)** | one more feed missing; corporate giving programs that check Goodstack verification cannot see the farm | Nave 30.9; goodstack.org | 2026-10-10 |
 
 ## Answered (rows are deleted here and numbered in DECISIONS.md)

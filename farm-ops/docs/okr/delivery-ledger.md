@@ -18,3 +18,4 @@ closed-for-day: head-c 1.10 12:20 LA — obligations.csv 11 rows (2 dated, 4 ver
 paused: head-d 1.10 16:20 LA — waits for a Day-1 date with Limor (L-05, default takes effect 2.10 + 48 h); bundle and checklist ready
 closed-for-day: cos 1.10 16:20 LA — run 1 (docs/shifts/2026-09-30-cos-1.md): owner report docs/reports/2026-10-01-owner-morning.md, ledger, decisions count, changes.log; case 13 closed
 closed-for-day: head-b 1.10 16:45 LA — run 1 (docs/shifts/2026-09-30-head-b-1.md): kit 1.2 loop alarm, c3fc38f · run 2 (docs/shifts/2026-10-01-head-b-2.md): kit 1.3 KPI engine D/E, 23 tests, seeded-repo verified, f5cde07; farm-ops scripts still on kit 1.1 (Lead to sync)
+resumed: head-e 1.10 11:50 LA — brief docs/shifts/2026-10-01-head-e-1.md (repository split) — executed by the Lead, first in line
