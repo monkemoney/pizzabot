@@ -1,0 +1,2 @@
+# gate-runs.log — written by scripts/gate.mjs: <ISO> · HEAD=<sha> · branch=<name> · by=<who> · ms=<total> · verdict=<n/n | FAIL: steps>
+2026-09-29 22:17 · HEAD=c7e7fe0 · branch=claude/landing-page-deploy-ai67y4 · by=lead · ms=513 · verdict=3/3
