@@ -6,6 +6,7 @@ import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { loadConfig, stamp } from './lib/config.mjs';
 import { parseLedger, lastByRole, parseUsage, usageTotals } from './lib/ledger.mjs';
+import { parseSnapshots, lastTwo } from './lib/kpi.mjs';
 import { parseOpenDecisions, decisionStatus, parseCases, caseSummary, ledgerAges, askCounts } from './lib/registers.mjs';
 
 const cfg = loadConfig();
@@ -38,6 +39,17 @@ const cs = caseSummary(parseCases(read('docs/cases/LOG.md')), now, cfg.caseStale
 out.push('', '## Problems log', `open ${cs.open} · closed ${cs.closed} · oldest open ${cs.oldestOpenDays}d · unchecked by Debug ${cs.unchecked} · without a guard ${cs.noGuard}` +
   (cs.stale.length ? ` · ⚠ stale (> ${cfg.caseStaleDays}d): #${cs.stale.join(', #')}` : ''),
   Object.keys(cs.byClass).length ? 'by class: ' + Object.entries(cs.byClass).map(([k, v]) => `${k} ${v}`).join(' · ') : 'by class: —');
+
+// KPIs — the latest snapshot in kpi.csv (the board reads files; it never computes): breaches as rows, the rest one line
+const snap = lastTwo(parseSnapshots(read('docs/okr/kpi.csv'))).latest;
+out.push('', '## KPIs');
+if (!snap.length) out.push('no snapshot yet — `npm run kpi`');
+else {
+  const br = snap.filter((r) => r.breach);
+  out.push(`snapshot ${snap[0].date}`);
+  if (br.length) out.push('| id | value | target |', '|---|---|---|', ...br.map((r) => `| ⚠ ${r.id} | ${r.value} | ${r.target} |`));
+  out.push(`${snap.length - br.length - snap.filter((r) => !r.breach && r.value === '').length} green · ${snap.filter((r) => r.value === '').length} without data · ${br.length} breached`);
+}
 
 // usage
 const usage = parseUsage(read('docs/okr/agent-usage.log'));

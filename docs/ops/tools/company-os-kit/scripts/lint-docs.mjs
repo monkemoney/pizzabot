@@ -4,10 +4,12 @@
 // Checks: every brief in docs/shifts carries the parts the spawn prompt relies on and is named <date>-<role>-<n>.md ·
 // open decisions carry a real default and deadline · CLAUDE.md stays under 150 lines · changes.log lines keep their shape ·
 // a role left closed-for-day/paused past the alert window is named · an open case older than caseStaleDays is named ·
-// loop alarm (1.2): the same decision asked on 2 days = WARN, on 3 days without a `route change:` = FAIL.
+// loop alarm (1.2): the same decision asked on 2 days = WARN, on 3 days without a `route change:` = FAIL ·
+// KPI snapshots (1.3): every snapshot in docs/okr/kpi.csv carries exactly one row per catalogue KPI.
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { loadConfig } from './lib/config.mjs';
 import { parseLedger, lastByRole } from './lib/ledger.mjs';
+import { parseSnapshots, snapshotProblems } from './lib/kpi.mjs';
 import { parseOpenDecisions, decisionStatus, parseCases, caseSummary, checkBrief, ledgerAges, badChangeLines, askCounts, loopFindings } from './lib/registers.mjs';
 
 const cfg = loadConfig();
@@ -36,6 +38,12 @@ for (const d of decisions) {
 // loop alarm: the same ask to the owner on 2 days is a loop, not persistence (kit §6)
 const loops = loopFindings(askCounts(read('docs/meetings/changes.log'), read('docs/cases/INBOX.md')));
 warns.push(...loops.warns); fails.push(...loops.fails);
+// KPI snapshots: a run appends exactly one row per catalogue KPI — a short or doubled snapshot means a broken run
+if (existsSync('docs/okr/kpi.csv')) {
+  const cat = existsSync('kpi.config.json') ? 'kpi.config.json' : new URL('../kpi.config.json', import.meta.url);
+  const n = JSON.parse(readFileSync(cat, 'utf8')).kpis.length;
+  fails.push(...snapshotProblems(parseSnapshots(read('docs/okr/kpi.csv')), n));
+}
 // CLAUDE.md size (rule 8 of the template)
 if (existsSync('CLAUDE.md')) { const n = read('CLAUDE.md').split('\n').length; if (n > 150) fails.push(`CLAUDE.md has ${n} lines (rule: under 150)`); }
 // changes.log shape

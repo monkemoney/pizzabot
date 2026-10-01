@@ -34,6 +34,13 @@ The 1.0 kit recorded events; it did not tell you **how long** anything had been 
 - **One config** — `os.config.json` (project name, main branch, timezone, owner language, the silence window, alert windows, the brief parts). `main`, the timezone and the silence rule were literals in four scripts.
 - Fixed: `merge-one.sh` pointed to a script that did not exist after a conflict (`--verify` mode now); `log-usage` stamps carried no UTC offset; `team-worktree.sh` branched from a hardcoded `main`.
 
+## KPIs (1.3)
+`npm run kpi` computes the catalogue in `kpi.config.json` from the registers every instance already has, appends one snapshot row per KPI to `docs/okr/kpi.csv` (`date,id,value,target,breach`), and writes `docs/KPI.md`: breaches first, then by domain, ▲▼ against the previous snapshot. `npm run kpi -- --open-cases` also opens one problems-log case for each **new** breach, with class `monitor` and refs `KPI <id> · <ISO week>`, so a re-run in the same week opens nothing. `--dry` prints without writing. The board shows the latest snapshot as a `## KPIs` section (breaches as rows, the rest as one line), and the lint fails a snapshot that does not carry exactly one row per catalogue KPI.
+- **The default catalogue** (`kpi.config.json`, 13 KPIs) covers the owner's decisions (D1 open + median age · D2 overdue · D3 silence-rule fires · D4 loop rounds · D5 reports sent) and the process (E1 idle roles · E2 brief cycle time · E3 gate pass rate · E4 lint fails · E5 open cases + MTTR · E6 recurrence · E7 cases without a guard · E8 unchecked by Debug). A project adds its own domains to the same file; an id with no computer is recorded empty and never breaches until an adapter exists. E9/E10 (cost) print dollars only when `os.config.json` carries `modelRates` ($ per million tokens, by model).
+- **Breach rule:** `up` breaches below the threshold; `down` and `zero` breach at or above it. A KPI with two quantities (D1, E3, E5) reports the first as its value and the second in the note.
+- **The week** is the 7 local calendar days ending today, in `os.config.json.timezone`.
+- **The engine never breeds its own cases:** E6–E8 judge the problems log's hygiene and skip the rows the engine opened. E5 still counts them, because an open breach is real open work.
+
 ## Files
 
 | Path | What it is |
@@ -75,4 +82,4 @@ node scripts/spawn-prompt.mjs docs/shifts/2026-01-02-head-a-1.md   # paste the p
 Then, in the Lead session: write the brief → spawn the agent (background) → when it reports: `scripts/merge-one.sh head/a "run 1: …"` → `npm run gate` → `node scripts/log-usage.mjs "head-a run 1" head/a <model> <tokens> <tools> <minutes>` → next brief, or a `paused:` line with the reason. A problem on the way: `node scripts/case.mjs "<what happened>" --area <area>` first, then fix. Every morning: `npm run board`.
 
 ## What is deliberately NOT here
-Secrets handling (use your OS keychain and a `with-secrets` wrapper; never values in chat or files), deployment (a human click on your platform), the loop-alarm and chain-scan detectors (project-specific; the design is in `docs/10-COMPANY-OS.md` §6), and any model-specific prompt tricks. Model policy (which model per role) is one table in `docs/10-COMPANY-OS.md` §3.
+Secrets handling (use your OS keychain and a `with-secrets` wrapper; never values in chat or files), deployment (a human click on your platform), the chain-scan detector (the design is in `docs/10-COMPANY-OS.md` §6; the loop alarm runs since 1.2), and any model-specific prompt tricks. Model policy (which model per role) is one table in `docs/10-COMPANY-OS.md` §3.

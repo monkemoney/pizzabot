@@ -1,0 +1,162 @@
+{
+ "_doc": "Company OS kit default KPI catalogue (1.3): D owner & decisions, E process — computed by scripts/kpi.mjs from files every instance has. A project extends this file with its own domains; ids it has no computer for are recorded with an empty value until an adapter exists. direction: up = higher is better (breach below threshold), down = lower is better (breach at or above threshold), zero = must be 0 (breach at or above threshold). A KPI with two quantities (D1, E3, E5) reports the first as its value and the second in the note.",
+ "cadence": "weekly",
+ "kpis": [
+  {
+   "id": "D1",
+   "domain": "owner",
+   "name": "Open decisions and median age",
+   "formula": "count; median(today − When)",
+   "source": "docs/DECISIONS-OPEN.md",
+   "unit": "n / days",
+   "target": 8,
+   "direction": "down",
+   "threshold": 15,
+   "dept": "timing"
+  },
+  {
+   "id": "D2",
+   "domain": "owner",
+   "name": "Overdue decisions",
+   "formula": "deadline < today",
+   "source": "DECISIONS-OPEN.md",
+   "unit": "n",
+   "target": 0,
+   "direction": "down",
+   "threshold": 3,
+   "dept": "timing"
+  },
+  {
+   "id": "D3",
+   "domain": "owner",
+   "name": "Silence-rule fires",
+   "formula": "reversible items that took the default",
+   "source": "DECISIONS.md '(default, no answer)'",
+   "unit": "n",
+   "target": null,
+   "direction": "down",
+   "threshold": 3,
+   "dept": "problems"
+  },
+  {
+   "id": "D4",
+   "domain": "owner",
+   "name": "Loop rounds",
+   "formula": "same ask raised on ≥2 days without a route change",
+   "source": "changes.log + INBOX.md (kit 1.2)",
+   "unit": "n",
+   "target": 0,
+   "direction": "zero",
+   "threshold": 1,
+   "dept": "problems"
+  },
+  {
+   "id": "D5",
+   "domain": "owner",
+   "name": "Reports sent",
+   "formula": "owner reports / working days",
+   "source": "docs/reports/*.md",
+   "unit": "%",
+   "target": 100,
+   "direction": "up",
+   "threshold": 60,
+   "dept": "timing"
+  },
+  {
+   "id": "E1",
+   "domain": "process",
+   "name": "Roles idle without reason",
+   "formula": "ledger roles paused/closed > pausedAlertHours",
+   "source": "docs/okr/delivery-ledger.md",
+   "unit": "n",
+   "target": 0,
+   "direction": "zero",
+   "threshold": 1,
+   "dept": "both"
+  },
+  {
+   "id": "E2",
+   "domain": "process",
+   "name": "Brief cycle time",
+   "formula": "resumed → closed-for-day per brief, median hours",
+   "source": "delivery-ledger.md",
+   "unit": "h",
+   "target": 8,
+   "direction": "down",
+   "threshold": 48,
+   "dept": "timing"
+  },
+  {
+   "id": "E3",
+   "domain": "process",
+   "name": "Gate pass rate and duration",
+   "formula": "verdict n/n share; median ms",
+   "source": "docs/okr/gate-runs.log",
+   "unit": "% / ms",
+   "target": 90,
+   "direction": "up",
+   "threshold": 70,
+   "dept": "both"
+  },
+  {
+   "id": "E4",
+   "domain": "process",
+   "name": "Lint fails per week",
+   "formula": "gate lines with FAIL: docs lint",
+   "source": "gate-runs.log",
+   "unit": "n",
+   "target": 0,
+   "direction": "down",
+   "threshold": 3,
+   "dept": "problems"
+  },
+  {
+   "id": "E5",
+   "domain": "process",
+   "name": "Cases: open, MTTR",
+   "formula": "open count; median(closed − opened) days",
+   "source": "docs/cases/LOG.md",
+   "unit": "n / days",
+   "target": 7,
+   "direction": "down",
+   "threshold": 14,
+   "dept": "both"
+  },
+  {
+   "id": "E6",
+   "domain": "process",
+   "name": "Recurrence",
+   "formula": "same cause class twice within 30 days in one area",
+   "source": "LOG.md:class,area,date",
+   "unit": "n",
+   "target": 0,
+   "direction": "zero",
+   "threshold": 1,
+   "dept": "problems"
+  },
+  {
+   "id": "E7",
+   "domain": "process",
+   "name": "Cases without a guard",
+   "formula": "guard empty or 'to come'",
+   "source": "LOG.md:guard",
+   "unit": "n",
+   "target": 0,
+   "direction": "down",
+   "threshold": 3,
+   "dept": "problems"
+  },
+  {
+   "id": "E8",
+   "domain": "process",
+   "name": "Unchecked by Debug",
+   "formula": "rows not ✓G older than 7 days",
+   "source": "LOG.md:checked",
+   "unit": "n",
+   "target": 0,
+   "direction": "down",
+   "threshold": 5,
+   "dept": "problems"
+  }
+ ]
+}
