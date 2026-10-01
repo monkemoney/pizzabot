@@ -2,6 +2,8 @@ node_modules/
 .env
 .env.production
 *.log
+# farm-ops registers are .log files and must travel with the branch (case #13)
+!farm-ops/docs/**/*.log
 .DS_Store
 
 # python bytecode

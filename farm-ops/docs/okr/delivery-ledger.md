@@ -15,3 +15,5 @@ resumed: head-b 1.10 00:10 LA — brief docs/shifts/2026-10-01-head-b-2.md (kit 
 resumed: head-a 1.10 11:06 LA — network open (monitor.py probe hit counts from a fresh cloud session; P0 item 1 done) — brief docs/shifts/2026-09-30-head-a-1.md ready to run
 closed-for-day: head-a 1.10 11:55 LA — run 5 ok from the cloud (382 fetched, 0 at 70+, 3 real at 50+); YCA memo → L-06 (go-conditional, decide by 14.10); 2 scoring proposals in LESSONS/report — commit 113acae
 closed-for-day: head-c 1.10 12:20 LA — obligations.csv 11 rows (2 dated, 4 verify, 5 rules) + digest block T-30/14/3/עבר/לאמת, demo asserts; open questions in NSGP.md §פתוח — commit 71e55f0
+paused: head-d 1.10 16:20 LA — waits for a Day-1 date with Limor (L-05, default takes effect 2.10 + 48 h); bundle and checklist ready
+closed-for-day: cos 1.10 16:20 LA — run 1 (docs/shifts/2026-09-30-cos-1.md): owner report docs/reports/2026-10-01-owner-morning.md, ledger, decisions count, changes.log; case 13 closed

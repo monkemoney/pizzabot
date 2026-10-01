@@ -19,7 +19,7 @@ Silence 48 h past the deadline on a **reversible** item = the Lead takes the def
 | 2026-09-30 | L-11 | reversible | default: Nave is the second pair of eyes until a board member is named |
 | 2026-09-30 | L-12 | reversible | default: register the farm on Goodstack (free verification + Maia finder) as a SOURCE only; no auto-submission; compare for 90 days |
 
-**Count 1.10.2026:** 11 open · 0 overdue · 4 due this week.
+**Count 1.10.2026 (evening):** 11 open · 0 overdue · 2 due within 24 h (L-05, L-09 on 2.10) · 6 due by 8.10 (L-02, L-04, L-05, L-06, L-07, L-09). No answers arrived today; L-06 now has its fit memo (go, conditional; decide by 14.10).
 
 ## Open
 | id | Question | Proposed default | Impact if delayed | Source | Deadline |
