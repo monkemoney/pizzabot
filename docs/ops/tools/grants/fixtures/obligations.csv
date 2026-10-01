@@ -1,0 +1,9 @@
+obl_id,award,title,kind,due,trigger,lead_days,owner,source,status,notes
+t-3,NSGP FY2025,due in 1 day,deadline,2026-09-30,,,Limor,fixture,open,
+t-14,NSGP FY2025,due in 10 days,report,2026-10-09,,,Tiran,fixture,open,
+t-30,NSGP FY2025,due in 26 days,deadline,2026-10-25,,,Limor,fixture,open,
+past,NSGP FY2025,was due 9 days ago,deadline,2026-09-20,,,Limor,fixture,open,
+far,NSGP FY2025,due in 62 days,deadline,2026-11-30,,,Limor,fixture,open,
+done,NSGP FY2025,already done,deadline,2026-10-01,,,Limor,fixture,done,
+rule-v,NSGP FY2025,rule to verify,rule,,,,Tiran,fixture,verify,
+trig,NSGP FY2025,trigger-relative deadline,deadline,,notice +20 d,20,Limor,fixture,open,

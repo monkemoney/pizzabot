@@ -17,6 +17,7 @@ from datetime import date, datetime, timedelta
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OPPS = os.path.join(HERE, "opportunities.csv")
+OBLIGATIONS = os.path.join(HERE, "obligations.csv")
 FIELDS = ["opp_id", "source", "funder", "program", "url", "type", "amount_min", "amount_max", "deadline", "open_date",
           "status", "eligibility", "categories", "geography", "summary", "first_seen", "last_checked",
           "score", "score_reasons", "decision", "notes"]
@@ -563,11 +564,43 @@ def render_digest(rows, top=10, today=None):
         L.append("• אין")
     if pages:
         L += ["", "*עמודי קרנות שהשתנו (לפתוח ולבדוק):*"] + ["• %s · %s" % (p["funder"][:40], p["url"]) for p in pages[:20]]
+    L += render_obligations(read_obligations(), today)
     pipeline = sum(min(int(r["amount_max"] or r["amount_min"] or 0), org_cap()) for r in live if int(r["score"]) >= 70)
     L += ["", "*בצינור:* %d הזדמנויות מעל 70 · סכום בקשה משוער ~$%s (כל הזדמנות נספרת עד תקרת הבקשה שלנו, $%s)"
           % (sum(1 for r in live if int(r["score"]) >= 70), format(pipeline, ","), format(org_cap(), ",")),
           "", "לאשר/לדחות: לענות ״אשר <שם>״ / ״דחה <שם>״ — או בעמודת decision בגיליון."]
     return "\n".join(L)
+
+
+def read_obligations(path=None):
+    path = path or OBLIGATIONS
+    if not os.path.exists(path):
+        return []
+    return list(csv.DictReader(open(path, newline="", encoding="utf-8")))
+
+
+def render_obligations(obls, today):
+    """Award duties: dated deadlines/reports within 30 days get T-30/T-14/T-3 (overdue = עבר); status=verify rows are listed once."""
+    dated = []
+    for o in obls:
+        if o.get("kind") not in ("deadline", "report") or not o.get("due") or o.get("status") == "done":
+            continue
+        days = (date.fromisoformat(o["due"]) - today).days
+        if days > 30:
+            continue
+        tag = "עבר" if days < 0 else "T-3" if days <= 3 else "T-14" if days <= 14 else "T-30"
+        dated.append((days, tag, o))
+    verify = [o for o in obls if o.get("status") == "verify"]
+    if not dated and not verify:
+        return []
+    L = ["", "*התחייבויות NSGP:*"]
+    for days, tag, o in sorted(dated, key=lambda x: x[0]):
+        L.append("• %s · %s · %s · %s" % (tag, o["due"], o["title"][:70], o.get("owner", "")))
+    if not dated:
+        L.append("• אין מועד ב-30 יום")
+    if verify:
+        L.append("*לאמת:* " + " · ".join(o["title"][:60] for o in verify))
+    return L
 
 
 def org_cap():
@@ -629,11 +662,12 @@ def cmd_run(a):
 
 
 def cmd_demo(_a):
-    global OPPS, RUNS
+    global OPPS, RUNS, OBLIGATIONS
     tmp = tempfile.mkdtemp(prefix="grants-demo-")
     OPPS = os.path.join(tmp, "opportunities.csv")
     RUNS = os.path.join(tmp, "runs.csv")
     fx = os.path.join(HERE, "fixtures")
+    OBLIGATIONS = os.path.join(fx, "obligations.csv")
     ns = argparse.Namespace(sources="grantsgov,cagrants", fixtures=fx)
     rows = cmd_pull(ns)
     assert len(rows) == 9, len(rows)
@@ -673,12 +707,19 @@ def cmd_demo(_a):
         r["score"], r["score_reasons"] = score_row(r, org, today)
     text = render_digest(rows2, 10, today)
     assert "Nonprofit Security" in text and "Closed" not in text and "Levee" not in text and "בצינור" in text, text
+    # NSGP obligations: pinned today 2026-09-29 against fixtures/obligations.csv
+    assert "*התחייבויות NSGP:*" in text, text
+    assert "• T-3 · 2026-09-30 · due in 1 day" in text and "• T-14 · 2026-10-09 · due in 10 days" in text, text
+    assert "• T-30 · 2026-10-25 · due in 26 days" in text and "• עבר · 2026-09-20 · was due 9 days ago" in text, text
+    assert "due in 62 days" not in text and "already done" not in text and "trigger-relative" not in text, text
+    assert text.count("rule to verify") == 1 and "*לאמת:* rule to verify" in text, text
+    assert render_obligations([], today) == [], "no obligations file -> no block"
     # the run command leaves exactly one row, with the counts the weekly reviewer reads
     cmd_run(argparse.Namespace(sources="grantsgov,cagrants", fixtures=fx, debug=False, include_closed=False, no_detail=True,
                                org=os.path.join(HERE, "org.json"), top=10, output=os.path.join(tmp, "digest.md"), runner="demo"))
     runs = list(csv.DictReader(open(RUNS, newline="", encoding="utf-8")))
     assert len(runs) == 1 and runs[0]["status"] == "ok" and runs[0]["total"] == "9" and runs[0]["runner"] == "demo", runs
-    print("demo OK: 9 fixture opportunities pulled · NSGP scored %s · closed/past = 0 · oversized penalised · upsert kept decision · digest renders" % nsgp["score"])
+    print("demo OK: 9 fixture opportunities pulled · NSGP scored %s · closed/past = 0 · oversized penalised · upsert kept decision · digest renders · obligations T-3/T-14/T-30/עבר + לאמת" % nsgp["score"])
     print("files:", tmp)
 
 
