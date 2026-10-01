@@ -1,26 +1,17 @@
-*מענקים — שבוע 29.09*
+*מענקים — שבוע 01.10*
 
-*החלטות (1 חדשות מעל 70):*
-• Admin for Strategic Preparedness and Res — Military and Civilian Partnership for Trauma Readiness Grant · $4,000,000 · עד רץ · ציון 73
-   https://www.grants.gov/search-results-detail/355967
+*החלטות (0 חדשות מעל 70):*
 
 *מועדים ב-45 יום:*
-• 2026-10-06 · Bureau of Justice Assistance · BJA FY 2026 The Kevin and Avonte Program: Reducing
-• 2026-10-26 · Centers for Disease Control -  · Long-term health outcomes of people living with sp
-• 2026-10-30 · Bureau of Justice Assistance · BJA FY 2026 National Center for Veterans Justice
-• 2026-10-30 · Bureau of Justice Assistance · BJA FY 2026 Second Chance Act Community-based Reen
-• 2026-11-02 · Office of Juvenile Justice Del · OJJDP FY 2026 Second Chance Act Youth Reentry Prog
+• 2026-10-29 · Office of Juvenile Justice Del · OJJDP FY 2026 Community and Schools Youth Drug Pre
+• 2026-11-02 · Indian Health Service · National Indian Health Outreach and Education
+• 2026-11-04 · CA Natural Resources Agency · Youth Community Access Grant Program (Round 4)
 
-*עמודי קרנות שהשתנו (לפתוח ולבדוק):*
-• Ahmanson Foundation · https://theahmansonfoundation.org/
-• Annenberg Foundation · https://annenberg.org/grantmaking/
-• California State Nonprofit Security Gran · https://www.caloes.ca.gov/category/grant-announcements-category/california-state-nonprofit-security-grant-program/
-• City of LA Department of Cultural Affair · https://culturela.org/grants/
-• FEMA/Cal OES Nonprofit Security Grant Pr · https://www.caloes.ca.gov/office-of-the-director/policy-administration/finance-administration/grants-management/homeland-security-emergency-management-programs/infrastructure-protection-grants/
-• Jewish Community Foundation of Los Angel · https://www.jewishfoundationla.org/
-• Jewish Federation of Greater Los Angeles · https://www.jewishla.org/
-• LA County Department of Animal Care and  · https://animalcare.lacounty.gov/
-
-*בצינור:* 1 הזדמנויות מעל 70 · עד ~$200,000
+*בצינור:* 0 הזדמנויות מעל 70 · סכום בקשה משוער ~$0 (כל הזדמנות נספרת עד תקרת הבקשה שלנו, $200,000)
 
 לאשר/לדחות: לענות ״אשר <שם>״ / ״דחה <שם>״ — או בעמודת decision בגיליון.
+*הערות הסוקר (30.9):*
+• ההזדמנות היחידה שמתאימה באמת: Youth Community Access, CA Natural Resources ($30K–$300K, הגשה עד 4.11). מזכר התאמה מוכן; ההמלצה היא ללכת בתנאי, עם החלטה עד 14.10. https://resources.ca.gov/grants/youth
+• OJJDP מניעת סמים בבתי ספר (52) ו-IHS בריאות אינדיאנית (52) נראות קשורות לנוער אבל לא מתאימות לחווה. אפשר להתעלם.
+• אף עמוד קרן לא השתנה השבוע (15 נבדקו). אין מה לפתוח.
+• 814 שורות סומנו ישנות: 725 מהן מענקים סגורים של קליפורניה, השאר תוכניות פדרליות שירדו. לא אבד שום דבר פתוח.
