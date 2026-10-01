@@ -6,7 +6,7 @@
 - ✅ **DONE 1.10 11:06 LA** (fresh cloud session in Default, `monitor.py probe` → hitCount 203/161/180, errorcode 0; root `curl` 403 as expected) — **Cloud network access** — owner Nave (operator) — done when a fresh cloud session prints hit counts from `monitor.py probe` (not 000/403). Deadline: before Sunday 4.10 05:47 LA (first Routine run). Path: `docs/ops/farm/ENV-MIGRATION.md`.
 - **NSGP obligations skeleton** — owner head-c — done when `docs/ops/tools/grants/obligations.csv` exists with the known dates (webinar 1.10 10:00 PT, Phase I notice +20 days, PoP 1.9.2025–31.8.2028 federal), `monitor.py digest` shows a T-30/14/3 block, demo asserts it. Deadline: 3.10.
 - **Limor: NSGP webinar 1.10 + ask EMD for the approved IJ/budget + Phase I dates** — owner Limor via Nave, sheet `docs/ceo/2026-10-01-limor-nsgp.md` — done when the IJ budget PDF is in Tiran's vault and the Phase I dates are in `obligations.csv`.
-- **First live grants run from the cloud** — owner head-a — done when `runs.csv` has a row `status=ok, fetched>0, runner=routine|cloud` pushed to the branch and the reviewer section is in `digest.md`. Depends on P0 item 1.
+- ✅ **DONE 1.10 11:52 LA** (`runs.csv` 2026-10-01T18:52 cloud ok, fetched 382 · reviewer section in `digest.md` · commit 113acae) — **First live grants run from the cloud** — owner head-a — done when `runs.csv` has a row `status=ok, fetched>0, runner=routine|cloud` pushed to the branch and the reviewer section is in `digest.md`. Depends on P0 item 1.
 
 ## P1 — this week (30.9–6.10)
 - **Day-1 extraction on Limor's Mac** (photos · contacts counts · calendar) — owner head-d + Nave on site — done when `RUNREPORT.md` + `_share` files are pasted back, LESSONS rows written, handoff bundle re-issued. Needs: a date with Limor (L-05).
