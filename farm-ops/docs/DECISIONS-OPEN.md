@@ -7,7 +7,6 @@ Silence 48 h past the deadline on a **reversible** item = the Lead takes the def
 
 | When | id | Class | If silent past the deadline + 48 h |
 |---|---|---|---|
-| 2026-09-30 | L-01 | reversible | default: open network access on the Default environment (no new environment) |
 | 2026-09-30 | L-02 | reversible | default: "rescue since 2009, open to the public since 2020, nonprofit since 2023" in every text |
 | 2026-09-30 | L-03 | money | wait |
 | 2026-09-30 | L-04 | consent | wait |
@@ -20,12 +19,11 @@ Silence 48 h past the deadline on a **reversible** item = the Lead takes the def
 | 2026-09-30 | L-11 | reversible | default: Nave is the second pair of eyes until a board member is named |
 | 2026-09-30 | L-12 | reversible | default: register the farm on Goodstack (free verification + Maia finder) as a SOURCE only; no auto-submission; compare for 90 days |
 
-**Count 30.9.2026:** 12 open · 0 overdue · 5 due this week.
+**Count 1.10.2026:** 11 open · 0 overdue · 4 due this week.
 
 ## Open
 | id | Question | Proposed default | Impact if delayed | Source | Deadline |
 |---|---|---|---|---|---|
-| L-01 | Network: fix the Default environment's access level, or create `farm-ops` environment and recreate the Routine? | **fix Default** (one setting, no Routine churn) | first Routine run on 4.10 records `empty` | ENV-MIGRATION.md | 2026-10-03 |
 | L-02 | Founding year in outward text: 2009 (website) vs 2020 (Nave)? Ask Limor: what began in 2009? | **2009 rescue · 2020 public · 2023 nonprofit** | Answer Library "history" blocked; deck says "three years" | FACTS #1, #14 | 2026-10-06 |
 | L-03 | Candid/Foundation Directory subscription (~$50–200/mo) for the foundation layer? | **no** — public library access + funder pages first | foundation layer stays manual | SPEC §3A | 2026-10-15 |
 | L-04 | Limor's consent for public Instagram captions to enter the share file? | **no captions** (default of the tool) | event evidence grade stays lower for 2020–2022 | DAY1-PHOTOS §18 | 2026-10-06 |

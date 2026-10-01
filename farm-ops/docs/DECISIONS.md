@@ -17,3 +17,4 @@
 | 13 | 2026-09-29 | **Company OS kit imported and developed as its own project** (Nave: "ניקח את הפיתוח של זה צעד קדימה"); 1.1 shipped; future audience: the nonprofit helping Jewish institutions with cybersecurity. | — |
 | 14 | 2026-09-29 | **Full reset into one folder** (Nave: "בוא נעשה ריסט… הכל בתיקייה אחת"). `farm-ops/` is the control plane; the old session retires after the first live run lands. | — |
 | 15 | 2026-09-29 | **Branch `claude/landing-page-deploy-ai67y4` only, no PRs, never `main`** (session rule since 9.2026; a workflow file cannot go to `main` for the same reason). | — |
+| 16 | 2026-10-01 | **Network: Default environment set to Full** (Nave: "ok i changed it to all domains"; L-01 closed). Live-pull sessions are opened from the browser or by the Routine; a session spawned from an old session inherits the old policy. | ENV-MIGRATION branch B |

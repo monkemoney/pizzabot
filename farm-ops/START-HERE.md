@@ -38,7 +38,7 @@ Read farm-ops/START-HERE.md, then farm-ops/CLAUDE.md, then farm-ops/docs/PRIORIT
 ```
 
 ## Infrastructure as of 30.9.2026 (FACTS #19–#21)
-- Cloud environment **Default** (`env_011Psi9w6ywEkft6y7yU8Ncq`): network policy still denies api.grants.gov, data.ca.gov, caloes, funder pages (probe 30.9 05:05Z: 403 CONNECT on 8/8 hosts). **Fix or replace before Sunday 4.10 05:47 LA** — see `docs/ops/farm/ENV-MIGRATION.md`.
+- Cloud environment **Default** (`env_011Psi9w6ywEkft6y7yU8Ncq`): network access **Full since 1.10** (browser-opened probe: data.ca.gov 200, caloes 200, jewishla 200; api.grants.gov root answers 403 by design, the API itself works via POST). ⚠ A session **spawned from an old session** carries the old session's policy — open live-pull sessions from the browser, or let the Routine open them.
 - Weekly Routine `trig_01KzWBhVXwkqFt1irYEiP6to` "Grants weekly run + review (farm)", Sunday 05:47 LA, fresh cloud session in Default, push+email to Nave. If a new environment is created, the Routine must be recreated (no editable environment field).
 - Nave's Mac = bridge environment `Naves-MacBook-Pro:pizza-bot` (`claude remote-control`, spawn mode; window must stay open). Live debugging only.
 - Mac session "Grants live pull 5" (session_01TazV8nUhgDgVP5PX2qxnxT) was left waiting on Nave's first approval; nothing pushed from it. Safe to ignore or approve.
