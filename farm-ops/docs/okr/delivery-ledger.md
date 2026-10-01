@@ -12,3 +12,4 @@ resumed: head-c 29.9 22:20 LA — brief docs/shifts/2026-09-30-head-c-1.md (NSGP
 paused: head-d 29.9 22:20 LA — waits for a Day-1 date with Limor (L-05); bundle and checklist ready
 resumed: cos 29.9 22:20 LA — brief docs/shifts/2026-09-30-cos-1.md (first morning report)
 resumed: head-b 1.10 00:10 LA — brief docs/shifts/2026-10-01-head-b-2.md (kit 1.3 KPI engine) queued after run 1
+resumed: head-a 1.10 11:06 LA — network open (monitor.py probe hit counts from a fresh cloud session; P0 item 1 done) — brief docs/shifts/2026-09-30-head-a-1.md ready to run
