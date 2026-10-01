@@ -12,7 +12,8 @@ The skeleton as extracted from the farm work: briefs, worktrees, ledger, gate, u
 
 ## Next (in order)
 1. **Loop alarm** as code: the same ask to the owner twice in `DECISIONS-OPEN`/`INBOX` = round 2 (red), three = black — the lint names it; a route change is required before a third ask.
-2. **Chain scan**: a CEO sheet step at a vendor without a chain block, or with an `unknown` condition, fails the lint before the sheet goes out.
-3. **Copies list** (`docs/COPIES.md`): every pair that must match, each with a comparer or a named owner; the lint checks the file exists and every row names one.
-4. **Owner report generator**: `scripts/report.mjs` drafts the morning report skeleton from the board, in `ownerLanguage`, with the status words enforced.
-5. **Security posture page** for organisations that hold sensitive data (secrets by name only, no live writes without a named switch, least privilege per role, append-only logs, no PII in any file the kit owns) — the kit was born inside a system that handles customers' phone numbers; the page states what the design guarantees and what it does not.
+2. **KPI engine (1.3)**: `kpi.config.json` catalogue as data → `scripts/kpi.mjs` computes D/E KPIs from the files every instance has, appends weekly snapshots (`docs/okr/kpi.csv`), renders `docs/KPI.md` with trends, opens a case per new breach (idempotent), board section. Plan and 40-KPI catalogue: `farm-ops/docs/KPI-PLAN.md`.
+3. **Chain scan**: a CEO sheet step at a vendor without a chain block, or with an `unknown` condition, fails the lint before the sheet goes out.
+4. **Copies list** (`docs/COPIES.md`): every pair that must match, each with a comparer or a named owner; the lint checks the file exists and every row names one.
+5. **Owner report generator**: `scripts/report.mjs` drafts the morning report skeleton from the board, in `ownerLanguage`, with the status words enforced.
+6. **Security posture page** for organisations that hold sensitive data (secrets by name only, no live writes without a named switch, least privilege per role, append-only logs, no PII in any file the kit owns) — the kit was born inside a system that handles customers' phone numbers; the page states what the design guarantees and what it does not.

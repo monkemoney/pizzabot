@@ -8,6 +8,7 @@
 | **Instructions for the Lead session** | `farm-ops/CLAUDE.md` | first |
 | **Priorities P0–P3** | `farm-ops/docs/PRIORITIES.md` | before every brief |
 | **90-day work plan with dates** | `farm-ops/docs/PLAN-90D.md` | weekly |
+| **KPI plan + catalogue** | `farm-ops/docs/KPI-PLAN.md` · `farm-ops/kpi.config.json` | before touching a threshold or a report number |
 | **Decisions made** / **open** | `farm-ops/docs/DECISIONS.md` · `DECISIONS-OPEN.md` | before asking anything |
 | **Briefs (one per run)** | `farm-ops/docs/shifts/` | when spawning |
 | **Limor's / Tiran's step sheets** | `farm-ops/docs/ceo/` | before their slot |
