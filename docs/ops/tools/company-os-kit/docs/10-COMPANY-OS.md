@@ -36,9 +36,9 @@ Goal · what you see · what to do (numbered, tests first where code) · what to
 - `docs/cases/LOG.md` — every problem, 12 columns (see the file); `INBOX.md` — one line opens a case.
 
 ## 6. Guards that run (1.1) and guards still on paper
-**Running:** `scripts/lint-docs.mjs` (briefs, decisions, log shapes, idle roles, stale cases — inside the gate) · the board's timing and deadline state · `scripts/case.mjs` · the gate's refusal to log a blank record.
+**Running:** `scripts/lint-docs.mjs` (briefs, decisions, log shapes, idle roles, stale cases, and since 1.2 the **loop alarm**: the same decision asked on 2 days = WARN, on 3 days without a `route change:` = FAIL — inside the gate) · the board's timing and deadline state · `scripts/case.mjs` · the gate's refusal to log a blank record.
 
 **Still designs, not code:**
-- **Loop alarm**: the same ask to the CEO twice = a loop (round 2 red, round 3 black) — the route must change, never the same ask a third time; two failed tries at one vendor with two different error texts = a **chain** (hidden prerequisites) → read the vendor's status screens before a third try.
+- **Loop alarm, second half**: two failed tries at one vendor with two different error texts = a **chain** (hidden prerequisites) → read the vendor's status screens before a third try.
 - **Chain scan**: every step at a vendor in a plan or a CEO sheet must sit under a chain block (conditions, owner, vendor time, stamps `seen` / `documented` / `unknown`); a sheet goes to the CEO only when both scans pass.
 - **Copies list**: every pair of things that must match (a lib and its copy, a doc and the code, the live build and the log) has a comparer or a named owner.

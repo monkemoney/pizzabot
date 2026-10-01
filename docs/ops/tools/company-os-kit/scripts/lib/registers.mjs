@@ -113,3 +113,50 @@ export function badChangeLines(text) {
   });
   return bad;
 }
+
+const ASK = /\b(?:re-)?asked\b|שאלנו|נשאל/i;
+// `route change: none yet` (the INBOX loop-line template) is not a route change — something must be named after the colon
+const ROUTE = /route change:\s*(?!none\b|nothing\b|—|-|\||$)\S/i;
+
+/** Loop alarm (kit §6): per decision id, the number of distinct days it was asked toward the owner since its last
+ *  `route change:` line. Reads changes.log lines (`<YYYY-MM-DD> · …`) and INBOX rows (When column first). A line counts
+ *  as an ask when it names the id and an ask word ("asked", "re-asked", "שאלנו", "נשאל"); a `route change:` line naming
+ *  the id resets that id's count and is not itself an ask. Lines without a date are ignored — an undated ask cannot be
+ *  placed on a day. Returns Map id → { round, days, routeChanged }. */
+export function askCounts(changesLog, inbox) {
+  const events = [];
+  for (const line of String(changesLog ?? '').split('\n')) {
+    const day = /^(\d{4}-\d{2}-\d{2}) ·/.exec(line)?.[1];
+    if (day) events.push({ day, line });
+  }
+  for (const line of String(inbox ?? '').split('\n')) {
+    const c = cells(line);
+    const d = c && parseDate(c[0]);
+    if (d) events.push({ day: d.toISOString().slice(0, 10), line });
+  }
+  events.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));   // stable: same-day lines keep file order
+  const out = new Map();
+  for (const { day, line } of events) {
+    for (const id of new Set(line.match(/\b[A-Z]-\d+\b/g) ?? [])) {
+      if (ROUTE.test(line)) { out.set(id, { days: new Set(), routeChanged: true }); continue; }
+      if (!ASK.test(line)) continue;
+      if (!out.has(id)) out.set(id, { days: new Set(), routeChanged: false });
+      out.get(id).days.add(day);
+    }
+  }
+  for (const [id, v] of out) {
+    if (!v.days.size && !v.routeChanged) out.delete(id);
+    else out.set(id, { round: v.days.size, days: [...v.days], routeChanged: v.routeChanged });
+  }
+  return out;
+}
+
+/** Round 2 → WARN (change the route); round 3 or more since the last route change → FAIL. */
+export function loopFindings(counts) {
+  const warns = [], fails = [];
+  for (const [id, c] of counts) {
+    if (c.round >= 3) fails.push(`loop round ${c.round}: ${id} asked on ${c.round} days without a route change — do not ask a third time; change the route first`);
+    else if (c.round === 2) warns.push(`loop round 2: ${id} asked on 2 days — change the route (default? different person? smaller question?)`);
+  }
+  return { warns, fails };
+}

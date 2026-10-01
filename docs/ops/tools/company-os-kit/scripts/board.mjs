@@ -6,7 +6,7 @@ import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { loadConfig, stamp } from './lib/config.mjs';
 import { parseLedger, lastByRole, parseUsage, usageTotals } from './lib/ledger.mjs';
-import { parseOpenDecisions, decisionStatus, parseCases, caseSummary, ledgerAges } from './lib/registers.mjs';
+import { parseOpenDecisions, decisionStatus, parseCases, caseSummary, ledgerAges, askCounts } from './lib/registers.mjs';
 
 const cfg = loadConfig();
 const now = new Date();
@@ -30,6 +30,8 @@ for (const d of dec) {
   out.push(`| ${d.id} | ${d.class} | ${d.deadline} | ${state} | ${d.default} |`);
 }
 if (!dec.length) out.push('| — | | | nothing open | |');
+const loops = [...askCounts(read('docs/meetings/changes.log'), read('docs/cases/INBOX.md'))].filter(([, c]) => c.round >= 2);
+out.push('', 'Loops: ' + (loops.length ? loops.map(([id, c]) => `${id} round ${c.round}${c.round >= 3 ? ' ⚠' : ''}`).join(' · ') : 'none'));
 
 // problems
 const cs = caseSummary(parseCases(read('docs/cases/LOG.md')), now, cfg.caseStaleDays);

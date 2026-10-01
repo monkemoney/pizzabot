@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDate, parseOpenDecisions, decisionStatus, parseCases, caseSummary, checkBrief, ledgerAges, badChangeLines } from './registers.mjs';
+import { parseDate, parseOpenDecisions, decisionStatus, parseCases, caseSummary, checkBrief, ledgerAges, badChangeLines, askCounts, loopFindings } from './registers.mjs';
 import { parseLedger, lastByRole } from './ledger.mjs';
 
 const NOW = new Date(Date.UTC(2026, 0, 10, 12, 0));   // 2026-01-10 12:00Z, pinned
@@ -82,4 +82,53 @@ test('ledger ages: a paused role older than the alert window is flagged, a resum
 test('changes.log lines off the shape are reported by line number', () => {
   const log = `# header\n2026-01-02 · Lead · 17:05 LA: merged head/a run 1 · tests pass\nmerged something without a date\n2026-01-03 · CEO · 09:00 IL: "keep it simple"`;
   assert.deepEqual(badChangeLines(log), [3]);
+});
+
+// loop alarm (1.2): an ask counts once per distinct day; a `route change:` line resets the count for that id
+const LOG = `# changes
+2026-01-02 · Lead · 09:00 LA: asked Limor L-05 (date for Day 1)
+2026-01-02 · Lead · 18:00 LA: re-asked L-05 the same evening — same day, still round 1
+2026-01-03 · Lead · 09:00 LA: L-05 asked again in the report
+2026-01-03 · Lead · 09:10 LA: asked L-07 once
+2026-01-04 · Lead · 09:00 LA: שאלנו שוב L-09
+2026-01-05 · Lead · 09:00 LA: L-09 נשאל בדוח
+2026-01-06 · Lead · 09:00 LA: L-09 asked a third time
+2026-01-04 · Lead · 10:00 LA: L-11 asked
+2026-01-05 · Lead · 10:00 LA: L-11 asked
+2026-01-06 · Lead · 10:00 LA: route change: L-11 → default applies, Nave decides
+2026-01-07 · Lead · 10:00 LA: L-11 asked with the smaller question
+2026-01-07 · Lead · 11:00 LA: L-12 mentioned without asking`;
+const INBOX = `| When | From | Line | → Case |
+|---|---|---|---|
+| 2026-01-08 | cos | loop: ask, owner, round 2 — L-07 asked again in the morning report · first signal 3.1 · route change: none yet | — |`;
+
+test('askCounts: distinct days per id, both registers, Hebrew and English ask words', () => {
+  const c = askCounts(LOG, INBOX);
+  assert.equal(c.get('L-05').round, 2);                 // two days, three lines
+  assert.equal(c.get('L-07').round, 2);                 // one in changes.log + one in the inbox
+  assert.equal(c.get('L-09').round, 3);
+  assert.equal(c.has('L-12'), false);                   // mentioned, never asked
+});
+
+test('askCounts: a route change resets the count for that id only', () => {
+  const c = askCounts(LOG, INBOX);
+  assert.equal(c.get('L-11').round, 1);
+  assert.equal(c.get('L-11').routeChanged, true);
+  assert.equal(c.get('L-09').routeChanged, false);
+});
+
+test('loopFindings: round 2 warns, round 3 fails, round 1 is silent', () => {
+  const f = loopFindings(askCounts(LOG, INBOX));
+  assert.deepEqual(f.fails, ['loop round 3: L-09 asked on 3 days without a route change — do not ask a third time; change the route first']);
+  assert.deepEqual(f.warns.sort(), [
+    'loop round 2: L-05 asked on 2 days — change the route (default? different person? smaller question?)',
+    'loop round 2: L-07 asked on 2 days — change the route (default? different person? smaller question?)',
+  ]);
+  assert.deepEqual(loopFindings(askCounts('', '')), { warns: [], fails: [] });
+});
+
+test('askCounts: "route change: none yet" (the INBOX template) does not reset the count', () => {
+  const c = askCounts('2026-01-02 · Lead · 09:00 LA: asked L-03', '| 2026-01-03 | cos | loop: ask, owner, round 2 — L-03 asked · route change: none yet | — |');
+  assert.equal(c.get('L-03').round, 2);
+  assert.equal(c.get('L-03').routeChanged, false);
 });
