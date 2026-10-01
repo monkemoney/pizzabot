@@ -3,3 +3,5 @@
 2026-10-01 · head-a · 11:52 LA: grants live run 5 from the cloud, ok, 382 fetched; Youth Community Access fit memo; reviewer notes in digest (113acae)
 2026-10-01 · head-c · 12:20 LA: NSGP obligations.csv (11 rows) + T-30/14/3 block in the Sunday digest, demo asserts (71e55f0)
 2026-10-01 · cos · 16:20 LA: farm-ops .log registers unignored (case 13 closed); first owner morning report 1.10; decisions count refreshed
+2026-10-01 · head-b · 16:20 LA: company-os-kit 1.2 — loop alarm in lint-docs (round 2 WARN, round 3 FAIL) + board Loops line (c3fc38f)
+2026-10-01 · head-b · 16:45 LA: company-os-kit 1.3 — KPI engine D1–D5/E1–E10, kpi.csv snapshots, KPI.md, breaches → cases, board KPIs section; seeded run found and fixed a same-minute double snapshot and self-bred cases (f5cde07)

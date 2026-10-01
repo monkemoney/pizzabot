@@ -10,8 +10,8 @@
 
 ## P1 — this week (30.9–6.10)
 - **Day-1 extraction on Limor's Mac** (photos · contacts counts · calendar) — owner head-d + Nave on site — done when `RUNREPORT.md` + `_share` files are pasted back, LESSONS rows written, handoff bundle re-issued. Needs: a date with Limor (L-05).
-- **KPI system (plan + catalogue done 1.10):** kit 1.3 KPI engine (D/E generic) → farm-ops adapters (A/B/C) → Routine + report wiring — owner head-b, then head-a/head-c — done when the first Sunday snapshot is in `docs/okr/kpi.csv` and a planted breach opened a case. Plan: `docs/KPI-PLAN.md`.
-- **Company OS kit 1.2: loop alarm as code** — owner head-b — done when `lint-docs` names a repeated ask (same L-id asked twice in INBOX/changes.log) and tests cover it; CHANGELOG 1.2.
+- **KPI system (plan + catalogue done 1.10; kit 1.3 engine done 1.10, f5cde07):** ~~kit 1.3 KPI engine (D/E generic)~~ → farm-ops adapters (A/B/C) → Routine + report wiring — owner head-b, then head-a/head-c — done when the first Sunday snapshot is in `docs/okr/kpi.csv` and a planted breach opened a case. Plan: `docs/KPI-PLAN.md`.
+- ✅ **DONE 1.10** (c3fc38f) — **Company OS kit 1.2: loop alarm as code** — owner head-b — done when `lint-docs` names a repeated ask (same L-id asked twice in INBOX/changes.log) and tests cover it; CHANGELOG 1.2.
 - **Grants scoring review after run 5** — owner head-a — done when false positives at 50+ are ≤ 2 and the Youth Community Access Grant (CA NRA, deadline 4.11) has a go/no-go from Limor (L-06).
 - **Owner morning report in Hebrew, daily** — owner cos — done when `docs/reports/<date>-owner-morning.md` exists each working day and Nave forwards it.
 
