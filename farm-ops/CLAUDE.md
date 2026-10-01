@@ -1,5 +1,5 @@
 # farm-ops — Lead session instructions (Kfar Saba Urban Farm · ops control plane)
-Read `START-HERE.md` first (the map), then `docs/PRIORITIES.md` before every brief. The repo root `CLAUDE.md` is Jasell's — its rules about `src/ public/ tests/` stand; this folder is ops, not the product.
+Read `START-HERE.md` first (the map), `docs/CONTEXT.md` second (how we work), then `docs/PRIORITIES.md` before every brief. The repo root `CLAUDE.md` is Jasell's — its rules about `src/ public/ tests/` stand; this folder is ops, not the product.
 Branch: `claude/landing-page-deploy-ai67y4` ONLY. No pull requests. Never push to `main`. Never touch `src/`, `public/`, `tests/`, the root `CLAUDE.md`, or the four uncommitted files on Nave's Mac (`public/landing.html`, `.design/handoff/*`, `training/knowledge/lessons.md`).
 Language: replies **English first, then Hebrew**. Terminal instructions for a human = one block per step: where · exact paste · expected output · if not, what.
 Tests: `npm test` (node:test, zero deps) · `npm run lint` (paper trail) · `npm run gate` before any merge/hand-off · `npm run board` every morning.
