@@ -10,11 +10,12 @@
 | 4 | **02 Memory** | before more data flows in, decide what is stored, where, and what never | what is never written; which past project data to import; who may read | `portfolio/` repo skeleton; `recall` script |
 | 5 | **01 Perception** | the intake habit must fit Nave's day (phone, outdoors) | channels the brain may read alone; voice-note path | portfolio INBOX + intake script; webhook receiver |
 | 6 | **04 Planning** | the three active projects, named | active / parked / killed today | portfolio PRIORITIES; WIP lint |
-| 7 | **05 Execution** | machines, night runs, weekly cost line | environments table; night-run rules; budget | repo split executed; model adapter spec |
-| 8 | **06 Reflection** | wire the loops to the real data | which breaches wake him; reversal definition | KPI adapters; first Debug-head run |
-| 9 | **07 Communication** | last, because it depends on everything above | outward templates allowed without him; language order per device | `report.mjs`; `templates/` |
-| 10 | **09 Body** | the expensive part, decided with the doctrine already stable | number ownership; tier-1 model; body budget | voice adapter study; `actions.log` receiver; swap drill |
+| 7 | **10 Inner world** | the task workspace must exist before the big tasks of the month (repo split, Day 1, NSGP) start | the threshold; which current tasks get a workspace today; does he read STATE.md or the report | `tasks/_TEMPLATE/` + `task.mjs new`; head-e-1 gets a workspace |
+| 8 | **05 Execution** | machines, night runs, weekly cost line | environments table; night-run rules; budget | repo split executed; model adapter spec |
+| 9 | **06 Reflection** | wire the loops to the real data | which breaches wake him; reversal definition | KPI adapters; first Debug-head run |
+| 10 | **07 Communication** | last, because it depends on everything above | outward templates allowed without him; language order per device | `report.mjs`; `templates/` |
+| 11 | **09 Body** | the expensive part, decided with the doctrine already stable | number ownership; tier-1 model; body budget | voice adapter study; `actions.log` receiver; swap drill |
 
-**After sitting 10:** the brain is v1.0. From then on it changes only through Reflection (cases, ratchet, doctrine additions with origin), never by editing a part in chat.
+**After sitting 11:** the brain is v1.0. From then on it changes only through Reflection (cases, ratchet, doctrine additions with origin), never by editing a part in chat.
 
 **How a sitting runs.** Nave reads the part (one screen). The Chief of Staff asks the review questions one at a time, each with a proposed default. Answers go into the file as Nave's words with the date. The build step becomes a brief under the relevant repo. 45 minutes maximum; what is not decided gets a default and a deadline in DECISIONS-OPEN.

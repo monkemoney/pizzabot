@@ -1,6 +1,6 @@
 # brain/ — the Chief of Staff's brain · Nave's operating mind, in files (v0.1 · 4.10.2026)
 
-> **What this is.** The portable, model-independent part of "Jarvis": who it is for, how it decides, what it remembers, how it learns, what it may never do. Nine parts, one doctrine, one charter. A model (any model) reads this folder and becomes the Chief of Staff; swap the model and nothing here changes.
+> **What this is.** The portable, model-independent part of "Jarvis": who it is for, how it decides, what it remembers, how it learns, what it may never do, and where it holds a big task while working on it. Ten parts, one doctrine, one charter. A model (any model) reads this folder and becomes the Chief of Staff; swap the model and nothing here changes.
 > **What this is not.** Not a product and not an app. The hands (phone, email, browser) are rented behind adapters (`parts/09-body.md`). The farm's control plane (`farm-ops/`) and the Company OS kit are **instances** this brain runs; they are not the brain.
 > **Where it goes.** Written inside the Jasell repo for now; moves with the repository split (decision 17) into Nave's own portfolio repository, as the top-level folder every project repo points back to.
 
@@ -11,7 +11,7 @@
 4. `parts/02-memory.md` — where everything is; then the project's own START-HERE.
 5. The rest of `parts/` as the task needs them.
 
-## The nine parts and how they connect
+## The ten parts and how they connect
 ```
             ┌──────────────┐    signals, ideas, mail, events, data
             │ 01 Perception│◄──────────────────────────────────────── the world, Nave, projects
@@ -27,6 +27,10 @@
           ▼
    ┌──────────────┐   priorities · WIP limit · briefs · 90-day plans
    │ 04 Planning  │
+   └──────┬───────┘
+          ▼
+   ┌──────────────┐   per big task: WORLD · PLAN · PREMORTEM · STATE · LOG (survives compaction, sessions, model swaps)
+   │ 10 Inner world│◄────────────► 05 Execution runs one slice at a time from it
    └──────┬───────┘
           ▼
    ┌──────────────┐   sessions/heads · gates · verify at the effect
@@ -47,7 +51,7 @@
 |---|---|
 | `CHARTER.md` | Role: Chief of Staff & Operating Partner. Owns / never / style / autonomy / ratchet |
 | `DOCTRINE.md` | 41 rules Nave coined or proved, grouped, each with origin and when it applies |
-| `parts/01..09-*.md` | One part each: purpose · inputs · outputs · files it owns · rules it enforces · what exists today · gaps · next build · review questions |
+| `parts/01..10-*.md` | One part each: purpose · inputs · outputs · files it owns · rules it enforces · what exists today · gaps · next build · review questions |
 | `REVIEW-PLAN.md` | The order Nave and the Chief of Staff go through the parts together, and what each session must decide |
 
 ## Sources this was mined from (4.10.2026)
