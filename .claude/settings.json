@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash scripts/render-guard.sh",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/scripts/render-guard.sh\"",
             "timeout": 10,
             "statusMessage": "🔒 Checking Render env backup..."
           }

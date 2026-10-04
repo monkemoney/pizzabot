@@ -1,5 +1,10 @@
 # CLAUDE.md
 
+> ## ⚠️ הכיוון השתנה — 09/2026
+> **המוצר המתועד בקובץ הזה (בוט הזמנות בוואטסאפ, ישראל) קפוא.** אין עבודה חדשה עליו.
+> הכיוון הנוכחי — אנליטיקת מרג׳ין ניטרלית ל-off-premise לרשתות מסעדות בארה״ב — מתועד ב-**[`docs/STRATEGY.md`](docs/STRATEGY.md)**. **קרא אותו ראשון.** תפעול יומי: `docs/ops/`.
+> כלל: **שום קוד לפני שאודיט #1 נמסר ביד ושולם** (STRATEGY.md §11). הקובץ הזה נשאר מדריך ל-codebase הקיים בלבד.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ---
