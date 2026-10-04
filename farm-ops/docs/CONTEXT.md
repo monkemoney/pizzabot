@@ -10,8 +10,8 @@
 ## 2. Where the time went (so it does not go there again)
 | Time sink | Cost | Root cause | Eliminate / streamline |
 |---|---|---|---|
-| Cloud network policy (3 probes, 2 days, ~$6) | high | the policy binds at session start; a session spawned from an old session inherits the old policy — invisible until a browser-opened session proved it | **Eliminated:** live-pull sessions are opened from the browser or by the Routine. Never spawn a probe from an old session. Check `curl` in the first minute of every session |
-| Nave's Mac as a relay for live runs (paste → run → paste back) | high, and his hands | the cloud had no network | **Eliminated** by the Routine + Full access. The Mac bridge is for live debugging only |
+| Cloud network policy (3 probes, 2 days, ~$6) | high | the policy binds at session start; a session spawned from an old session inherits the old policy — invisible until a browser-opened session proved it | **Eliminated:** live-pull sessions are opened in the **full access** environment (browser, or the persistent Routine runner). Default stays 403 whatever the setting says. Check `curl` in the first minute of every session |
+| Nave's Mac as a relay for live runs (paste → run → paste back) | high, and his hands | the cloud had no network | **Eliminated** by Routine v2 (persistent runner in full access; v1's fresh sessions never had network or a push credential). The Mac bridge is for live debugging only |
 | GitHub Actions fallback | 1 h, dead | GitHub registers workflows from `main` only; our rule is branch-only | **Eliminated.** Do not propose Actions again while the work lives on a branch |
 | Grants.gov request shape | 1 h | documented separator was wrong; no probe before the pull | **Streamlined:** `monitor.py probe` first, always; a pull with 0 hits is a case, not a retry |
 | Scoring false positives (hospital at 73, NIH ghosts) | 2 h over 3 runs | scoring tuned on fixtures, not on live data; pull never removed rows | **Streamlined:** every live run gets a reviewer pass; `stale` marking; `HARD_OFF`. Tune from the real `opportunities.csv`, never from imagination |

@@ -11,9 +11,9 @@
 | `monitor.py digest` | הודעת WhatsApp שבועית ללימור: החלטות · מועדים ב-45 יום · צינור |
 | `monitor.py run` | pull + score + digest בתהליך אחד, ושורה אחת ב-`runs.csv` (תאריך, מריץ, סטטוס, משך, נשאבו/חדשות/stale, מעל 70/50, עמודי קרנות). ריצה שמתה משאירה שורת `failed`; שבוע בלי שורה = הכשל שהסוקר השבועי קיים בשבילו |
 | `obligations.csv` | חובות מתוארכות של מענקים שזכינו בהם (מתחיל ב-NSGP FY2025). עמודות: `obl_id · award · title · kind (deadline\|window\|rule\|report) · due (ISO, ריק כשתלוי בטריגר) · trigger · lead_days · owner (Limor/Tiran/EMD) · source · status (open\|verify\|done) · notes`. לכל שורה מקור. ה-digest מוסיף בלוק ״התחייבויות NSGP״: deadline/report עם `due` בתוך 30 יום מסומנים T-30 / T-14 / T-3, ומה שעבר ולא `done` מסומן ״עבר״. שורות `status=verify` מופיעות פעם אחת תחת ״לאמת״. כשחובה בוצעה מסמנים `done` ביד |
-| `monitor.py demo` | בדיקה עצמית על `fixtures/` (הסנדבוקס חסום לרשת; ריצה חיה מהמק או מ-GitHub Actions) |
+| `monitor.py demo` | בדיקה עצמית על `fixtures/` (סביבת Default חסומה לרשת; ריצה חיה מסביבת full access או מהמק) |
 
-**ריצה אוטומטית (מ-29.9):** `.github/workflows/grants-monitor.yml` — `workflow_dispatch` על הענף (schedule של GitHub רץ רק מ-main, והעבודה על ענף משלה בכלל). Routine שבועי (ראשון 05:47 LA, סשן ענן חדש) מפעיל אותו, מחכה, מושך, קורא את `runs.csv` + `digest.md` מול הצ'קליסט ב-LESSONS, מוסיף שורת לקח כשיש, וכותב את טקסט הוואטסאפ ללימור. ה-Action מבצע commit של הפלטים לאותו ענף עם `[skip ci]`. המק = דיבוג חי בלבד (לפטופ הוא לא שרת).
+**ריצה אוטומטית (מ-4.10, v2):** Routine שבועי (ראשון 05:47 LA) מתעורר בסשן ענן **קבוע** (`session_01Qp4iuo9uB4WaKxvhiFm4Ek`, סביבת ״full access״, הריפו מחובר), מסנכרן את הענף, מריץ `demo` → `seed_funders.py` → `monitor.py run`, קורא את `runs.csv` + `digest.md` מול הצ'קליסט ב-LESSONS, מוסיף שורת לקח כשיש, מוסיף ״הערות הסוקר״ ל-digest, ודוחף לענף. למה סשן קבוע: Routine שפותח סשן חדש לא שומר ריפו ולא סביבה — גרסה 1 רצה פעמיים (1.10, 4.10), ״הצליחה״ בדקה אחת ולא דחפה כלום. `.github/workflows/grants-monitor.yml` נשאר כהפניה בלבד (לא ניתן להפעיל מענף). המק = דיבוג חי בלבד (לפטופ הוא לא שרת).
 
 **ריצה חיה (מק של Nave):**
 ```bash
