@@ -13,7 +13,7 @@
 | `obligations.csv` | חובות מתוארכות של מענקים שזכינו בהם (מתחיל ב-NSGP FY2025). עמודות: `obl_id · award · title · kind (deadline\|window\|rule\|report) · due (ISO, ריק כשתלוי בטריגר) · trigger · lead_days · owner (Limor/Tiran/EMD) · source · status (open\|verify\|done) · notes`. לכל שורה מקור. ה-digest מוסיף בלוק ״התחייבויות NSGP״: deadline/report עם `due` בתוך 30 יום מסומנים T-30 / T-14 / T-3, ומה שעבר ולא `done` מסומן ״עבר״. שורות `status=verify` מופיעות פעם אחת תחת ״לאמת״. כשחובה בוצעה מסמנים `done` ביד |
 | `monitor.py demo` | בדיקה עצמית על `fixtures/` (סביבת Default חסומה לרשת; ריצה חיה מסביבת full access או מהמק) |
 
-**ריצה אוטומטית (מ-4.10, v2):** Routine שבועי (ראשון 05:47 LA) מתעורר בסשן ענן **קבוע** (`session_01Qp4iuo9uB4WaKxvhiFm4Ek`, סביבת ״full access״, הריפו מחובר), מסנכרן את הענף, מריץ `demo` → `seed_funders.py` → `monitor.py run`, קורא את `runs.csv` + `digest.md` מול הצ'קליסט ב-LESSONS, מוסיף שורת לקח כשיש, מוסיף ״הערות הסוקר״ ל-digest, ודוחף לענף. למה סשן קבוע: Routine שפותח סשן חדש לא שומר ריפו ולא סביבה — גרסה 1 רצה פעמיים (1.10, 4.10), ״הצליחה״ בדקה אחת ולא דחפה כלום. `.github/workflows/grants-monitor.yml` נשאר כהפניה בלבד (לא ניתן להפעיל מענף). המק = דיבוג חי בלבד (לפטופ הוא לא שרת).
+**ריצה אוטומטית:** עדיין אין Routine שעובד (4.10) — שלושה ניסיונות דרך ה-API ״הצליחו״ תוך 15–60 שניות ולא דחפו כלום: סשן שנפתח מ-Routine מגיע **בלי ריפו מחובר**, ואישור הגיט הולך אחרי הריפו. הפתרון: Nave יוצר את ה-Routine פעם אחת ב-UI של claude.ai (ריפו + ענף + סביבת full access + הפרומפט) — הכל ב-`ROUTINE.md` בתיקייה הזו. עד אז: סשן ה-Lead מריץ ביום ראשון ידנית עם אותו פרומפט. ההוכחה היחידה לריצה = שורה חדשה ב-`runs.csv` בענף.
 
 **ריצה חיה (מק של Nave):**
 ```bash
