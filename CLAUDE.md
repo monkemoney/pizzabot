@@ -1,5 +1,38 @@
 # CLAUDE.md
 
+<!-- boilerplate:begin -->
+## Working rules (shared boilerplate — source: monkemoney/Saturn- · `boilerplate/`)
+
+Files listed in `.boilerplate.lock` are managed from Saturn: change them there and re-sync, never here
+(`node boilerplate/sync.mjs <this-repo>` from a Saturn checkout). `node scripts/check-boilerplate.mjs` — also run by CI — fails on a local edit.
+
+**Read when:**
+- `docs/FAILURE-CLASSES.md` — before changing any process, and against your own diff before committing.
+- `docs/playbooks/idea-to-spec.md` / `idea-to-venture.md` — when an idea or a product decision is on the table (private repos only).
+- `tasks/_TEMPLATE/` — copy to `tasks/<yyyy-mm-dd>-<slug>/` for any task that spans more than one session, person or repo.
+- Company OS (where installed): `docs/10-COMPANY-OS.md` once · `docs/PRIORITIES.md` before every brief · decisions in `docs/DECISIONS.md`, open questions in `docs/DECISIONS-OPEN.md` · every problem a row in `docs/cases/LOG.md` (`npm run case`).
+- Design skills (where installed): `.claude/skills/` — `/design-flow` runs the whole sequence; `/grill-me` before committing to a plan.
+
+**Rules:**
+1. Build only what the spec marks required. Anything else: stop and ask, with a default.
+2. Tests before code on consent, money, idempotency and anything that touches customers.
+3. Every outbound message goes through one gate function. No exceptions.
+4. Never write to a live system except through named switches, each with an off path the owner can click.
+5. Never invent API fields. Unsure → read the docs or mark `TODO(verify)`.
+6. Small merges (< 400 lines, one per command); reference the spec section; list the checks run.
+7. Security first: signature checks, secrets by NAME only (never values in files or chat), least privilege.
+8. Keep CLAUDE.md short enough to be read every session.
+9. The owner is on a phone: mobile first, one step at a time.
+10. Everything belongs to the owner: accounts, code, docs.
+11. Before each owner step: what, why and the exact clicks; after: how to verify and how to undo. Never an open question — propose a default and ask "ok?".
+12. Debug: reproduce first; check env before code; one change per attempt; 3 failed attempts → stop, write a case, fresh session; every fix ends with a test or a watchdog.
+13. Ops: gate before ship, smoke after; rollback before investigating; leaked key → rotate first; nothing is done until the owner verified it.
+14. Report success from the observed effect, never from the write (failure class 9).
+15. Owner steps at a vendor: read the vendor's own status screens first and write the whole chain of conditions before the first click.
+16. One product per repository; a feature branch in another product's repo never outlives a spike.
+<!-- boilerplate:end -->
+
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ---

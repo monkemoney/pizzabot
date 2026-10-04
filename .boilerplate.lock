@@ -1,0 +1,17 @@
+{
+  "version": "1.0.0",
+  "saturn": "8628fc5",
+  "files": {
+    "scripts/check-boilerplate.mjs": "ba43de411bb6e3c06d01211b8a39f004a41b69eeb6419fcb014f272f949d5b81",
+    ".github/workflows/boilerplate.yml": "39bbdba9032db416f3ce553cdaa36d52af4082204f4b5399ea0a41d9cab93c1d",
+    "docs/FAILURE-CLASSES.md": "7ccf9e39c41597665ecaf49433fe7a61e6dfcc5b2f7cde3df0a1944220842cce",
+    "tasks/_TEMPLATE/LOG.md": "1f924428d2e7db361b0ba54d4c9fdb67b5b036f4a18baa1111de7e17fa89f816",
+    "tasks/_TEMPLATE/PLAN.md": "193c41c05a5d586f6c03986325811bfa891c9f819aba2f9f07923d456aa236eb",
+    "tasks/_TEMPLATE/PREMORTEM.md": "879af9e4e5eec45542492517771ebf233e25c2a6b205f02a494092aa4c13edec",
+    "tasks/_TEMPLATE/README.md": "48b907655c8d1275cffc455ca5eed584f51b9c65e082e908cad0b487cff13e3d",
+    "tasks/_TEMPLATE/RESULT.md": "e2e75a289098ed35d70e63bd10f9b33c0663aa0a411501e81c54c4143dc373fd",
+    "tasks/_TEMPLATE/STATE.md": "c970a9a4dd8a279173fc878bbe1f9be52369c6234773bc2ba5fe1cf85f037f1b",
+    "tasks/_TEMPLATE/TASK.md": "da7425d614053922daf71a0955631cf97726ce847db77b5159d825e9eb210146",
+    "tasks/_TEMPLATE/WORLD.md": "a985040f137b81997224ac1cf74bc45f4439b460ce4f29087a47258cea4d6c46"
+  }
+}
