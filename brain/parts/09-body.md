@@ -20,7 +20,8 @@
 | 1 | Nave's private material: finances, doctrine, legal drafts, health | local model or commercial-terms model with ZDR; never a consumer plan |
 | 2 | public data, code, ops text | any model by quality and price |
 
-**Rules it enforces.** D22 (own brain, rent hands) · D46–D48 · C1, C2, C8.
+**Home and channel (Nave's spec §6, reconciled with D28).** Nave's spec: the MacBook that already runs 24/7 is the home — zero new infrastructure to rent; core = Claude Code or the Agent SDK with access to the memory folder; a two-way Telegram/WhatsApp channel so שבתאי can *initiate*; green autonomous, yellow stops for approval in the channel, **red blocked at the tool level**; daily backup of the memory folder to the cloud; keys, passwords and sensitive client documents never through the open channel and never in the open memory — a separate encrypted store. The brain's earlier rule "a laptop is not a server" (D28) was written for *unattended batch runs*; Nave's spec is about the *proactive channel and memory*. Reconciliation to decide in sitting 11: the Mac is the home for memory, the channel and the rituals **as long as its uptime is measured** (a missed 08:00 ritual is a case); heavy or scheduled runs stay in the cloud (Routines, runners); the daily backup is what makes the Mac replaceable.
+**Rules it enforces.** D22 (own brain, rent hands) · D28 · D46–D48 · C1, C2, C8.
 **Exists today.** Jasell's channel facade (`greenapi.js` Meta-first dispatch) is the template for an adapter: callers never know the provider. Phone/SMS via DIDWW exists for missed-call recovery.
 **Gaps.** No model adapter · no owned voice line · hands provider not wired to our logs · no eject test run yet.
 **Next build.** (1) voice-call adapter study: two providers, cost per minute, handover rule, one week (brief for the Lead) · (2) `actions.log` receiver · (3) model adapter spec with the swap drill.

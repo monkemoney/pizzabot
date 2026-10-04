@@ -1,4 +1,15 @@
-# REVIEW PLAN — building the brain together, part by part (v0.1 · 4.10.2026)
+# REVIEW PLAN — building שבתאי together (v0.2 · 4.10.2026)
+
+## A. Nave's staged plan (spec §9) — the brain enters real work in week one
+| Stage | When | What | Success metric |
+|---|---|---|---|
+| **0 — MVP** | one day | constitution file (`CHARTER.md`) + four empty memory files (`STATE.md`, `DECISIONS.md`, `PATTERNS.md`, `playbooks/`) + one Claude Code conversation that runs with them · run the acceptance tests | 3 of 3 original tests pass (EVALS 1–3) |
+| **1 — live work** | one week | first task: the farm's grant submission — break into deadlines, `state.md`, working drafts (`farm-ops/` and `tools/grants/obligations.csv` already carry it) · manual morning ritual (Nave opens) | the submission progresses; שבתאי caught at least one miss |
+| **2 — initiative** | weeks 2–3 | two-way Telegram/WhatsApp channel + cron for rituals — שבתאי shows up on his own · authority matrix in full force (green runs alone, yellow waits) | a whole week in which the morning ritual opens without Nave |
+| **3 — full partner (v2)** | one month | weekly partners' meeting + first forecast review · `PATTERNS.md` fills from reality · green widened by accumulated trust | at the first monthly meeting שבתאי presents at least one forecast of his that failed, and the calibration that fixed it |
+| **Quarter** | 3 months | — | Nave gets back ≥ 1 working day/week · zero red decisions crossed the line · שבתאי actually stopped at least one front that was opening — proof of a partner, not an assistant |
+
+## B. The review sittings — one part per sitting, run alongside the stages
 
 > One part per sitting, 30–45 minutes, in this order. Each sitting ends with: the part's file updated in Nave's words where it says "to confirm", one decision logged, and one build step opened as a brief. Nothing is built before its part was reviewed.
 
