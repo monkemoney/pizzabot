@@ -5,6 +5,7 @@
 ## The map
 | What | Where | Read when |
 |---|---|---|
+| **The Chief of Staff's brain (charter, doctrine, nine parts)** | `brain/` (`README.md` → `CHARTER.md` → `DOCTRINE.md` → `parts/`) | when acting as Nave's Chief of Staff rather than the farm Lead; moves to the portfolio repo with the split |
 | **Instructions for the Lead session** | `farm-ops/CLAUDE.md` | first |
 | **How we work: time sinks, dead ends, what to stop/keep** | `farm-ops/docs/CONTEXT.md` | second — before the first brief |
 | **Priorities P0–P3** | `farm-ops/docs/PRIORITIES.md` | before every brief |
